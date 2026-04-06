@@ -1,0 +1,135 @@
+import { Command } from 'commander';
+import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { PROJECTS_DIR, ensureDirectories } from '../../shared/config.js';
+import type { ProjectConfig, AgentConfig } from '../../shared/types.js';
+import { success, err, dim, printProject, printProjectList } from '../ui.js';
+
+function projectPath(name: string): string {
+  return join(PROJECTS_DIR, `${name}.json`);
+}
+
+function loadProject(name: string): ProjectConfig {
+  const path = projectPath(name);
+  if (!existsSync(path)) {
+    console.error(err(`Project "${name}" not found at ${path}`));
+    process.exit(1);
+  }
+  return JSON.parse(readFileSync(path, 'utf-8')) as ProjectConfig;
+}
+
+function saveProject(config: ProjectConfig): void {
+  ensureDirectories();
+  writeFileSync(projectPath(config.name), JSON.stringify(config, null, 2) + '\n');
+}
+
+function loadAllProjects(): ProjectConfig[] {
+  ensureDirectories();
+  try {
+    return readdirSync(PROJECTS_DIR)
+      .filter(f => f.endsWith('.json'))
+      .map(f => JSON.parse(readFileSync(join(PROJECTS_DIR, f), 'utf-8')) as ProjectConfig)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return [];
+  }
+}
+
+// ── "acc projects" (top-level) ─────────────────────────────────
+
+export function registerProjectsCommand(program: Command): void {
+  program
+    .command('projects')
+    .description('List all projects')
+    .action(() => {
+      printProjectList(loadAllProjects());
+    });
+}
+
+// ── "acc project <subcommand>" ─────────────────────────────────
+
+export function registerProjectCommand(program: Command): void {
+  const project = program
+    .command('project')
+    .description('Manage projects');
+
+  project
+    .command('create <name>')
+    .description('Create a new project')
+    .option('-d, --description <desc>', 'Project description', '')
+    .action((name: string, opts: { description: string }) => {
+      ensureDirectories();
+      const path = projectPath(name);
+      if (existsSync(path)) {
+        console.error(err(`Project "${name}" already exists.`));
+        process.exit(1);
+      }
+
+      const config: ProjectConfig = {
+        name,
+        description: opts.description,
+        created_at: new Date().toISOString(),
+        agents: [],
+      };
+      saveProject(config);
+      console.log(success(`Project "${name}" created.`));
+      console.log(dim(`  Config: ${path}`));
+    });
+
+  project
+    .command('add-agent <name>')
+    .description('Add an agent to a project')
+    .requiredOption('-r, --role <role>', 'Agent role (e.g. backend, frontend)')
+    .requiredOption('--cwd <dir>', 'Working directory for the agent')
+    .option('--name <name>', 'Agent display name (auto-assigned if omitted)')
+    .option('--cmd <command>', 'Agent command', 'claude')
+    .option('--args <args>', 'Agent arguments (comma-separated)', '')
+    .option('-i, --instructions <text>', 'Instructions for the agent', '')
+    .action((name: string, opts: { role: string; cwd: string; name?: string; cmd: string; args: string; instructions: string }) => {
+      const config = loadProject(name);
+
+      const existing = config.agents.find(a => a.role === opts.role);
+      if (existing) {
+        console.error(err(`Agent with role "${opts.role}" already exists in project "${name}".`));
+        process.exit(1);
+      }
+
+      const agent: AgentConfig = {
+        role: opts.role,
+        name: opts.name,
+        cwd: resolve(opts.cwd),
+        agent_cmd: opts.cmd,
+        agent_args: opts.args ? opts.args.split(',').map(a => a.trim()) : [],
+        instructions: opts.instructions,
+      };
+      config.agents.push(agent);
+      saveProject(config);
+      console.log(success(`Agent "${opts.role}" added to project "${name}".`));
+    });
+
+  project
+    .command('remove-agent <name>')
+    .description('Remove an agent from a project')
+    .requiredOption('-r, --role <role>', 'Agent role to remove')
+    .action((name: string, opts: { role: string }) => {
+      const config = loadProject(name);
+
+      const idx = config.agents.findIndex(a => a.role === opts.role);
+      if (idx === -1) {
+        console.error(err(`No agent with role "${opts.role}" in project "${name}".`));
+        process.exit(1);
+      }
+
+      config.agents.splice(idx, 1);
+      saveProject(config);
+      console.log(success(`Agent "${opts.role}" removed from project "${name}".`));
+    });
+
+  project
+    .command('show <name>')
+    .description('Show project configuration')
+    .action((name: string) => {
+      const config = loadProject(name);
+      printProject(config);
+    });
+}

@@ -1,0 +1,19 @@
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
+
+export const ACC_HOME = process.env['ACC_HOME'] ?? join(homedir(), '.zaipex-acc');
+export const ACC_PORT = Number(process.env['ACC_PORT'] ?? 7899);
+export const ACC_HOST = '127.0.0.1';
+export const ACC_DB = join(ACC_HOME, 'acc.db');
+export const PROJECTS_DIR = join(ACC_HOME, 'projects');
+
+export const BROKER_URL = `http://${ACC_HOST}:${ACC_PORT}`;
+
+export const STALE_PEER_SECONDS = 60;
+export const CLEANUP_INTERVAL_MS = 30_000;
+
+export function ensureDirectories(): void {
+  mkdirSync(ACC_HOME, { recursive: true });
+  mkdirSync(PROJECTS_DIR, { recursive: true });
+}
