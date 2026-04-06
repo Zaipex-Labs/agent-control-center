@@ -55,10 +55,21 @@ function error(res: ServerResponse, message: string, status = 400): void {
   json(res, { ok: false, error: message }, status);
 }
 
+const MAX_BODY_SIZE = 1024 * 1024; // 1MB
+
 export function parseBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    let totalSize = 0;
+    req.on('data', (chunk: Buffer) => {
+      totalSize += chunk.length;
+      if (totalSize > MAX_BODY_SIZE) {
+        req.destroy();
+        reject(new Error('Request body too large'));
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on('end', () => {
       try {
         const raw = Buffer.concat(chunks).toString();
@@ -69,6 +80,25 @@ export function parseBody(req: IncomingMessage): Promise<unknown> {
     });
     req.on('error', reject);
   });
+}
+
+// ── Input validation ──────────────────────────────────────────
+
+const SAFE_ID_REGEX = /^[a-zA-Z0-9_.\-]+$/;
+const MAX_TEXT_LENGTH = 100_000; // 100KB per message text
+
+function isSafeIdentifier(value: string): boolean {
+  return SAFE_ID_REGEX.test(value) && value.length <= 128;
+}
+
+function validateIdentifiers(res: ServerResponse, ...values: Array<{ name: string; value: unknown }>): boolean {
+  for (const { name, value } of values) {
+    if (typeof value === 'string' && value.length > 0 && !isSafeIdentifier(value)) {
+      error(res, `Invalid ${name}: only alphanumeric, dash, underscore, and dot allowed`);
+      return false;
+    }
+  }
+  return true;
 }
 
 // ── Health ─────────────────────────────────────────────────────
@@ -88,6 +118,11 @@ export function handleRegister(body: unknown, res: ServerResponse): void {
   if (!b.project_id || !b.cwd || b.pid == null) {
     return error(res, 'Missing required fields: project_id, cwd, pid');
   }
+
+  if (!validateIdentifiers(res,
+    { name: 'project_id', value: b.project_id },
+    { name: 'role', value: b.role },
+  )) return;
 
   const now = new Date().toISOString();
   const id = generateId();
@@ -199,6 +234,10 @@ export function handleSendMessage(body: unknown, res: ServerResponse): void {
     return error(res, 'Missing required fields: project_id, from_id, to_id, text');
   }
 
+  if (typeof b.text === 'string' && b.text.length > MAX_TEXT_LENGTH) {
+    return error(res, `Message text exceeds maximum length of ${MAX_TEXT_LENGTH} characters`);
+  }
+
   const toPeer = selectPeerById(b.to_id);
   if (!toPeer) return error(res, `Peer not found: ${b.to_id}`, 404);
 
@@ -229,6 +268,12 @@ export function handleSendToRole(body: unknown, res: ServerResponse): void {
   const b = body as SendToRoleRequest;
   if (!b.project_id || !b.from_id || !b.role || !b.text) {
     return error(res, 'Missing required fields: project_id, from_id, role, text');
+  }
+
+  if (!validateIdentifiers(res, { name: 'role', value: b.role })) return;
+
+  if (typeof b.text === 'string' && b.text.length > MAX_TEXT_LENGTH) {
+    return error(res, `Message text exceeds maximum length of ${MAX_TEXT_LENGTH} characters`);
   }
 
   const fromPeer = selectPeerById(b.from_id);

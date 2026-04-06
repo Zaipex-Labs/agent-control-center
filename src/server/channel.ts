@@ -42,7 +42,8 @@ export function writeInterruptFile(
   const dir = join(cwd, '.acc-messages');
   mkdirSync(dir, { recursive: true });
   const timestamp = sentAt.replace(/[:.]/g, '-');
-  const filename = `${timestamp}_${fromRole}.md`;
+  const safeRole = fromRole.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const filename = `${timestamp}_${safeRole}.md`;
   const content = `# Mensaje de ${fromRole} (${type})\n\n**Enviado:** ${sentAt}\n\n---\n\n${text}\n`;
   writeFileSync(join(dir, filename), content);
 }

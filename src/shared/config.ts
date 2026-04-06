@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 
 export const ACC_HOME = process.env['ACC_HOME'] ?? join(homedir(), '.zaipex-acc');
-export const ACC_PORT = Number(process.env['ACC_PORT'] ?? 7899);
+const rawPort = Number(process.env['ACC_PORT'] ?? 7899);
+export const ACC_PORT = (rawPort >= 1 && rawPort <= 65535) ? rawPort : 7899;
 export const ACC_HOST = '127.0.0.1';
 export const ACC_DB = join(ACC_HOME, 'acc.db');
 export const PROJECTS_DIR = join(ACC_HOME, 'projects');

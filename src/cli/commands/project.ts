@@ -95,10 +95,16 @@ export function registerProjectCommand(program: Command): void {
         process.exit(1);
       }
 
+      const resolvedCwd = resolve(opts.cwd);
+      if (!existsSync(resolvedCwd)) {
+        console.error(err(`Directory does not exist: ${resolvedCwd}`));
+        process.exit(1);
+      }
+
       const agent: AgentConfig = {
         role: opts.role,
         name: opts.name,
-        cwd: resolve(opts.cwd),
+        cwd: resolvedCwd,
         agent_cmd: opts.cmd,
         agent_args: opts.args ? opts.args.split(',').map(a => a.trim()) : [],
         instructions: opts.instructions,
