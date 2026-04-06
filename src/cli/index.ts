@@ -8,6 +8,7 @@ import { registerSharedCommand } from './commands/shared.js';
 import { registerSendCommand } from './commands/send.js';
 import { registerUpCommand } from './commands/up.js';
 import { registerDownCommand } from './commands/down.js';
+import { registerConfigCommand } from './commands/config.js';
 
 const program = new Command();
 
@@ -25,5 +26,6 @@ registerPeersCommand(program);
 registerHistoryCommand(program);
 registerSharedCommand(program);
 registerSendCommand(program);
+registerConfigCommand(program);
 
 program.parse();

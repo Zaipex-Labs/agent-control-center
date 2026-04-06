@@ -1,0 +1,119 @@
+export const en: Record<string, string> = {
+  // ── ui.ts ───────────────────────────────────────────────────
+  'ui.noProjects': 'No projects found. Create one with: acc project create <name>',
+  'ui.projectsHeading': 'Projects',
+  'ui.noAgents': 'No agents configured.',
+  'ui.agentsLabel': 'Agents:',
+  'ui.createdLabel': 'Created:',
+  'ui.instructionsLabel': 'instructions:',
+  'ui.cmdLabel': 'cmd:',
+  'ui.agentCount': '{count} agent(s)',
+
+  // ── status.ts ───────────────────────────────────────────────
+  'status.brokerNotRunning': 'Broker is not running.',
+  'status.startHint': 'Start it with: acc broker start',
+  'status.heading': 'Broker Status',
+  'status.statusLabel': 'Status:',
+  'status.peersLabel': 'Peers:',
+  'status.pendingLabel': 'Pending:',
+  'status.messages': '{count} message(s)',
+  'status.online': 'online',
+  'status.noPeers': 'No active peers in project "{project}".',
+  'status.peersHeading': 'Peers in "{project}"',
+
+  // ── peers.ts ────────────────────────────────────────────────
+  'peers.brokerNotRunning': 'Broker is not running.',
+  'peers.noPeers': 'No active peers.',
+  'peers.heading': 'Active Peers',
+  'peers.headingProject': 'Active Peers ({project})',
+  'peers.noRole': '(no role)',
+  'peers.cwdLabel': 'cwd:',
+  'peers.branchLabel': 'branch:',
+  'peers.summaryLabel': 'summary:',
+
+  // ── history.ts ──────────────────────────────────────────────
+  'history.brokerNotRunning': 'Broker is not running.',
+  'history.noMessages': 'No messages found.',
+  'history.heading': 'Message History ({project})',
+
+  // ── shared.ts ───────────────────────────────────────────────
+  'shared.brokerNotRunning': 'Broker is not running.',
+  'shared.keyNotFound': 'Key "{key}" not found in namespace "{namespace}".',
+  'shared.valueLabel': 'Value:',
+  'shared.updatedByLabel': 'Updated by:',
+  'shared.updatedAtLabel': 'Updated at:',
+  'shared.noKeys': 'No keys in namespace "{namespace}".',
+  'shared.keysHeading': 'Keys in "{namespace}"',
+  'shared.heading': 'Shared State ({project})',
+  'shared.usageLabel': 'Usage:',
+  'shared.usageListKeys': '— list keys in namespace',
+  'shared.usageShowValue': '— show value',
+
+  // ── send.ts ─────────────────────────────────────────────────
+  'send.brokerNotRunning': 'Broker is not running.',
+  'send.cliSummary': 'CLI user sending a message',
+  'send.noAgents': 'No agents with role "{role}" found in project "{project}".',
+  'send.sent': 'Message sent to {count} agent(s) with role "{role}".',
+
+  // ── project.ts ──────────────────────────────────────────────
+  'project.notFound': 'Project "{name}" not found at {path}',
+  'project.alreadyExists': 'Project "{name}" already exists.',
+  'project.created': 'Project "{name}" created.',
+  'project.configAt': 'Config: {path}',
+  'project.agentExists': 'Agent with role "{role}" already exists in project "{name}".',
+  'project.agentAdded': 'Agent "{role}" added to project "{name}".',
+  'project.agentNotFound': 'No agent with role "{role}" in project "{name}".',
+  'project.agentRemoved': 'Agent "{role}" removed from project "{name}".',
+
+  // ── up.ts ───────────────────────────────────────────────────
+  'up.noRole': 'No agent with role "{role}" in project "{name}".',
+  'up.noAgents': 'Project "{name}" has no agents configured.',
+  'up.addHint': 'Add one with: acc project add-agent {name} --role <r> --cwd <d>',
+  'up.tmuxExists': 'tmux session "acc-{name}" already exists.',
+  'up.tmuxHint': 'Run "acc down {name}" first, or attach with: tmux attach -t acc-{name}',
+  'up.ensuringBroker': 'Ensuring broker is alive...',
+  'up.brokerFailed': 'Failed to start broker: {error}',
+  'up.brokerReady': 'Broker is ready.',
+  'up.mcpRegistered': 'MCP server registered (user scope).',
+  'up.mcpFailed': 'Failed to register MCP server: {error}',
+  'up.mcpHint': 'Make sure "claude" CLI is installed and available in PATH.',
+  'up.removedResidual': 'Removed residual {path}',
+  'up.projectUp': 'Project "{name}" is up',
+  'up.strategyLabel': 'Strategy:',
+  'up.agentsLabel': 'Agents:',
+  'up.attachWith': 'Attach with:',
+  'up.fallbackSpawned': 'Agents spawned as background processes.',
+  'up.pidsLabel': 'PIDs:',
+  'up.stopWith': 'Stop with:',
+
+  // ── down.ts ─────────────────────────────────────────────────
+  'down.stopped': 'Stopped',
+  'down.alreadyDead': 'Already dead',
+  'down.killed': 'Killed',
+  'down.noAgents': 'No active agents found for project "{name}".',
+  'down.summary': 'Stopped {count} agent(s) for "{name}".',
+  'down.brokerNote': 'Broker left running (history and shared state preserved).',
+
+  // ── broker ──────────────────────────────────────────────────
+  'broker.cleanedStartup': 'Cleaned {count} stale peer(s) on startup',
+  'broker.cleaned': 'Cleaned {count} stale peer(s)',
+  'broker.listening': 'Listening on http://{host}:{port}',
+  'broker.portInUse': 'Port {port} already in use — another broker may be running',
+
+  // ── server ──────────────────────────────────────────────────
+  'server.ensuringBroker': 'Ensuring broker is alive...',
+  'server.brokerReady': 'Broker is ready.',
+  'server.project': 'Project: {project}',
+  'server.registered': 'Registered as {name} ({id}) role="{role}"',
+  'server.connected': 'MCP server connected via stdio.',
+  'server.polling': 'Polling as: id={id} role={role} project={project}',
+  'server.interruptWritten': 'Wrote interrupt file for message from {role}',
+  'server.deliveryFailed': 'All delivery methods failed for message from {role}',
+  'server.heartbeatFailed': 'Heartbeat failed — broker may be down',
+  'server.unregistered': 'Unregistered from broker.',
+  'server.fatal': 'Fatal: {error}',
+
+  // ── config command ──────────────────────────────────────────
+  'config.langSet': 'Language set to {lang}.',
+  'config.invalidLang': 'Invalid language "{lang}". Supported: en, es.',
+};

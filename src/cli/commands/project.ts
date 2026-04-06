@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { PROJECTS_DIR, ensureDirectories } from '../../shared/config.js';
 import type { ProjectConfig, AgentConfig } from '../../shared/types.js';
 import { success, err, dim, printProject, printProjectList } from '../ui.js';
+import { t } from '../../shared/i18n/index.js';
 
 function projectPath(name: string): string {
   return join(PROJECTS_DIR, `${name}.json`);
@@ -12,7 +13,7 @@ function projectPath(name: string): string {
 function loadProject(name: string): ProjectConfig {
   const path = projectPath(name);
   if (!existsSync(path)) {
-    console.error(err(`Project "${name}" not found at ${path}`));
+    console.error(err(t('project.notFound', { name, path })));
     process.exit(1);
   }
   return JSON.parse(readFileSync(path, 'utf-8')) as ProjectConfig;
@@ -61,7 +62,7 @@ export function registerProjectCommand(program: Command): void {
       ensureDirectories();
       const path = projectPath(name);
       if (existsSync(path)) {
-        console.error(err(`Project "${name}" already exists.`));
+        console.error(err(t('project.alreadyExists', { name })));
         process.exit(1);
       }
 
@@ -72,8 +73,8 @@ export function registerProjectCommand(program: Command): void {
         agents: [],
       };
       saveProject(config);
-      console.log(success(`Project "${name}" created.`));
-      console.log(dim(`  Config: ${path}`));
+      console.log(success(t('project.created', { name })));
+      console.log(dim(`  ${t('project.configAt', { path })}`));
     });
 
   project
@@ -90,7 +91,7 @@ export function registerProjectCommand(program: Command): void {
 
       const existing = config.agents.find(a => a.role === opts.role);
       if (existing) {
-        console.error(err(`Agent with role "${opts.role}" already exists in project "${name}".`));
+        console.error(err(t('project.agentExists', { role: opts.role, name })));
         process.exit(1);
       }
 
@@ -104,7 +105,7 @@ export function registerProjectCommand(program: Command): void {
       };
       config.agents.push(agent);
       saveProject(config);
-      console.log(success(`Agent "${opts.role}" added to project "${name}".`));
+      console.log(success(t('project.agentAdded', { role: opts.role, name })));
     });
 
   project
@@ -116,13 +117,13 @@ export function registerProjectCommand(program: Command): void {
 
       const idx = config.agents.findIndex(a => a.role === opts.role);
       if (idx === -1) {
-        console.error(err(`No agent with role "${opts.role}" in project "${name}".`));
+        console.error(err(t('project.agentNotFound', { role: opts.role, name })));
         process.exit(1);
       }
 
       config.agents.splice(idx, 1);
       saveProject(config);
-      console.log(success(`Agent "${opts.role}" removed from project "${name}".`));
+      console.log(success(t('project.agentRemoved', { role: opts.role, name })));
     });
 
   project

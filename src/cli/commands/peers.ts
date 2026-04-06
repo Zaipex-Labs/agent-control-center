@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import { brokerFetch, isBrokerAlive } from '../../server/broker-client.js';
 import type { Peer } from '../../shared/types.js';
 import { heading, dim, label, err } from '../ui.js';
+import { t } from '../../shared/i18n/index.js';
 
 export function registerPeersCommand(program: Command): void {
   program
@@ -11,7 +12,7 @@ export function registerPeersCommand(program: Command): void {
     .action(async (project?: string) => {
       const alive = await isBrokerAlive();
       if (!alive) {
-        console.log(err('  Broker is not running.'));
+        console.log(err(`  ${t('peers.brokerNotRunning')}`));
         return;
       }
 
@@ -20,20 +21,23 @@ export function registerPeersCommand(program: Command): void {
         : await brokerFetch<Peer[]>('/list-peers', { project_id: '', scope: 'machine' });
 
       if (peers.length === 0) {
-        console.log(dim('  No active peers.'));
+        console.log(dim(`  ${t('peers.noPeers')}`));
         return;
       }
 
-      console.log(heading(`\n  Active Peers${project ? ` (${project})` : ''}\n`));
+      const headingText = project
+        ? t('peers.headingProject', { project })
+        : t('peers.heading');
+      console.log(heading(`\n  ${headingText}\n`));
       for (const p of peers) {
-        const roleStr = p.role ? chalk.magenta(p.role) : dim('(no role)');
+        const roleStr = p.role ? chalk.magenta(p.role) : dim(t('peers.noRole'));
         console.log(`  ${label(p.id)}  ${roleStr}  ${dim(p.agent_type)}  pid:${p.pid}`);
-        console.log(`    ${dim('cwd:')} ${p.cwd}`);
+        console.log(`    ${dim(t('peers.cwdLabel'))} ${p.cwd}`);
         if (p.git_branch) {
-          console.log(`    ${dim('branch:')} ${p.git_branch}`);
+          console.log(`    ${dim(t('peers.branchLabel'))} ${p.git_branch}`);
         }
         if (p.summary) {
-          console.log(`    ${dim('summary:')} ${p.summary}`);
+          console.log(`    ${dim(t('peers.summaryLabel'))} ${p.summary}`);
         }
       }
       console.log();

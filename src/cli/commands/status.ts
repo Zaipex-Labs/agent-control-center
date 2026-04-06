@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import { brokerFetch, brokerGet, isBrokerAlive } from '../../server/broker-client.js';
 import type { HealthResponse, Peer } from '../../shared/types.js';
 import { heading, dim, label, err, success } from '../ui.js';
+import { t } from '../../shared/i18n/index.js';
 
 export function registerStatusCommand(program: Command): void {
   program
@@ -11,16 +12,16 @@ export function registerStatusCommand(program: Command): void {
     .action(async (project?: string) => {
       const alive = await isBrokerAlive();
       if (!alive) {
-        console.log(err('  Broker is not running.'));
-        console.log(dim('  Start it with: acc broker start'));
+        console.log(err(`  ${t('status.brokerNotRunning')}`));
+        console.log(dim(`  ${t('status.startHint')}`));
         return;
       }
 
       const health = await brokerGet<HealthResponse>('/health');
-      console.log(heading('\n  Broker Status\n'));
-      console.log(`  ${label('Status:')}  ${success('online')}`);
-      console.log(`  ${label('Peers:')}   ${health.peers}`);
-      console.log(`  ${label('Pending:')} ${health.pending_messages} message(s)`);
+      console.log(heading(`\n  ${t('status.heading')}\n`));
+      console.log(`  ${label(t('status.statusLabel'))}  ${success(t('status.online'))}`);
+      console.log(`  ${label(t('status.peersLabel'))}   ${health.peers}`);
+      console.log(`  ${label(t('status.pendingLabel'))} ${t('status.messages', { count: String(health.pending_messages) })}`);
 
       if (project) {
         const peers = await brokerFetch<Peer[]>('/list-peers', {
@@ -29,12 +30,12 @@ export function registerStatusCommand(program: Command): void {
         });
 
         if (peers.length === 0) {
-          console.log(dim(`\n  No active peers in project "${project}".`));
+          console.log(dim(`\n  ${t('status.noPeers', { project })}`));
         } else {
-          console.log(heading(`\n  Peers in "${project}"\n`));
+          console.log(heading(`\n  ${t('status.peersHeading', { project })}\n`));
           for (const p of peers) {
             const age = timeSince(p.last_seen);
-            console.log(`  ${chalk.magenta(p.role || '(no role)')}  ${dim(p.id)}  pid:${p.pid}  ${dim(age)}`);
+            console.log(`  ${chalk.magenta(p.role || t('peers.noRole'))}  ${dim(p.id)}  pid:${p.pid}  ${dim(age)}`);
             if (p.summary) {
               console.log(`    ${dim(p.summary)}`);
             }

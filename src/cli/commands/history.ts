@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import { brokerFetch, isBrokerAlive } from '../../server/broker-client.js';
 import type { GetHistoryResponse } from '../../shared/types.js';
 import { heading, dim, err } from '../ui.js';
+import { t } from '../../shared/i18n/index.js';
 
 export function registerHistoryCommand(program: Command): void {
   program
@@ -13,7 +14,7 @@ export function registerHistoryCommand(program: Command): void {
     .action(async (project: string, opts: { role?: string; last: string }) => {
       const alive = await isBrokerAlive();
       if (!alive) {
-        console.log(err('  Broker is not running.'));
+        console.log(err(`  ${t('history.brokerNotRunning')}`));
         return;
       }
 
@@ -24,11 +25,11 @@ export function registerHistoryCommand(program: Command): void {
       });
 
       if (resp.messages.length === 0) {
-        console.log(dim('  No messages found.'));
+        console.log(dim(`  ${t('history.noMessages')}`));
         return;
       }
 
-      console.log(heading(`\n  Message History (${project})\n`));
+      console.log(heading(`\n  ${t('history.heading', { project })}\n`));
 
       // History comes in DESC order, reverse for chronological display
       const messages = [...resp.messages].reverse();

@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { brokerFetch, isBrokerAlive } from '../../server/broker-client.js';
 import type { RegisterResponse, SendToRoleResponse } from '../../shared/types.js';
 import { success, err, dim } from '../ui.js';
+import { t } from '../../shared/i18n/index.js';
 
 export function registerSendCommand(program: Command): void {
   program
@@ -12,7 +13,7 @@ export function registerSendCommand(program: Command): void {
     .action(async (project: string, message: string, opts: { toRole: string; type: string }) => {
       const alive = await isBrokerAlive();
       if (!alive) {
-        console.log(err('  Broker is not running.'));
+        console.log(err(`  ${t('send.brokerNotRunning')}`));
         return;
       }
 
@@ -22,7 +23,7 @@ export function registerSendCommand(program: Command): void {
         cwd: process.cwd(),
         role: 'cli',
         agent_type: 'cli',
-        summary: 'CLI user sending a message',
+        summary: t('send.cliSummary'),
         project_id: project,
       });
 
@@ -36,9 +37,9 @@ export function registerSendCommand(program: Command): void {
         });
 
         if (resp.sent_to === 0) {
-          console.log(dim(`  No agents with role "${opts.toRole}" found in project "${project}".`));
+          console.log(dim(`  ${t('send.noAgents', { role: opts.toRole, project })}`));
         } else {
-          console.log(success(`  Message sent to ${resp.sent_to} agent(s) with role "${opts.toRole}".`));
+          console.log(success(`  ${t('send.sent', { count: String(resp.sent_to), role: opts.toRole })}`));
         }
       } finally {
         // Unregister the temporary peer

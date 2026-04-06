@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import { brokerFetch, isBrokerAlive } from '../../server/broker-client.js';
 import type { SharedGetResponse, SharedListResponse } from '../../shared/types.js';
 import { heading, dim, label, err } from '../ui.js';
+import { t } from '../../shared/i18n/index.js';
 
 export function registerSharedCommand(program: Command): void {
   program
@@ -11,7 +12,7 @@ export function registerSharedCommand(program: Command): void {
     .action(async (project: string, namespace?: string, key?: string) => {
       const alive = await isBrokerAlive();
       if (!alive) {
-        console.log(err('  Broker is not running.'));
+        console.log(err(`  ${t('shared.brokerNotRunning')}`));
         return;
       }
 
@@ -24,14 +25,14 @@ export function registerSharedCommand(program: Command): void {
         });
 
         if ('error' in resp) {
-          console.log(dim(`  Key "${key}" not found in namespace "${namespace}".`));
+          console.log(dim(`  ${t('shared.keyNotFound', { key, namespace })}`));
           return;
         }
 
         console.log(heading(`\n  ${namespace}/${key}\n`));
-        console.log(`  ${label('Value:')}      ${resp.value}`);
-        console.log(`  ${label('Updated by:')} ${resp.updated_by}`);
-        console.log(`  ${label('Updated at:')} ${resp.updated_at}`);
+        console.log(`  ${label(t('shared.valueLabel'))}      ${resp.value}`);
+        console.log(`  ${label(t('shared.updatedByLabel'))} ${resp.updated_by}`);
+        console.log(`  ${label(t('shared.updatedAtLabel'))} ${resp.updated_at}`);
         console.log();
         return;
       }
@@ -44,11 +45,11 @@ export function registerSharedCommand(program: Command): void {
         });
 
         if (resp.keys.length === 0) {
-          console.log(dim(`  No keys in namespace "${namespace}".`));
+          console.log(dim(`  ${t('shared.noKeys', { namespace })}`));
           return;
         }
 
-        console.log(heading(`\n  Keys in "${namespace}"\n`));
+        console.log(heading(`\n  ${t('shared.keysHeading', { namespace })}\n`));
         for (const k of resp.keys) {
           console.log(`  ${chalk.yellow(k)}`);
         }
@@ -56,12 +57,11 @@ export function registerSharedCommand(program: Command): void {
         return;
       }
 
-      // No namespace given — there's no "list namespaces" endpoint,
-      // so explain usage
-      console.log(heading(`\n  Shared State (${project})\n`));
-      console.log(`  Usage:`);
-      console.log(`    ${dim('acc shared <project> <namespace>')}        ${dim('— list keys in namespace')}`);
-      console.log(`    ${dim('acc shared <project> <namespace> <key>')}  ${dim('— show value')}`);
+      // No namespace given — explain usage
+      console.log(heading(`\n  ${t('shared.heading', { project })}\n`));
+      console.log(`  ${t('shared.usageLabel')}`);
+      console.log(`    ${dim('acc shared <project> <namespace>')}        ${dim(t('shared.usageListKeys'))}`);
+      console.log(`    ${dim('acc shared <project> <namespace> <key>')}  ${dim(t('shared.usageShowValue'))}`);
       console.log();
     });
 }

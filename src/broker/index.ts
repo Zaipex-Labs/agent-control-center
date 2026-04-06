@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse, Server } from 'node:http';
 import { ACC_HOST, ACC_PORT, CLEANUP_INTERVAL_MS } from '../shared/config.js';
+import { t } from '../shared/i18n/index.js';
 import { initDatabase } from './database.js';
 import { cleanStalePeers } from './cleanup.js';
 import {
@@ -47,14 +48,14 @@ export function createBrokerServer(): Server {
   // Clean dead peers on startup
   const removed = cleanStalePeers();
   if (removed > 0) {
-    console.error(`[broker] Cleaned ${removed} stale peer(s) on startup`);
+    console.error(`[broker] ${t('broker.cleanedStartup', { count: String(removed) })}`);
   }
 
   // Periodic cleanup
   const cleanupInterval = setInterval(() => {
     const n = cleanStalePeers();
     if (n > 0) {
-      console.error(`[broker] Cleaned ${n} stale peer(s)`);
+      console.error(`[broker] ${t('broker.cleaned', { count: String(n) })}`);
     }
   }, CLEANUP_INTERVAL_MS);
   cleanupInterval.unref();
@@ -92,12 +93,12 @@ export function main(): void {
   const server = createBrokerServer();
 
   server.listen(ACC_PORT, ACC_HOST, () => {
-    console.error(`[broker] Listening on http://${ACC_HOST}:${ACC_PORT}`);
+    console.error(`[broker] ${t('broker.listening', { host: ACC_HOST, port: String(ACC_PORT) })}`);
   });
 
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
-      console.error(`[broker] Port ${ACC_PORT} already in use — another broker may be running`);
+      console.error(`[broker] ${t('broker.portInUse', { port: String(ACC_PORT) })}`);
       process.exit(1);
     }
     throw err;

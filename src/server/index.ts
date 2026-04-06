@@ -3,6 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PROJECTS_DIR } from '../shared/config.js';
+import { t } from '../shared/i18n/index.js';
 import { getGitRoot, getGitBranch, getTty, getDefaultName } from '../shared/utils.js';
 import { ensureBroker, brokerFetch } from './broker-client.js';
 import { pushMessage, writeInterruptFile } from './channel.js';
@@ -102,13 +103,13 @@ export async function main(): Promise<void> {
   const envName = process.env['ACC_NAME'] ?? '';
 
   // Ensure broker is running
-  log('Ensuring broker is alive...');
+  log(t('server.ensuringBroker'));
   await ensureBroker();
-  log('Broker is ready.');
+  log(t('server.brokerReady'));
 
   // Detect project
   const projectId = detectProject(gitRoot, cwd);
-  log(`Project: ${projectId}`);
+  log(t('server.project', { project: projectId }));
 
   // Register with broker
   const reg = await brokerFetch<RegisterResponse>('/register', {
@@ -124,7 +125,7 @@ export async function main(): Promise<void> {
     project_id: projectId,
   });
   const agentName = reg.name;
-  log(`Registered as ${agentName} (${reg.id}) role="${role || '(none)'}"`);
+  log(t('server.registered', { name: agentName, id: reg.id, role: role || '(none)' }));
 
   const identity: AgentIdentity = {
     id: reg.id,
@@ -153,12 +154,12 @@ export async function main(): Promise<void> {
   // Connect via stdio
   const transport = new StdioServerTransport();
   await mcp.connect(transport);
-  log('MCP server connected via stdio.');
+  log(t('server.connected'));
 
   // ── Polling loop: check for new messages every 1s ────────
   // Note: tmux send-keys delivery is handled by the broker on send.
   // This loop picks up messages as fallback (channel push / interrupt file).
-  log(`Polling as: id=${identity.id} role=${identity.role} project=${identity.project_id}`);
+  log(t('server.polling', { id: identity.id, role: identity.role, project: identity.project_id }));
 
   const pollInterval = setInterval(async () => {
     try {
@@ -200,9 +201,9 @@ export async function main(): Promise<void> {
         if (!delivered) {
           try {
             writeInterruptFile(identity.cwd, fromRole, msg.type, msg.text, msg.sent_at);
-            log(`Wrote interrupt file for message from ${fromRole}`);
+            log(t('server.interruptWritten', { role: fromRole }));
           } catch {
-            log(`All delivery methods failed for message from ${fromRole}`);
+            log(t('server.deliveryFailed', { role: fromRole }));
           }
         }
       }
@@ -216,7 +217,7 @@ export async function main(): Promise<void> {
     try {
       await brokerFetch('/heartbeat', { id: identity.id });
     } catch {
-      log('Heartbeat failed — broker may be down');
+      log(t('server.heartbeatFailed'));
     }
   }, 15_000);
 
@@ -226,7 +227,7 @@ export async function main(): Promise<void> {
     clearInterval(heartbeatInterval);
     try {
       await brokerFetch('/unregister', { id: identity.id });
-      log('Unregistered from broker.');
+      log(t('server.unregistered'));
     } catch {
       // Broker might already be gone
     }
@@ -246,7 +247,7 @@ const isDirectRun = process.argv[1] && (
 
 if (isDirectRun) {
   main().catch((err) => {
-    process.stderr.write(`[acc-server] Fatal: ${err}\n`);
+    process.stderr.write(`[acc-server] ${t('server.fatal', { error: String(err) })}\n`);
     process.exit(1);
   });
 }
