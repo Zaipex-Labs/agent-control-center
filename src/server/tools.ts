@@ -10,6 +10,7 @@ import type {
   GetHistoryResponse,
   SharedGetResponse,
   SharedListResponse,
+  ThreadSummaryResponse,
 } from '../shared/types.js';
 
 export interface AgentIdentity {
@@ -66,7 +67,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
 
   mcp.tool(
     'send_message',
-    'Send a message to a specific agent by ID. Use list_peers to find IDs.',
+    'Send a message to a specific agent by ID. Use list_peers to find IDs. Optionally pass thread_id to associate the message with a conversation thread.',
     {
       to_id: z.string(),
       text: z.string(),
@@ -74,6 +75,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
         'message', 'question', 'response', 'contract_update',
         'notification', 'task_request', 'task_complete',
       ]).optional(),
+      thread_id: z.string().optional(),
     },
     async (args) => {
       const resp = await brokerFetch<OkResponse>('/send-message', {
@@ -82,6 +84,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
         to_id: args.to_id,
         type: args.type ?? 'message',
         text: args.text,
+        thread_id: args.thread_id,
       });
       return {
         content: [{ type: 'text', text: JSON.stringify(resp) }],
@@ -91,7 +94,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
 
   mcp.tool(
     'send_to_role',
-    'Broadcast a message to all agents with a given role (e.g. "backend", "frontend"). No need to know their IDs.',
+    'Broadcast a message to all agents with a given role (e.g. "backend", "frontend"). No need to know their IDs. Optionally pass thread_id to associate the message with a conversation thread.',
     {
       role: z.string(),
       text: z.string(),
@@ -99,6 +102,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
         'message', 'question', 'response', 'contract_update',
         'notification', 'task_request', 'task_complete',
       ]).optional(),
+      thread_id: z.string().optional(),
     },
     async (args) => {
       const resp = await brokerFetch<SendToRoleResponse>('/send-to-role', {
@@ -107,6 +111,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
         role: args.role,
         type: args.type ?? 'message',
         text: args.text,
+        thread_id: args.thread_id,
       });
       return {
         content: [{ type: 'text', text: `Sent to ${resp.sent_to} agent(s)` }],
@@ -129,7 +134,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
 
   mcp.tool(
     'get_history',
-    'Get conversation history for this project. Optionally filter by role, message type, or limit.',
+    'Get conversation history for this project. Optionally filter by role, message type, thread_id, or limit.',
     {
       role: z.string().optional(),
       type: z.enum([
@@ -137,6 +142,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
         'notification', 'task_request', 'task_complete',
       ]).optional(),
       limit: z.number().optional(),
+      thread_id: z.string().optional(),
     },
     async (args) => {
       const resp = await brokerFetch<GetHistoryResponse>('/get-history', {
@@ -144,6 +150,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
         role: args.role,
         type: args.type,
         limit: args.limit,
+        thread_id: args.thread_id,
       });
       return {
         content: [{ type: 'text', text: JSON.stringify(resp.messages, null, 2) }],
@@ -207,6 +214,24 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
       });
       return {
         content: [{ type: 'text', text: JSON.stringify(resp.keys, null, 2) }],
+      };
+    },
+  );
+
+  // ── Threads ────────────────────────────────────────────────
+
+  mcp.tool(
+    'get_thread_context',
+    'Get a summary of a conversation thread — the last 10 messages concatenated. Use this to understand thread context before responding.',
+    {
+      thread_id: z.string(),
+    },
+    async (args) => {
+      const resp = await brokerFetch<ThreadSummaryResponse>('/threads/summary', {
+        thread_id: args.thread_id,
+      });
+      return {
+        content: [{ type: 'text', text: resp.summary }],
       };
     },
   );

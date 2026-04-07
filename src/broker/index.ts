@@ -4,6 +4,7 @@ import { ACC_HOST, ACC_PORT, CLEANUP_INTERVAL_MS } from '../shared/config.js';
 import { t } from '../shared/i18n/index.js';
 import { initDatabase } from './database.js';
 import { cleanStalePeers } from './cleanup.js';
+import { createWebSocketServer } from './websocket.js';
 import {
   parseBody,
   handleHealth,
@@ -21,6 +22,12 @@ import {
   handleSharedGet,
   handleSharedList,
   handleSharedDelete,
+  handleCreateThread,
+  handleListThreads,
+  handleGetThread,
+  handleUpdateThread,
+  handleSearchThreads,
+  handleThreadSummary,
 } from './handlers.js';
 
 type PostHandler = (body: unknown, res: ServerResponse) => void;
@@ -40,6 +47,12 @@ const POST_ROUTES: Record<string, PostHandler> = {
   '/shared/get': handleSharedGet,
   '/shared/list': handleSharedList,
   '/shared/delete': handleSharedDelete,
+  '/threads/create': handleCreateThread,
+  '/threads/list': handleListThreads,
+  '/threads/get': handleGetThread,
+  '/threads/update': handleUpdateThread,
+  '/threads/search': handleSearchThreads,
+  '/threads/summary': handleThreadSummary,
 };
 
 export function createBrokerServer(): Server {
@@ -85,6 +98,8 @@ export function createBrokerServer(): Server {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: false, error: 'Not found' }));
   });
+
+  createWebSocketServer(server);
 
   return server;
 }

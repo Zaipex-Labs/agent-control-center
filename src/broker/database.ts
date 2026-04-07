@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { ACC_DB, ensureDirectories } from '../shared/config.js';
-import type { Peer, Message, LogEntry, SharedStateEntry, MessageType } from '../shared/types.js';
+import { generateId } from '../shared/utils.js';
+import type { Peer, Message, LogEntry, SharedStateEntry, MessageType, Thread, ThreadStatus, MessageMatch } from '../shared/types.js';
 
 let db: Database.Database;
 
@@ -30,6 +31,18 @@ export function initDatabase(dbPath?: string): Database.Database {
     );
     CREATE INDEX IF NOT EXISTS idx_peers_project ON peers(project_id);
 
+    CREATE TABLE IF NOT EXISTS threads (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      summary TEXT NOT NULL DEFAULT '',
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_threads_project ON threads(project_id);
+
     CREATE TABLE IF NOT EXISTS messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id TEXT NOT NULL,
@@ -38,6 +51,7 @@ export function initDatabase(dbPath?: string): Database.Database {
       type TEXT NOT NULL DEFAULT 'message',
       text TEXT NOT NULL,
       metadata TEXT,
+      thread_id TEXT,
       sent_at TEXT NOT NULL,
       delivered INTEGER NOT NULL DEFAULT 0
     );
@@ -64,6 +78,7 @@ export function initDatabase(dbPath?: string): Database.Database {
       type TEXT NOT NULL,
       text TEXT NOT NULL,
       metadata TEXT,
+      thread_id TEXT,
       sent_at TEXT NOT NULL,
       session_id TEXT NOT NULL
     );
@@ -71,7 +86,26 @@ export function initDatabase(dbPath?: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_log_session ON message_log(session_id);
   `);
 
+  // Migrations for existing databases
+  migrateSchema(db);
+
   return db;
+}
+
+function migrateSchema(database: Database.Database): void {
+  // Add thread_id to messages if missing
+  const msgCols = database.prepare("PRAGMA table_info(messages)").all() as { name: string }[];
+  if (!msgCols.some(c => c.name === 'thread_id')) {
+    database.exec('ALTER TABLE messages ADD COLUMN thread_id TEXT');
+  }
+  database.exec('CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id)');
+
+  // Add thread_id to message_log if missing
+  const logCols = database.prepare("PRAGMA table_info(message_log)").all() as { name: string }[];
+  if (!logCols.some(c => c.name === 'thread_id')) {
+    database.exec('ALTER TABLE message_log ADD COLUMN thread_id TEXT');
+  }
+  database.exec('CREATE INDEX IF NOT EXISTS idx_log_thread ON message_log(thread_id)');
 }
 
 export function getDb(): Database.Database {
@@ -145,11 +179,12 @@ export function insertMessage(
   text: string,
   metadata: string | null,
   sentAt: string,
+  threadId: string | null = null,
 ): number {
   const result = getDb().prepare(`
-    INSERT INTO messages (project_id, from_id, to_id, type, text, metadata, sent_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(projectId, fromId, toId, type, text, metadata, sentAt);
+    INSERT INTO messages (project_id, from_id, to_id, type, text, metadata, thread_id, sent_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(projectId, fromId, toId, type, text, metadata, threadId, sentAt);
   return Number(result.lastInsertRowid);
 }
 
@@ -182,16 +217,17 @@ export function insertLogEntry(
   metadata: string | null,
   sentAt: string,
   sessionId: string,
+  threadId: string | null = null,
 ): void {
   getDb().prepare(`
-    INSERT INTO message_log (project_id, from_id, from_role, to_id, to_role, type, text, metadata, sent_at, session_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(projectId, fromId, fromRole, toId, toRole, type, text, metadata, sentAt, sessionId);
+    INSERT INTO message_log (project_id, from_id, from_role, to_id, to_role, type, text, metadata, thread_id, sent_at, session_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(projectId, fromId, fromRole, toId, toRole, type, text, metadata, threadId, sentAt, sessionId);
 }
 
 export function selectHistory(
   projectId: string,
-  options?: { role?: string; type?: MessageType; limit?: number; session_id?: string },
+  options?: { role?: string; type?: MessageType; limit?: number; session_id?: string; thread_id?: string },
 ): LogEntry[] {
   const conditions: string[] = ['project_id = ?'];
   const params: (string | number)[] = [projectId];
@@ -207,6 +243,10 @@ export function selectHistory(
   if (options?.session_id) {
     conditions.push('session_id = ?');
     params.push(options.session_id);
+  }
+  if (options?.thread_id) {
+    conditions.push('thread_id = ?');
+    params.push(options.thread_id);
   }
 
   const limit = options?.limit ?? 100;
@@ -250,4 +290,136 @@ export function deleteSharedState(projectId: string, namespace: string, key: str
   getDb().prepare(
     'DELETE FROM shared_state WHERE project_id = ? AND namespace = ? AND key = ?',
   ).run(projectId, namespace, key);
+}
+
+// ── Threads ───────────────────────────────────────────────────
+
+export function insertThread(thread: Thread): void {
+  getDb().prepare(`
+    INSERT INTO threads (id, project_id, name, status, summary, created_by, created_at, updated_at)
+    VALUES (@id, @project_id, @name, @status, @summary, @created_by, @created_at, @updated_at)
+  `).run(thread);
+}
+
+export function selectThreadsByProject(projectId: string, status?: ThreadStatus): Thread[] {
+  if (status) {
+    return getDb().prepare(
+      'SELECT * FROM threads WHERE project_id = ? AND status = ? ORDER BY created_at ASC',
+    ).all(projectId, status) as Thread[];
+  }
+  return getDb().prepare(
+    'SELECT * FROM threads WHERE project_id = ? ORDER BY created_at ASC',
+  ).all(projectId) as Thread[];
+}
+
+export function selectThreadById(projectId: string, threadId: string): Thread | undefined {
+  if (projectId) {
+    return getDb().prepare(
+      'SELECT * FROM threads WHERE project_id = ? AND id = ?',
+    ).get(projectId, threadId) as Thread | undefined;
+  }
+  return getDb().prepare(
+    'SELECT * FROM threads WHERE id = ?',
+  ).get(threadId) as Thread | undefined;
+}
+
+export function updateThread(
+  projectId: string,
+  threadId: string,
+  updates: { name?: string; status?: ThreadStatus; summary?: string },
+): boolean {
+  const fields: string[] = [];
+  const params: (string)[] = [];
+
+  if (updates.name !== undefined) {
+    fields.push('name = ?');
+    params.push(updates.name);
+  }
+  if (updates.status !== undefined) {
+    fields.push('status = ?');
+    params.push(updates.status);
+  }
+  if (updates.summary !== undefined) {
+    fields.push('summary = ?');
+    params.push(updates.summary);
+  }
+
+  if (fields.length === 0) return false;
+
+  fields.push('updated_at = ?');
+  params.push(new Date().toISOString());
+
+  if (projectId) {
+    params.push(projectId, threadId);
+    const result = getDb().prepare(
+      `UPDATE threads SET ${fields.join(', ')} WHERE project_id = ? AND id = ?`,
+    ).run(...params);
+    return result.changes > 0;
+  }
+
+  params.push(threadId);
+  const result = getDb().prepare(
+    `UPDATE threads SET ${fields.join(', ')} WHERE id = ?`,
+  ).run(...params);
+  return result.changes > 0;
+}
+
+export function searchThreads(projectId: string, query: string, limit: number = 20): Thread[] {
+  const pattern = `%${query}%`;
+  return getDb().prepare(`
+    SELECT DISTINCT t.* FROM threads t
+    LEFT JOIN messages m ON m.thread_id = t.id AND m.project_id = t.project_id
+    WHERE t.project_id = ? AND (t.name LIKE ? OR m.text LIKE ?)
+    ORDER BY t.updated_at DESC
+    LIMIT ?
+  `).all(projectId, pattern, pattern, limit) as Thread[];
+}
+
+export function searchMessagesInThreads(projectId: string, query: string, limit: number = 50): MessageMatch[] {
+  const pattern = `%${query}%`;
+  return getDb().prepare(`
+    SELECT ml.id, ml.project_id, ml.from_id, ml.from_role, ml.to_id, ml.to_role,
+           ml.type, ml.text, ml.thread_id, t.name as thread_name, ml.sent_at
+    FROM message_log ml
+    INNER JOIN threads t ON t.id = ml.thread_id AND t.project_id = ml.project_id
+    WHERE ml.project_id = ? AND ml.text LIKE ? AND ml.thread_id IS NOT NULL
+    ORDER BY ml.sent_at DESC
+    LIMIT ?
+  `).all(projectId, pattern, limit) as MessageMatch[];
+}
+
+export function selectLogByThread(threadId: string, limit: number = 10): LogEntry[] {
+  return getDb().prepare(
+    'SELECT * FROM message_log WHERE thread_id = ? ORDER BY id DESC LIMIT ?',
+  ).all(threadId, limit) as LogEntry[];
+}
+
+export function touchThread(projectId: string, threadId: string): void {
+  getDb().prepare(
+    'UPDATE threads SET updated_at = ? WHERE project_id = ? AND id = ?',
+  ).run(new Date().toISOString(), projectId, threadId);
+}
+
+const GENERAL_THREAD_NAME = 'General';
+
+export function ensureGeneralThread(projectId: string): Thread {
+  const existing = getDb().prepare(
+    'SELECT * FROM threads WHERE project_id = ? AND name = ?',
+  ).get(projectId, GENERAL_THREAD_NAME) as Thread | undefined;
+
+  if (existing) return existing;
+
+  const now = new Date().toISOString();
+  const thread: Thread = {
+    id: generateId(),
+    project_id: projectId,
+    name: GENERAL_THREAD_NAME,
+    status: 'active',
+    summary: '',
+    created_by: 'system',
+    created_at: now,
+    updated_at: now,
+  };
+  insertThread(thread);
+  return thread;
 }

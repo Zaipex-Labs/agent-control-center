@@ -9,6 +9,21 @@ export type MessageType =
   | 'task_request'
   | 'task_complete';
 
+// ── Thread types ──────────────────────────────────────────────
+
+export type ThreadStatus = 'active' | 'archived';
+
+export interface Thread {
+  id: string;
+  project_id: string;
+  name: string;
+  status: ThreadStatus;
+  summary: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── Domain entities ────────────────────────────────────────────
 
 export interface Peer {
@@ -35,6 +50,7 @@ export interface Message {
   type: MessageType;
   text: string;
   metadata: string | null;
+  thread_id: string | null;
   sent_at: string;
   delivered: number;
 }
@@ -49,6 +65,7 @@ export interface LogEntry {
   type: MessageType;
   text: string;
   metadata: string | null;
+  thread_id: string | null;
   sent_at: string;
   session_id: string;
 }
@@ -140,6 +157,7 @@ export interface SendMessageRequest {
   type?: MessageType;
   text: string;
   metadata?: string;
+  thread_id?: string;
 }
 
 export interface SendToRoleRequest {
@@ -149,6 +167,7 @@ export interface SendToRoleRequest {
   type?: MessageType;
   text: string;
   metadata?: string;
+  thread_id?: string;
 }
 
 export interface SendToRoleResponse {
@@ -170,6 +189,7 @@ export interface GetHistoryRequest {
   type?: MessageType;
   limit?: number;
   session_id?: string;
+  thread_id?: string;
 }
 
 export interface GetHistoryResponse {
@@ -229,4 +249,72 @@ export interface HealthResponse {
   status: 'ok';
   peers: number;
   pending_messages: number;
+}
+
+// ── Thread request / response types ───────────────────────────
+
+export interface CreateThreadRequest {
+  project_id: string;
+  name: string;
+  created_by: string;
+}
+
+export interface CreateThreadResponse {
+  id: string;
+  name: string;
+}
+
+export interface ThreadListRequest {
+  project_id: string;
+  status?: ThreadStatus;
+}
+
+export interface ThreadListResponse {
+  threads: Thread[];
+}
+
+export interface ThreadGetRequest {
+  project_id: string;
+  thread_id: string;
+}
+
+export interface ThreadUpdateRequest {
+  project_id: string;
+  thread_id: string;
+  name?: string;
+  status?: ThreadStatus;
+  summary?: string;
+}
+
+export interface ThreadSearchRequest {
+  project_id: string;
+  query: string;
+  limit?: number;
+}
+
+export interface ThreadSearchResponse {
+  threads: Thread[];
+  messages: MessageMatch[];
+}
+
+export interface MessageMatch {
+  id: number;
+  project_id: string;
+  from_id: string;
+  from_role: string;
+  to_id: string;
+  to_role: string;
+  type: string;
+  text: string;
+  thread_id: string;
+  thread_name: string;
+  sent_at: string;
+}
+
+export interface ThreadSummaryRequest {
+  thread_id: string;
+}
+
+export interface ThreadSummaryResponse {
+  summary: string;
 }

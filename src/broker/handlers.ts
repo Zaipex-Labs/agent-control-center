@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { generateId, getDefaultName } from '../shared/utils.js';
-import { tmuxNotify } from './tmux.js';
+import { tmuxNotify, tmuxInjectWithContext } from './tmux.js';
+import { broadcast } from './websocket.js';
 import type {
   RegisterRequest,
   HeartbeatRequest,
@@ -16,6 +17,12 @@ import type {
   SharedGetRequest,
   SharedListRequest,
   SharedDeleteRequest,
+  CreateThreadRequest,
+  ThreadListRequest,
+  ThreadGetRequest,
+  ThreadUpdateRequest,
+  ThreadSearchRequest,
+  ThreadSummaryRequest,
   Peer,
   MessageType,
 } from '../shared/types.js';
@@ -42,6 +49,14 @@ import {
   deleteSharedState,
   countPeers,
   countPendingMessages,
+  insertThread,
+  selectThreadsByProject,
+  selectThreadById,
+  updateThread,
+  searchThreads,
+  searchMessagesInThreads,
+  selectLogByThread,
+  touchThread,
 } from './database.js';
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -145,6 +160,7 @@ export function handleRegister(body: unknown, res: ServerResponse): void {
   };
 
   insertPeer(peer);
+  broadcast('peer:connected', peer, peer.project_id);
   console.error(`[broker:register] id=${id} name=${name} role=${role} project=${peer.project_id} pid=${peer.pid}`);
   json(res, { id, name });
 }
@@ -164,7 +180,9 @@ export function handleUnregister(body: unknown, res: ServerResponse): void {
   const b = body as UnregisterRequest;
   if (!b.id) return error(res, 'Missing required field: id');
 
+  const peer = selectPeerById(b.id);
   deletePeer(b.id);
+  broadcast('peer:disconnected', { id: b.id }, peer?.project_id);
   json(res, { ok: true });
 }
 
@@ -248,18 +266,41 @@ export function handleSendMessage(body: unknown, res: ServerResponse): void {
   const now = new Date().toISOString();
   const metadata = b.metadata ?? null;
 
+  const threadId = b.thread_id ?? null;
+
   console.error(`[broker:send-message] from=${b.from_id} (${fromPeer.role}) to=${b.to_id} (${toPeer.role})`);
 
-  insertMessage(b.project_id, b.from_id, b.to_id, type, b.text, metadata, now);
+  insertMessage(b.project_id, b.from_id, b.to_id, type, b.text, metadata, now, threadId);
   insertLogEntry(
     b.project_id, b.from_id, fromPeer.role, b.to_id, toPeer.role,
-    type, b.text, metadata, now, fromPeer.id,
+    type, b.text, metadata, now, fromPeer.id, threadId,
   );
+
+  if (threadId) {
+    touchThread(b.project_id, threadId);
+  }
 
   // Best-effort tmux notification to target pane
   if (toPeer.role) {
-    tmuxNotify(b.project_id, toPeer.role, fromPeer.name, fromPeer.role);
+    if (threadId) {
+      const thread = selectThreadById(b.project_id, threadId);
+      if (thread) {
+        const entries = selectLogByThread(threadId, 10);
+        const summary = entries.reverse().map(e => `${e.from_role || e.from_id}: ${e.text}`).join(' | ');
+        tmuxInjectWithContext(b.project_id, toPeer.role, thread.name, summary || '(sin mensajes)', fromPeer.name, fromPeer.role);
+      }
+    } else {
+      tmuxNotify(b.project_id, toPeer.role, fromPeer.name, fromPeer.role);
+    }
   }
+
+  broadcast('message:new', {
+    thread_id: threadId,
+    from_name: fromPeer.name,
+    from_role: fromPeer.role,
+    text: b.text,
+    type,
+  }, b.project_id);
 
   json(res, { ok: true });
 }
@@ -283,6 +324,7 @@ export function handleSendToRole(body: unknown, res: ServerResponse): void {
   const type: MessageType = b.type ?? 'message';
   const now = new Date().toISOString();
   const metadata = b.metadata ?? null;
+  const threadId = b.thread_id ?? null;
 
   console.error(`[broker:send-to-role] from=${b.from_id} (role=${fromPeer.role}) target_role=${b.role} project=${b.project_id}`);
   console.error(`[broker:send-to-role] found ${targets.length} peer(s) with role "${b.role}":`);
@@ -290,23 +332,50 @@ export function handleSendToRole(body: unknown, res: ServerResponse): void {
     console.error(`[broker:send-to-role]   -> id=${target.id} role=${target.role} pid=${target.pid}`);
   }
 
+  // Precompute thread context for tmux injection
+  let threadContext: { name: string; summary: string } | null = null;
+  if (threadId) {
+    const thread = selectThreadById(b.project_id, threadId);
+    if (thread) {
+      const entries = selectLogByThread(threadId, 10);
+      const summary = entries.reverse().map(e => `${e.from_role || e.from_id}: ${e.text}`).join(' | ');
+      threadContext = { name: thread.name, summary: summary || '(sin mensajes)' };
+    }
+  }
+
   // Track roles we've already injected into (avoid duplicate send-keys for same role)
   const injectedRoles = new Set<string>();
 
   for (const target of targets) {
     console.error(`[broker:send-to-role] inserting message: from=${b.from_id} to=${target.id} (${target.role})`);
-    insertMessage(b.project_id, b.from_id, target.id, type, b.text, metadata, now);
+    insertMessage(b.project_id, b.from_id, target.id, type, b.text, metadata, now, threadId);
     insertLogEntry(
       b.project_id, b.from_id, fromPeer.role, target.id, target.role,
-      type, b.text, metadata, now, fromPeer.id,
+      type, b.text, metadata, now, fromPeer.id, threadId,
     );
 
     // Best-effort tmux notification (once per role/window)
     if (target.role && !injectedRoles.has(target.role)) {
-      tmuxNotify(b.project_id, target.role, fromPeer.name, fromPeer.role);
+      if (threadId && threadContext) {
+        tmuxInjectWithContext(b.project_id, target.role, threadContext.name, threadContext.summary, fromPeer.name, fromPeer.role);
+      } else {
+        tmuxNotify(b.project_id, target.role, fromPeer.name, fromPeer.role);
+      }
       injectedRoles.add(target.role);
     }
   }
+
+  if (threadId) {
+    touchThread(b.project_id, threadId);
+  }
+
+  broadcast('message:new', {
+    thread_id: threadId,
+    from_name: fromPeer.name,
+    from_role: fromPeer.role,
+    text: b.text,
+    type,
+  }, b.project_id);
 
   json(res, { ok: true, sent_to: targets.length });
 }
@@ -352,6 +421,7 @@ export function handleGetHistory(body: unknown, res: ServerResponse): void {
     type: b.type,
     limit: b.limit,
     session_id: b.session_id,
+    thread_id: b.thread_id,
   });
 
   json(res, { messages });
@@ -366,6 +436,7 @@ export function handleSharedSet(body: unknown, res: ServerResponse): void {
   }
 
   setSharedState(b.project_id, b.namespace, b.key, b.value, b.peer_id, new Date().toISOString());
+  broadcast('shared:updated', { namespace: b.namespace, key: b.key }, b.project_id);
   json(res, { ok: true });
 }
 
@@ -398,4 +469,112 @@ export function handleSharedDelete(body: unknown, res: ServerResponse): void {
 
   deleteSharedState(b.project_id, b.namespace, b.key);
   json(res, { ok: true });
+}
+
+// ── Threads ───────────────────────────────────────────────────
+
+export function handleCreateThread(body: unknown, res: ServerResponse): void {
+  const b = body as CreateThreadRequest;
+  if (!b.project_id || !b.created_by) {
+    return error(res, 'Missing required fields: project_id, created_by');
+  }
+
+  const now = new Date().toISOString();
+  const id = generateId();
+  const name = b.name || 'Hilo sin nombre';
+
+  const thread = {
+    id,
+    project_id: b.project_id,
+    name,
+    status: 'active' as const,
+    summary: '',
+    created_by: b.created_by,
+    created_at: now,
+    updated_at: now,
+  };
+  insertThread(thread);
+  broadcast('thread:created', thread, b.project_id);
+
+  json(res, { id, name });
+}
+
+export function handleListThreads(body: unknown, res: ServerResponse): void {
+  const b = body as ThreadListRequest;
+  if (!b.project_id) {
+    return error(res, 'Missing required field: project_id');
+  }
+
+  const threads = selectThreadsByProject(b.project_id, b.status ?? undefined);
+  json(res, { threads });
+}
+
+export function handleGetThread(body: unknown, res: ServerResponse): void {
+  const b = body as ThreadGetRequest;
+  if (!b.thread_id) {
+    return error(res, 'Missing required field: thread_id');
+  }
+
+  // Search across all projects since we only have thread_id
+  const thread = selectThreadById('', b.thread_id);
+  if (!thread) return error(res, `Thread not found: ${b.thread_id}`, 404);
+
+  json(res, thread);
+}
+
+export function handleUpdateThread(body: unknown, res: ServerResponse): void {
+  const b = body as ThreadUpdateRequest;
+  if (!b.thread_id) {
+    return error(res, 'Missing required field: thread_id');
+  }
+
+  const updated = updateThread(b.project_id ?? '', b.thread_id, {
+    name: b.name,
+    status: b.status,
+  });
+
+  if (!updated) return error(res, `Thread not found: ${b.thread_id}`, 404);
+
+  broadcast('thread:updated', {
+    id: b.thread_id,
+    name: b.name,
+    status: b.status,
+  }, b.project_id);
+
+  json(res, { ok: true });
+}
+
+export function handleSearchThreads(body: unknown, res: ServerResponse): void {
+  const b = body as ThreadSearchRequest;
+  if (!b.project_id || !b.query) {
+    return error(res, 'Missing required fields: project_id, query');
+  }
+
+  const threads = searchThreads(b.project_id, b.query, b.limit);
+  const messages = searchMessagesInThreads(b.project_id, b.query, b.limit ?? 50);
+  json(res, { threads, messages });
+}
+
+export function handleThreadSummary(body: unknown, res: ServerResponse): void {
+  const b = body as ThreadSummaryRequest;
+  if (!b.thread_id) {
+    return error(res, 'Missing required field: thread_id');
+  }
+
+  const entries = selectLogByThread(b.thread_id, 10);
+
+  // Entries come in DESC order, reverse to chronological
+  const lines = entries.reverse().map(e => {
+    const name = e.from_role || e.from_id;
+    return `${name}: ${e.text}`;
+  });
+
+  const summary = lines.length > 0 ? lines.join('\n') : '(no messages yet)';
+
+  // Find the thread to update it — search in log entries for project_id
+  if (entries.length > 0) {
+    updateThread(entries[0].project_id, b.thread_id, { summary });
+  }
+
+  json(res, { summary });
 }

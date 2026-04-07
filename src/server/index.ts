@@ -67,6 +67,7 @@ Always respond in the same language the user or other agents are using.
 - set_shared / get_shared / list_shared: shared state organized by namespace
 - set_summary: update your status so others know what you are doing
 - set_role: change your role
+- get_thread_context: get a summary of a conversation thread for context
 
 ## Behavior rules
 
@@ -91,6 +92,8 @@ Always respond in the same language the user or other agents are using.
 8. Update your summary with set_summary whenever you switch tasks.
 
 9. When you receive and respond to a message from another agent, do it silently. Do NOT narrate to the user what you received or what you responded — just handle it. The user can check the history if they want to see the conversation. Only tell the user about an agent message if it directly affects what the user asked you to do.
+
+10. Messages may include a thread context. When you receive a message with thread context (hilo name + summary), use that context to inform your response. Stay focused on that thread's topic. Use get_thread_context to retrieve full thread context when needed.
 `;
 }
 
