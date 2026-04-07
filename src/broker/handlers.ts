@@ -466,20 +466,19 @@ export function handleSendMessage(body: unknown, res: ServerResponse): void {
 
   let threadId = b.thread_id ?? null;
 
-  // Auto-inherit thread_id: if no thread specified, check if the target sent us
-  // a message with a thread_id in the last 5 minutes (this is a reply)
+  // Auto-inherit thread_id from the user's original message in this conversation
+  // The user chose which thread to send to — all replies should stay in that thread
   if (!threadId) {
-    const recentHistory = selectHistory(b.project_id, { limit: 20 });
+    const recentHistory = selectHistory(b.project_id, { limit: 30 });
     const fiveMinAgo = Date.now() - 5 * 60 * 1000;
-    const parentMsg = recentHistory.find(m =>
-      m.from_id === b.to_id &&
-      (m.to_id === b.from_id || m.to_role === fromPeer.role) &&
+    const userMsg = recentHistory.find(m =>
+      m.from_role === 'user' &&
       m.thread_id &&
       new Date(m.sent_at).getTime() > fiveMinAgo
     );
-    if (parentMsg?.thread_id) {
-      threadId = parentMsg.thread_id;
-      console.error(`[broker:send-message] auto-inherited thread_id=${threadId} from recent message`);
+    if (userMsg?.thread_id) {
+      threadId = userMsg.thread_id;
+      console.error(`[broker:send-message] inherited thread_id=${threadId} from user message`);
     }
   }
 
@@ -542,18 +541,18 @@ export function handleSendToRole(body: unknown, res: ServerResponse): void {
   const metadata = b.metadata ?? null;
   let threadId = b.thread_id ?? null;
 
-  // Auto-inherit thread_id from recent messages to this sender
+  // Auto-inherit thread_id from the user's original message
   if (!threadId) {
-    const recentHistory = selectHistory(b.project_id, { limit: 20 });
+    const recentHistory = selectHistory(b.project_id, { limit: 30 });
     const fiveMinAgo = Date.now() - 5 * 60 * 1000;
-    const parentMsg = recentHistory.find(m =>
-      m.to_id === b.from_id &&
+    const userMsg = recentHistory.find(m =>
+      m.from_role === 'user' &&
       m.thread_id &&
       new Date(m.sent_at).getTime() > fiveMinAgo
     );
-    if (parentMsg?.thread_id) {
-      threadId = parentMsg.thread_id;
-      console.error(`[broker:send-to-role] auto-inherited thread_id=${threadId}`);
+    if (userMsg?.thread_id) {
+      threadId = userMsg.thread_id;
+      console.error(`[broker:send-to-role] inherited thread_id=${threadId} from user message`);
     }
   }
 
