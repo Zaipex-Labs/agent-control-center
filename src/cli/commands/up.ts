@@ -6,6 +6,7 @@ import { ensureBroker } from '../../server/broker-client.js';
 import { spawnAgents, hasTmuxSession, registerMcpServer } from '../spawn.js';
 import type { ProjectConfig } from '../../shared/types.js';
 import { success, err, dim, heading, label, warn } from '../ui.js';
+import { ACC_PORT } from '../../shared/config.js';
 import { t } from '../../shared/i18n/index.js';
 import chalk from 'chalk';
 
@@ -97,6 +98,7 @@ export function registerUpCommand(program: Command): void {
         console.log(`  ${dim(t('up.pidsLabel'))} ${result.pids.join(', ')}`);
         console.log(`  ${dim(t('up.stopWith'))} acc down ${projectName}`);
       }
+      console.log(dim(`  App disponible en http://localhost:${ACC_PORT}`));
       console.log();
     });
 }

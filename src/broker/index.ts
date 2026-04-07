@@ -33,6 +33,7 @@ import {
   handleUpdateThread,
   handleSearchThreads,
   handleThreadSummary,
+  handleListProjects,
 } from './handlers.js';
 
 type PostHandler = (body: unknown, res: ServerResponse) => void;
@@ -104,6 +105,10 @@ export function createBrokerServer(): Server {
       return handleHealth(res);
     }
 
+    if (method === 'GET' && url === '/api/projects') {
+      return handleListProjects(res);
+    }
+
     if (method === 'POST') {
       const handler = POST_ROUTES[url];
       if (handler) {
@@ -127,7 +132,14 @@ export function createBrokerServer(): Server {
       try {
         const content = await readFile(fullPath);
         const ext = extname(filePath);
-        res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] ?? 'application/octet-stream' });
+        const headers: Record<string, string> = {
+          'Content-Type': MIME_TYPES[ext] ?? 'application/octet-stream',
+        };
+        // Vite hashed assets get long cache
+        if (safePath.startsWith('/assets/')) {
+          headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+        }
+        res.writeHead(200, headers);
         res.end(content);
         return;
       } catch {

@@ -9,6 +9,7 @@ import { registerSendCommand } from './commands/send.js';
 import { registerUpCommand } from './commands/up.js';
 import { registerDownCommand } from './commands/down.js';
 import { registerConfigCommand } from './commands/config.js';
+import { registerAppCommand } from './commands/app.js';
 
 const program = new Command();
 
@@ -27,5 +28,6 @@ registerHistoryCommand(program);
 registerSharedCommand(program);
 registerSendCommand(program);
 registerConfigCommand(program);
+registerAppCommand(program);
 
 program.parse();

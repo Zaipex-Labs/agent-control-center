@@ -1,12 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-
-function TeamsPage() {
-  return <div><h1>Agents Command Center</h1><p>Select a project to begin.</p></div>;
-}
-
-function ProjectPage() {
-  return <div><h1>Project</h1></div>;
-}
+import TeamsPage from './pages/TeamsPage';
+import ProjectPage from './pages/ProjectPage';
 
 function HistoryPage() {
   return <div><h1>History</h1></div>;

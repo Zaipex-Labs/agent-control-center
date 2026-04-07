@@ -48,3 +48,34 @@ a:hover {
 code, pre {
   font-family: var(--font-mono);
 }
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--z-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--z-text-muted);
+}
+
+/* Responsive: ensure minimum usable width */
+@media (max-width: 1280px) {
+  /* Hide right sidebar on smaller screens */
+  [data-sidebar="right"] {
+    display: none !important;
+  }
+}
+
+@media (max-width: 1024px) {
+  /* Shrink thread panel */
+  [data-panel="threads"] {
+    width: 240px !important;
+  }
+}

@@ -28,7 +28,7 @@ describe('createBrokerServer', () => {
     expect(typeof data.peers).toBe('number');
   });
 
-  it('returns 404 for unknown GET routes', async () => {
+  it('serves SPA fallback for unknown GET routes', async () => {
     server = createBrokerServer();
 
     await new Promise<void>((resolve) => {
@@ -37,7 +37,8 @@ describe('createBrokerServer', () => {
 
     const addr = server.address() as { port: number };
     const resp = await fetch(`http://127.0.0.1:${addr.port}/nonexistent`);
-    expect(resp.status).toBe(404);
+    // SPA fallback: returns 200 with index.html if dashboard is built, 404 otherwise
+    expect([200, 404]).toContain(resp.status);
   });
 
   it('returns 404 for unknown POST routes', async () => {

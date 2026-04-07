@@ -1,4 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { PROJECTS_DIR, ensureDirectories } from '../shared/config.js';
 import { generateId, getDefaultName } from '../shared/utils.js';
 import { tmuxNotify, tmuxInjectWithContext } from './tmux.js';
 import { broadcast } from './websocket.js';
@@ -124,6 +127,25 @@ export function handleHealth(res: ServerResponse): void {
     peers: countPeers(),
     pending_messages: countPendingMessages(),
   });
+}
+
+// ── Projects ──────────────────────────────────────────────────
+
+export function handleListProjects(res: ServerResponse): void {
+  ensureDirectories();
+  try {
+    const projects = readdirSync(PROJECTS_DIR)
+      .filter(f => f.endsWith('.json'))
+      .map(f => {
+        const config = JSON.parse(readFileSync(join(PROJECTS_DIR, f), 'utf-8'));
+        const peers = selectPeersByProject(config.name);
+        return { ...config, active_peers: peers.length, peers };
+      })
+      .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
+    json(res, { projects });
+  } catch {
+    json(res, { projects: [] });
+  }
 }
 
 // ── Peers ──────────────────────────────────────────────────────
