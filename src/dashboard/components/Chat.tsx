@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { LogEntry } from '../lib/types';
 import type { WaitingReply, SendError } from '../hooks/useMessages';
 import MessageBubble from './MessageBubble';
-import ReplyThread from './ReplyThread';
+import CoordinationBlock from './CoordinationBlock';
 import TypingIndicator from './TypingIndicator';
 
 function formatDateSeparator(dateStr: string): string {
@@ -24,31 +24,45 @@ function dayKey(dateStr: string): string {
   return new Date(dateStr).toDateString();
 }
 
-interface MessageGroup {
-  parent: LogEntry;
-  replies: LogEntry[];
+// A chat item is either a single message (user or agent-to-user) or a coordination block
+type ChatItem =
+  | { kind: 'message'; message: LogEntry }
+  | { kind: 'coordination'; messages: LogEntry[] };
+
+function isUserMessage(m: LogEntry): boolean {
+  return m.from_role === 'user' || m.from_id === 'user' || m.from_id === 'cli';
 }
 
-function groupMessages(messages: LogEntry[]): MessageGroup[] {
-  const groups: MessageGroup[] = [];
+function isToUser(m: LogEntry): boolean {
+  return m.to_role === 'user';
+}
+
+function buildChatItems(messages: LogEntry[]): ChatItem[] {
+  const items: ChatItem[] = [];
   let i = 0;
 
   while (i < messages.length) {
-    const parent = messages[i];
-    const replies: LogEntry[] = [];
-    let j = i + 1;
+    const m = messages[i];
 
-    // Collect replies: messages where to_id matches the parent's from_id
-    while (j < messages.length && messages[j].to_id === parent.from_id) {
-      replies.push(messages[j]);
-      j++;
+    // User messages and agent-to-user messages show as full bubbles
+    if (isUserMessage(m) || isToUser(m)) {
+      items.push({ kind: 'message', message: m });
+      i++;
+      continue;
     }
 
-    groups.push({ parent, replies });
+    // Agent-to-agent: collect consecutive coordination messages
+    const block: LogEntry[] = [m];
+    let j = i + 1;
+    while (j < messages.length && !isUserMessage(messages[j]) && !isToUser(messages[j])) {
+      block.push(messages[j]);
+      j++;
+    }
+    items.push({ kind: 'coordination', messages: block });
     i = j;
   }
 
-  return groups;
+  return items;
 }
 
 interface ChatProps {
@@ -91,7 +105,7 @@ export default function Chat({ messages, loading, waitingFor, sendError, onRetry
     );
   }
 
-  const groups = groupMessages(messages);
+  const items = buildChatItems(messages);
   let lastDay = '';
 
   return (
@@ -99,13 +113,15 @@ export default function Chat({ messages, loading, waitingFor, sendError, onRetry
       flex: 1, overflowY: 'auto', padding: '20px 24px',
       display: 'flex', flexDirection: 'column', gap: 16,
     }}>
-      {groups.map((group) => {
-        const currentDay = dayKey(group.parent.sent_at);
+      {items.map((item, idx) => {
+        const sentAt = item.kind === 'message' ? item.message.sent_at : item.messages[0].sent_at;
+        const currentDay = dayKey(sentAt);
         const showSeparator = currentDay !== lastDay;
         lastDay = currentDay;
+        const itemKey = item.kind === 'message' ? item.message.id : `coord-${item.messages[0].id}`;
 
         return (
-          <div key={group.parent.id}>
+          <div key={itemKey}>
             {showSeparator && (
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 12,
@@ -116,13 +132,16 @@ export default function Chat({ messages, loading, waitingFor, sendError, onRetry
                   fontSize: 11, color: 'var(--z-text-muted)', fontWeight: 500,
                   whiteSpace: 'nowrap', textTransform: 'capitalize',
                 }}>
-                  {formatDateSeparator(group.parent.sent_at)}
+                  {formatDateSeparator(sentAt)}
                 </span>
                 <div style={{ flex: 1, height: 1, background: 'var(--z-border)' }} />
               </div>
             )}
-            <MessageBubble message={group.parent} />
-            <ReplyThread replies={group.replies} />
+            {item.kind === 'message' ? (
+              <MessageBubble message={item.message} />
+            ) : (
+              <CoordinationBlock messages={item.messages} />
+            )}
           </div>
         );
       })}

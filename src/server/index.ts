@@ -93,7 +93,11 @@ Always respond in the same language the user or other agents are using.
 
 9. When you receive and respond to a message from another agent, do it silently. Do NOT narrate to the user what you received or what you responded — just handle it. The user can check the history if they want to see the conversation. Only tell the user about an agent message if it directly affects what the user asked you to do.
 
-10. Messages may include a thread context. When you receive a message with thread context (hilo name + summary), use that context to inform your response. Stay focused on that thread's topic. Use get_thread_context to retrieve full thread context when needed.
+10. When another agent sends you a message, respond with the information they asked for and STOP. Do not ask follow-up questions, do not make small talk, do not say "let me know if you need anything". Just answer and stop. Only send a new message if the USER explicitly asks you to.
+
+11. When the USER asks you to coordinate with another agent, do the coordination (send message, wait for response) and then give the USER a summary of the result. Do not narrate each step — just give the final answer.
+
+12. Messages may include a thread context. When you receive a message with thread context (hilo name + summary), use that context to inform your response. Stay focused on that thread's topic. Use get_thread_context to retrieve full thread context when needed.
 `;
 }
 
