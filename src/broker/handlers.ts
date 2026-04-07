@@ -251,9 +251,20 @@ export function handleProjectUp(body: unknown, res: ServerResponse): void {
     return error(res, `Project ${b.project_id} is already running (tmux session exists)`);
   }
 
+  const agentNames = config.agents.map((a: { role: string; name?: string }) =>
+    a.name || getDefaultName(a.role)
+  );
+
   try {
     const result = spawnAgents(b.project_id, config.agents);
-    json(res, { ok: true, strategy: result.strategy, agents: config.agents.length });
+    json(res, {
+      ok: true,
+      strategy: result.strategy,
+      agents: config.agents.length,
+      agent_roles: config.agents.map((a: { role: string }) => a.role),
+      agent_names: agentNames,
+      tmux_session: result.tmuxSession ?? null,
+    });
   } catch (e) {
     error(res, `Failed to start agents: ${e}`);
   }

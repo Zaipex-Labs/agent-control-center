@@ -159,6 +159,7 @@ export default function TeamsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState<string | null>(null);
+  const [startLog, setStartLog] = useState<Array<{ text: string; done: boolean }>>([]);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -176,14 +177,49 @@ export default function TeamsPage() {
   const handlePowerUp = async (name: string) => {
     setStarting(name);
     setError(null);
+    const log: Array<{ text: string; done: boolean }> = [
+      { text: 'Registrando MCP server...', done: false },
+    ];
+    setStartLog([...log]);
+
     try {
-      await projectUp(name);
-      // Wait for agents to register, then reload
-      setTimeout(reload, 3000);
-      setTimeout(() => setStarting(null), 4000);
+      log[0].done = true;
+      log.push({ text: 'Spawneando agentes con tmux...', done: false });
+      setStartLog([...log]);
+
+      const result = await projectUp(name);
+
+      log[log.length - 1].done = true;
+      const roles = (result as any).agent_roles as string[] | undefined;
+      const names = (result as any).agent_names as string[] | undefined;
+      if (roles && names) {
+        for (let i = 0; i < roles.length; i++) {
+          log.push({ text: `${names[i]} (${roles[i]}) iniciado`, done: true });
+        }
+      }
+      log.push({ text: 'Esperando que los agentes se conecten...', done: false });
+      setStartLog([...log]);
+
+      // Poll for peers to appear
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
+        await reload();
+        const updated = projects.find(p => p.name === name);
+        // Check if peers appeared or we've waited long enough
+        if ((updated && updated.active_peers > 0) || attempts >= 10) {
+          clearInterval(poll);
+          log[log.length - 1].done = true;
+          log.push({ text: 'Equipo encendido', done: true });
+          setStartLog([...log]);
+          await reload();
+          setTimeout(() => { setStarting(null); setStartLog([]); }, 2000);
+        }
+      }, 2000);
     } catch (e) {
       setError(`Error al encender ${name}: ${e instanceof Error ? e.message : String(e)}`);
       setStarting(null);
+      setStartLog([]);
     }
   };
 
@@ -270,6 +306,38 @@ export default function TeamsPage() {
               background: 'none', border: 'none', color: '#8B3A1A',
               fontSize: 16, cursor: 'pointer', padding: '0 4px',
             }}>&times;</button>
+          </div>
+        )}
+
+        {startLog.length > 0 && (
+          <div style={{
+            background: '#fff', border: '1px solid #E2DDD4', borderRadius: 12,
+            padding: 20, marginBottom: 20,
+          }}>
+            <div style={{
+              fontSize: 14, fontWeight: 600, color: '#1E2D40', marginBottom: 12,
+              fontFamily: 'var(--font-sans)',
+            }}>
+              Encendiendo {starting}...
+            </div>
+            {startLog.map((step, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '4px 0', fontSize: 13,
+                color: step.done ? '#2A8B5A' : '#5A6272',
+              }}>
+                <span style={{
+                  width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 11, fontWeight: 700,
+                  background: step.done ? '#E8F7EF' : '#F5F3EF',
+                  color: step.done ? '#2A8B5A' : '#8AA8C0',
+                }}>
+                  {step.done ? '✓' : '⋯'}
+                </span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{step.text}</span>
+              </div>
+            ))}
           </div>
         )}
 
