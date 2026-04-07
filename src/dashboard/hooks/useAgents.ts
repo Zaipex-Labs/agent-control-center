@@ -22,7 +22,18 @@ export function useAgents(projectId: string | undefined): UseAgentsReturn {
     }
     setLoading(true);
     listPeers(projectId)
-      .then(peers => setAgents(peers.filter(p => p.agent_type !== 'dashboard')))
+      .then(peers => {
+        const agentPeers = peers.filter(p => p.agent_type !== 'dashboard');
+        // Deduplicate by role (keep latest by last_seen)
+        const byRole = new Map<string, typeof agentPeers[0]>();
+        for (const p of agentPeers) {
+          const existing = byRole.get(p.role);
+          if (!existing || p.last_seen > existing.last_seen) {
+            byRole.set(p.role, p);
+          }
+        }
+        setAgents(Array.from(byRole.values()));
+      })
       .catch(() => setAgents([]))
       .finally(() => setLoading(false));
   }, [projectId]);
