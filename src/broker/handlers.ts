@@ -1,8 +1,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { execSync } from 'node:child_process';
 import { PROJECTS_DIR, ensureDirectories } from '../shared/config.js';
 import { generateId, getDefaultName } from '../shared/utils.js';
+import { spawnAgents, registerMcpServer, killTmuxSession, hasTmuxSession as hasTmuxSess } from '../cli/spawn.js';
 import { tmuxNotify, tmuxInjectWithContext } from './tmux.js';
 import { broadcast } from './websocket.js';
 import type {
@@ -146,6 +148,66 @@ export function handleListProjects(res: ServerResponse): void {
   } catch {
     json(res, { projects: [] });
   }
+}
+
+export function handleProjectUp(body: unknown, res: ServerResponse): void {
+  const b = body as { project_id?: string };
+  if (!b.project_id) return error(res, 'Missing required field: project_id');
+
+  const configPath = join(PROJECTS_DIR, `${b.project_id}.json`);
+  if (!existsSync(configPath)) return error(res, `Project not found: ${b.project_id}`, 404);
+
+  const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+  if (!config.agents || config.agents.length === 0) {
+    return error(res, 'Project has no agents configured');
+  }
+
+  try {
+    registerMcpServer();
+  } catch (e) {
+    return error(res, `Failed to register MCP server: ${e}`);
+  }
+
+  if (hasTmuxSess(b.project_id)) {
+    return error(res, `Project ${b.project_id} is already running (tmux session exists)`);
+  }
+
+  try {
+    const result = spawnAgents(b.project_id, config.agents);
+    json(res, { ok: true, strategy: result.strategy, agents: config.agents.length });
+  } catch (e) {
+    error(res, `Failed to start agents: ${e}`);
+  }
+}
+
+export function handleProjectDown(body: unknown, res: ServerResponse): void {
+  const b = body as { project_id?: string };
+  if (!b.project_id) return error(res, 'Missing required field: project_id');
+
+  const peers = selectPeersByProject(b.project_id);
+  let killed = 0;
+
+  for (const peer of peers) {
+    try {
+      process.kill(peer.pid, 'SIGTERM');
+      killed++;
+    } catch {
+      // Process already dead
+    }
+    deletePeer(peer.id);
+  }
+
+  // Kill tmux session
+  if (hasTmuxSess(b.project_id)) {
+    killTmuxSession(b.project_id);
+  }
+
+  // Broadcast disconnections
+  for (const peer of peers) {
+    broadcast('peer:disconnected', { id: peer.id }, b.project_id);
+  }
+
+  json(res, { ok: true, killed });
 }
 
 // ── Peers ──────────────────────────────────────────────────────

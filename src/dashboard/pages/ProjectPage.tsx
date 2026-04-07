@@ -10,6 +10,7 @@ import Compose from '../components/Compose';
 import SharedStatePanel from '../components/SharedStatePanel';
 import TeamStats from '../components/TeamStats';
 import AgentTerminalView from '../components/AgentTerminalView';
+import { projectUp, projectDown } from '../lib/api';
 import type { Peer } from '../lib/types';
 
 export default function ProjectPage() {
@@ -23,6 +24,7 @@ export default function ProjectPage() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [sharedRefresh, setSharedRefresh] = useState(0);
   const [terminalTabs, setTerminalTabs] = useState<Array<{ role: string; name: string }>>([]);
+  const [powering, setPowering] = useState(false);
 
   const terminalRoles = new Set(terminalTabs.map(t => t.role));
 
@@ -31,6 +33,28 @@ export default function ProjectPage() {
       setTerminalTabs(prev => prev.filter(t => t.role !== peer.role));
     } else {
       setTerminalTabs(prev => [...prev, { role: peer.role, name: peer.name || peer.role }]);
+    }
+  };
+
+  const handlePowerUp = async () => {
+    if (!projectId || powering) return;
+    setPowering(true);
+    try {
+      await projectUp(projectId);
+    } catch (e) {
+      console.error('Failed to start project:', e);
+    } finally {
+      setPowering(false);
+    }
+  };
+
+  const handleShutdown = async () => {
+    if (!projectId) return;
+    try {
+      await projectDown(projectId);
+      setTerminalTabs([]);
+    } catch (e) {
+      console.error('Failed to stop project:', e);
     }
   };
 
@@ -104,14 +128,16 @@ export default function ProjectPage() {
           >
             Panel
           </button>
-          <button style={{
-            background: 'rgba(220,60,60,0.1)', border: '1px solid rgba(220,60,60,0.25)',
-            color: '#DC3C3C', fontSize: 12, fontWeight: 500,
-            padding: '6px 14px', borderRadius: 8, cursor: 'pointer',
-            fontFamily: 'var(--font-sans)', transition: 'background 0.15s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,60,60,0.2)'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(220,60,60,0.1)'; }}
+          <button
+            onClick={handleShutdown}
+            style={{
+              background: 'rgba(220,60,60,0.1)', border: '1px solid rgba(220,60,60,0.25)',
+              color: '#DC3C3C', fontSize: 12, fontWeight: 500,
+              padding: '6px 14px', borderRadius: 8, cursor: 'pointer',
+              fontFamily: 'var(--font-sans)', transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,60,60,0.2)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(220,60,60,0.1)'; }}
           >
             Apagar equipo
           </button>
@@ -184,6 +210,32 @@ export default function ProjectPage() {
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <Chat messages={messages} loading={messagesLoading} />
                 <Compose agents={agents} onSend={sendMessage} />
+              </div>
+            ) : agents.length === 0 ? (
+              <div style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.2 }}>&#9654;</div>
+                  <div style={{ fontSize: 16, color: 'var(--z-text-secondary)', marginBottom: 20 }}>
+                    No hay agentes activos en este proyecto
+                  </div>
+                  <button
+                    onClick={handlePowerUp}
+                    disabled={powering}
+                    style={{
+                      background: 'var(--z-green)', color: '#fff', border: 'none',
+                      padding: '14px 32px', borderRadius: 12, fontSize: 16,
+                      fontWeight: 600, cursor: powering ? 'wait' : 'pointer',
+                      fontFamily: 'var(--font-sans)', transition: 'background 0.15s',
+                      opacity: powering ? 0.6 : 1,
+                    }}
+                    onMouseEnter={e => { if (!powering) e.currentTarget.style.background = '#2FA068'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#3DBA7A'; }}
+                  >
+                    {powering ? 'Encendiendo...' : 'Encender equipo'}
+                  </button>
+                </div>
               </div>
             ) : (
               <div style={{

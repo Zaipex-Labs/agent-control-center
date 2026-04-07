@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listProjects } from '../lib/api';
+import { listProjects, projectUp } from '../lib/api';
 import type { Project } from '../lib/types';
 
 const ROLE_COLORS: Record<string, string> = {
@@ -42,7 +42,7 @@ function Avatar({ name, role }: { name: string; role: string }) {
   );
 }
 
-function ProjectCard({ project, onClick }: { project: Project; onClick: () => void }) {
+function ProjectCard({ project, onClick, onPowerUp }: { project: Project; onClick: () => void; onPowerUp: () => void }) {
   const isActive = project.active_peers > 0;
   const lastActivity = project.peers.length > 0
     ? project.peers.reduce((latest, p) => p.last_seen > latest ? p.last_seen : latest, '')
@@ -105,8 +105,25 @@ function ProjectCard({ project, onClick }: { project: Project; onClick: () => vo
         </div>
       )}
 
-      <div style={{ fontSize: 12, color: '#8AA8C0', marginTop: 'auto' }}>
-        Ultima actividad: {timeAgo(lastActivity)}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto' }}>
+        <span style={{ fontSize: 12, color: '#8AA8C0' }}>
+          Ultima actividad: {timeAgo(lastActivity)}
+        </span>
+        {!isActive && project.agents.length > 0 && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onPowerUp(); }}
+            style={{
+              background: '#3DBA7A', color: '#fff', border: 'none',
+              padding: '6px 14px', borderRadius: 8, fontSize: 12,
+              fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#2FA068'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#3DBA7A'; }}
+          >
+            Encender
+          </button>
+        )}
       </div>
     </div>
   );
@@ -138,7 +155,10 @@ function NewTeamCard({ onClick }: { onClick: () => void }) {
 export default function TeamsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [starting, setStarting] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  const reload = () => listProjects().then(setProjects).catch(() => {});
 
   useEffect(() => {
     listProjects()
@@ -146,6 +166,19 @@ export default function TeamsPage() {
       .catch(() => setProjects([]))
       .finally(() => setLoading(false));
   }, []);
+
+  const handlePowerUp = async (name: string) => {
+    setStarting(name);
+    try {
+      await projectUp(name);
+      // Wait a moment for agents to register, then reload
+      setTimeout(reload, 3000);
+    } catch (e) {
+      console.error('Failed to start project:', e);
+    } finally {
+      setStarting(null);
+    }
+  };
 
   return (
     <div style={{
@@ -217,6 +250,7 @@ export default function TeamsPage() {
                 key={project.name}
                 project={project}
                 onClick={() => navigate(`/${encodeURIComponent(project.name)}`)}
+                onPowerUp={() => handlePowerUp(project.name)}
               />
             ))}
             <NewTeamCard onClick={() => {/* TODO: new team modal */}} />

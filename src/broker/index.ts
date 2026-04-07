@@ -34,6 +34,8 @@ import {
   handleSearchThreads,
   handleThreadSummary,
   handleListProjects,
+  handleProjectUp,
+  handleProjectDown,
 } from './handlers.js';
 
 type PostHandler = (body: unknown, res: ServerResponse) => void;
@@ -59,6 +61,8 @@ const POST_ROUTES: Record<string, PostHandler> = {
   '/api/threads/update': handleUpdateThread,
   '/api/threads/search': handleSearchThreads,
   '/api/threads/summary': handleThreadSummary,
+  '/api/project/up': handleProjectUp,
+  '/api/project/down': handleProjectDown,
 };
 
 const MIME_TYPES: Record<string, string> = {

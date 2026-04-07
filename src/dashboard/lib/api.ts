@@ -42,6 +42,20 @@ export async function listProjects(): Promise<Project[]> {
   return resp.projects;
 }
 
+// ── Project control ───────────────────────────────────────────
+
+export async function projectUp(projectId: string): Promise<{ ok: boolean; strategy: string; agents: number }> {
+  return apiFetch<{ ok: boolean; strategy: string; agents: number }>('project/up', {
+    project_id: projectId,
+  });
+}
+
+export async function projectDown(projectId: string): Promise<{ ok: boolean; killed: number }> {
+  return apiFetch<{ ok: boolean; killed: number }>('project/down', {
+    project_id: projectId,
+  });
+}
+
 // ── Peers ─────────────────────────────────────────────────────
 
 export async function listPeers(projectId: string): Promise<Peer[]> {
