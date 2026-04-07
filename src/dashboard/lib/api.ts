@@ -42,6 +42,18 @@ export async function listProjects(): Promise<Project[]> {
   return resp.projects;
 }
 
+// ── File browser ──────────────────────────────────────────────
+
+export interface BrowseEntry {
+  name: string;
+  path: string;
+}
+
+export async function browseFolders(path?: string): Promise<{ path: string; folders: BrowseEntry[] }> {
+  const params = path ? `?path=${encodeURIComponent(path)}` : '';
+  return apiGet<{ path: string; folders: BrowseEntry[] }>(`/api/browse${params}`);
+}
+
 // ── Project control ───────────────────────────────────────────
 
 export async function createProject(name: string, description: string): Promise<{ ok: boolean; name: string }> {

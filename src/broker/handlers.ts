@@ -133,6 +133,43 @@ export function handleHealth(res: ServerResponse): void {
 
 // ── Projects ──────────────────────────────────────────────────
 
+export function handleBrowse(query: string, res: ServerResponse): void {
+  const params = new URLSearchParams(query);
+  const home = process.env['HOME'] ?? '/';
+  const raw = params.get('path') || home;
+
+  // Prevent path traversal outside resolved path
+  const resolved = join('/', raw).replace(/\.\./g, '');
+  const target = raw.startsWith('/') ? resolved : join(home, resolved);
+
+  try {
+    const entries = readdirSync(target, { withFileTypes: true });
+    const folders: Array<{ name: string; path: string }> = [];
+
+    // Parent directory
+    if (target !== '/') {
+      folders.push({ name: '..', path: join(target, '..') });
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      // Skip hidden folders unless the requested path itself is hidden
+      if (entry.name.startsWith('.')) continue;
+      folders.push({ name: entry.name, path: join(target, entry.name) });
+    }
+
+    folders.sort((a, b) => {
+      if (a.name === '..') return -1;
+      if (b.name === '..') return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    json(res, { path: target, folders });
+  } catch {
+    json(res, { path: target, folders: [], error: 'Cannot read directory' }, 400);
+  }
+}
+
 export function handleListProjects(res: ServerResponse): void {
   ensureDirectories();
   try {

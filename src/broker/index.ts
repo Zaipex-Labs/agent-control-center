@@ -34,6 +34,7 @@ import {
   handleSearchThreads,
   handleThreadSummary,
   handleListProjects,
+  handleBrowse,
   handleCreateProject,
   handleAddAgent,
   handleProjectUp,
@@ -115,6 +116,11 @@ export function createBrokerServer(): Server {
 
     if (method === 'GET' && url === '/api/projects') {
       return handleListProjects(res);
+    }
+
+    if (method === 'GET' && url.startsWith('/api/browse')) {
+      const query = url.includes('?') ? url.split('?')[1] : '';
+      return handleBrowse(query, res);
     }
 
     if (method === 'POST') {

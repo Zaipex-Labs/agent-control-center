@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { listProjects, projectUp, createProject, addAgent } from '../lib/api';
 import type { Project } from '../lib/types';
+import FolderPicker from '../components/FolderPicker';
 
 const ROLE_COLORS: Record<string, string> = {
   backend: '#4A9FE8',
@@ -399,32 +400,35 @@ function CreateProjectModal({ onClose, onSubmit, creating }: {
               + Agregar
             </button>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {agents.map((agent, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input
-                  value={agent.role}
-                  onChange={e => updateAgent(i, 'role', e.target.value)}
-                  placeholder="Rol (backend, frontend...)"
-                  style={{ ...inputStyle, width: '40%' }}
-                />
-                <input
+              <div key={i} style={{
+                border: '1px solid #E2DDD4', borderRadius: 10, padding: 12,
+                display: 'flex', flexDirection: 'column', gap: 8,
+              }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    value={agent.role}
+                    onChange={e => updateAgent(i, 'role', e.target.value)}
+                    placeholder="Rol (backend, frontend...)"
+                    style={{ ...inputStyle, flex: 1 }}
+                  />
+                  {agents.length > 1 && (
+                    <button
+                      onClick={() => removeAgent(i)}
+                      style={{
+                        background: 'none', border: 'none', color: '#8AA8C0',
+                        fontSize: 18, cursor: 'pointer', padding: '0 4px', flexShrink: 0,
+                      }}
+                    >
+                      &times;
+                    </button>
+                  )}
+                </div>
+                <FolderPicker
                   value={agent.cwd}
-                  onChange={e => updateAgent(i, 'cwd', e.target.value)}
-                  placeholder="Directorio de trabajo (/home/user/app)"
-                  style={{ ...inputStyle, flex: 1 }}
+                  onChange={(path) => updateAgent(i, 'cwd', path)}
                 />
-                {agents.length > 1 && (
-                  <button
-                    onClick={() => removeAgent(i)}
-                    style={{
-                      background: 'none', border: 'none', color: '#8AA8C0',
-                      fontSize: 18, cursor: 'pointer', padding: '0 4px', flexShrink: 0,
-                    }}
-                  >
-                    &times;
-                  </button>
-                )}
               </div>
             ))}
           </div>
