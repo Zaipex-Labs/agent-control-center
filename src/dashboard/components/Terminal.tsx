@@ -71,11 +71,6 @@ export default function Terminal({ projectId, role, visible }: TerminalProps) {
       ws.onopen = () => {
         retriesRef.current = 0;
         term.clear();
-        // Send initial size
-        const dims = fit.proposeDimensions();
-        if (dims) {
-          ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
-        }
       };
 
       ws.onmessage = (ev) => {
@@ -108,13 +103,6 @@ export default function Terminal({ projectId, role, visible }: TerminalProps) {
       }
     });
 
-    // Terminal resize → WebSocket
-    const resizeDisposable = term.onResize(({ cols, rows }) => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'resize', cols, rows }));
-      }
-    });
-
     // Window resize → fit
     const handleWindowResize = () => {
       fit.fit();
@@ -130,7 +118,6 @@ export default function Terminal({ projectId, role, visible }: TerminalProps) {
     return () => {
       clearTimeout(reconnectTimer.current);
       dataDisposable.dispose();
-      resizeDisposable.dispose();
       window.removeEventListener('resize', handleWindowResize);
       observer.disconnect();
       if (wsRef.current) {
