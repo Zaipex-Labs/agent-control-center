@@ -44,22 +44,8 @@ export function useMessages(
       return;
     }
     setLoading(true);
-    // Fetch thread messages + unthreaded messages (agent replies often lack thread_id)
-    const fetchMsgs = async () => {
-      const threaded = await getHistory(projectId, threadId, 100);
-      if (threadId) {
-        const unthreaded = await getHistory(projectId, undefined, 50);
-        // Add agent replies to user that have no thread_id
-        const threadedIds = new Set(threaded.map(m => m.id));
-        const agentReplies = unthreaded.filter(m =>
-          m.to_role === 'user' && !m.thread_id && !threadedIds.has(m.id)
-        );
-        return [...threaded, ...agentReplies].sort((a, b) => a.id - b.id);
-      }
-      return threaded.reverse(); // API returns DESC, we want ASC
-    };
-    fetchMsgs()
-      .then((msgs) => setMessages(msgs))
+    getHistory(projectId, threadId, 100)
+      .then((msgs) => setMessages(msgs.reverse()))
       .catch(() => setMessages([]))
       .finally(() => setLoading(false));
   }, [projectId, threadId]);
@@ -79,8 +65,8 @@ export function useMessages(
     // Skip if this is our own message (already shown via optimistic update)
     if (data.from_role === 'user') return;
 
-    // Show if: matches thread, or has no thread (agent replies often lack thread_id)
-    if (threadId && data.thread_id && data.thread_id !== threadId) return;
+    // Only show messages that match the active thread
+    if (threadId && data.thread_id !== threadId) return;
 
     // Agent replied — clear waiting state
     if (waitingFor && data.from_role === waitingFor.toRole) {
