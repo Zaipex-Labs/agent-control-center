@@ -69,6 +69,7 @@ const MCP_SERVER_NAME = 'zaipex-acc';
 
 function buildAgentCommand(agent: AgentConfig): { cmd: string; args: string[] } {
   const args = [
+    '--dangerously-skip-permissions',
     '--dangerously-load-development-channels',
     `server:${MCP_SERVER_NAME}`,
     ...agent.agent_args,

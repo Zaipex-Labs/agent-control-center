@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
 import type { LogEntry } from '../lib/types';
+import type { WaitingReply, SendError } from '../hooks/useMessages';
 import MessageBubble from './MessageBubble';
 import ReplyThread from './ReplyThread';
+import TypingIndicator from './TypingIndicator';
 
 function formatDateSeparator(dateStr: string): string {
   const d = new Date(dateStr);
@@ -52,9 +54,13 @@ function groupMessages(messages: LogEntry[]): MessageGroup[] {
 interface ChatProps {
   messages: LogEntry[];
   loading: boolean;
+  waitingFor?: WaitingReply | null;
+  sendError?: SendError | null;
+  onRetry?: () => void;
+  onDismissError?: () => void;
 }
 
-export default function Chat({ messages, loading }: ChatProps) {
+export default function Chat({ messages, loading, waitingFor, sendError, onRetry, onDismissError }: ChatProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -120,6 +126,41 @@ export default function Chat({ messages, loading }: ChatProps) {
           </div>
         );
       })}
+      {/* Typing indicator */}
+      {waitingFor && (
+        <TypingIndicator role={waitingFor.toRole} />
+      )}
+
+      {/* Send error toast */}
+      {sendError && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          background: 'rgba(220,60,60,0.1)', border: '1px solid rgba(220,60,60,0.25)',
+          borderRadius: 10, padding: '10px 14px',
+        }}>
+          <span style={{ fontSize: 13, color: '#DC3C3C', flex: 1 }}>
+            No se pudo enviar el mensaje a {sendError.toRole}
+          </span>
+          {onRetry && (
+            <button onClick={onRetry} style={{
+              background: 'var(--z-orange)', color: '#fff', border: 'none',
+              padding: '5px 12px', borderRadius: 6, fontSize: 12,
+              fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)',
+            }}>
+              Reintentar
+            </button>
+          )}
+          {onDismissError && (
+            <button onClick={onDismissError} style={{
+              background: 'none', border: 'none', color: 'var(--z-text-muted)',
+              fontSize: 16, cursor: 'pointer', padding: '0 4px',
+            }}>
+              &times;
+            </button>
+          )}
+        </div>
+      )}
+
       <div ref={bottomRef} />
     </div>
   );

@@ -20,7 +20,7 @@ export default function ProjectPage() {
   const { agents } = useAgents(projectId);
   const dashboardId = useDashboardPeer(projectId);
   const { threads, activeThread, setActiveThread, createThread } = useThreads(projectId);
-  const { messages, loading: messagesLoading, sendMessage } = useMessages(projectId, activeThread?.id, dashboardId);
+  const { messages, loading: messagesLoading, sendMessage, waitingFor, sendError, clearError, retrySend } = useMessages(projectId, activeThread?.id, dashboardId);
   const [creatingThread, setCreatingThread] = useState(false);
   const [newThreadName, setNewThreadName] = useState('');
   const [showSidebar, setShowSidebar] = useState(true);
@@ -239,7 +239,14 @@ export default function ProjectPage() {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {activeThread ? (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                <Chat messages={messages} loading={messagesLoading} />
+                <Chat
+                  messages={messages}
+                  loading={messagesLoading}
+                  waitingFor={waitingFor}
+                  sendError={sendError}
+                  onRetry={retrySend}
+                  onDismissError={clearError}
+                />
                 <Compose agents={agents} onSend={sendMessage} />
               </div>
             ) : agents.length === 0 ? (
