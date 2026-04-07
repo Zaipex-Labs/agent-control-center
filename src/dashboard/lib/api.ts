@@ -44,6 +44,22 @@ export async function listProjects(): Promise<Project[]> {
 
 // ── Project control ───────────────────────────────────────────
 
+export async function createProject(name: string, description: string): Promise<{ ok: boolean; name: string }> {
+  return apiFetch<{ ok: boolean; name: string }>('project/create', { name, description });
+}
+
+export async function addAgent(
+  projectId: string,
+  role: string,
+  cwd: string,
+  name?: string,
+  instructions?: string,
+): Promise<void> {
+  await apiFetch<{ ok: boolean }>('project/add-agent', {
+    project_id: projectId, role, cwd, name, instructions,
+  });
+}
+
 export async function projectUp(projectId: string): Promise<{ ok: boolean; strategy: string; agents: number }> {
   return apiFetch<{ ok: boolean; strategy: string; agents: number }>('project/up', {
     project_id: projectId,

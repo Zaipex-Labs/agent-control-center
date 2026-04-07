@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listProjects, projectUp } from '../lib/api';
+import { listProjects, projectUp, createProject, addAgent } from '../lib/api';
 import type { Project } from '../lib/types';
 
 const ROLE_COLORS: Record<string, string> = {
@@ -159,6 +159,8 @@ export default function TeamsPage() {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
 
   const reload = () => listProjects().then(setProjects).catch(() => {});
@@ -181,6 +183,23 @@ export default function TeamsPage() {
     } catch (e) {
       setError(`Error al encender ${name}: ${e instanceof Error ? e.message : String(e)}`);
       setStarting(null);
+    }
+  };
+
+  const handleCreate = async (name: string, description: string, agents: Array<{ role: string; cwd: string }>) => {
+    setCreating(true);
+    setError(null);
+    try {
+      await createProject(name, description);
+      for (const agent of agents) {
+        await addAgent(name, agent.role, agent.cwd);
+      }
+      await reload();
+      setShowCreate(false);
+    } catch (e) {
+      setError(`Error al crear: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -211,7 +230,7 @@ export default function TeamsPage() {
           </span>
         </div>
         <button
-          onClick={() => {/* TODO: new team modal */}}
+          onClick={() => setShowCreate(true)}
           style={{
             background: '#E8823A', color: '#fff', border: 'none',
             padding: '10px 20px', borderRadius: 10, fontSize: 14,
@@ -272,10 +291,172 @@ export default function TeamsPage() {
                 starting={starting === project.name}
               />
             ))}
-            <NewTeamCard onClick={() => {/* TODO: new team modal */}} />
+            <NewTeamCard onClick={() => setShowCreate(true)} />
           </div>
         )}
       </main>
+
+      {/* Create project modal */}
+      {showCreate && (
+        <CreateProjectModal
+          onClose={() => setShowCreate(false)}
+          onSubmit={handleCreate}
+          creating={creating}
+        />
+      )}
+    </div>
+  );
+}
+
+function CreateProjectModal({ onClose, onSubmit, creating }: {
+  onClose: () => void;
+  onSubmit: (name: string, description: string, agents: Array<{ role: string; cwd: string }>) => void;
+  creating: boolean;
+}) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [agents, setAgents] = useState<Array<{ role: string; cwd: string }>>([
+    { role: 'backend', cwd: '' },
+  ]);
+
+  const addAgent = () => setAgents(prev => [...prev, { role: '', cwd: '' }]);
+  const removeAgent = (i: number) => setAgents(prev => prev.filter((_, idx) => idx !== i));
+  const updateAgent = (i: number, field: 'role' | 'cwd', value: string) => {
+    setAgents(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: value } : a));
+  };
+
+  const canSubmit = name.trim() && agents.every(a => a.role.trim() && a.cwd.trim()) && !creating;
+
+  const inputStyle = {
+    width: '100%', padding: '10px 12px', borderRadius: 8,
+    border: '1px solid #D0C9BE', fontSize: 14, fontFamily: 'var(--font-sans)',
+    outline: 'none', background: '#fff', color: '#1E2D40',
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15,24,36,0.5)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 100,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: '#fff', borderRadius: 16, padding: 32,
+          width: 520, maxHeight: '80vh', overflowY: 'auto',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+        }}
+      >
+        <h2 style={{
+          fontFamily: 'var(--font-serif)', fontSize: 24, fontWeight: 400,
+          color: '#1E2D40', margin: '0 0 24px',
+        }}>
+          Nuevo equipo
+        </h2>
+
+        {/* Name */}
+        <label style={{ display: 'block', marginBottom: 16 }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: '#5A6272', display: 'block', marginBottom: 6 }}>
+            Nombre del proyecto
+          </span>
+          <input
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="mi-proyecto"
+            style={inputStyle}
+            autoFocus
+          />
+        </label>
+
+        {/* Description */}
+        <label style={{ display: 'block', marginBottom: 20 }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: '#5A6272', display: 'block', marginBottom: 6 }}>
+            Descripcion
+          </span>
+          <input
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            placeholder="Descripcion del proyecto (opcional)"
+            style={inputStyle}
+          />
+        </label>
+
+        {/* Agents */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <span style={{ fontSize: 13, fontWeight: 500, color: '#5A6272' }}>Agentes</span>
+            <button
+              onClick={addAgent}
+              style={{
+                background: 'none', border: '1px solid #D0C9BE', borderRadius: 6,
+                padding: '3px 10px', fontSize: 12, color: '#5A6272',
+                cursor: 'pointer', fontFamily: 'var(--font-sans)',
+              }}
+            >
+              + Agregar
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {agents.map((agent, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  value={agent.role}
+                  onChange={e => updateAgent(i, 'role', e.target.value)}
+                  placeholder="Rol (backend, frontend...)"
+                  style={{ ...inputStyle, width: '40%' }}
+                />
+                <input
+                  value={agent.cwd}
+                  onChange={e => updateAgent(i, 'cwd', e.target.value)}
+                  placeholder="Directorio de trabajo (/home/user/app)"
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+                {agents.length > 1 && (
+                  <button
+                    onClick={() => removeAgent(i)}
+                    style={{
+                      background: 'none', border: 'none', color: '#8AA8C0',
+                      fontSize: 18, cursor: 'pointer', padding: '0 4px', flexShrink: 0,
+                    }}
+                  >
+                    &times;
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none', border: '1px solid #D0C9BE', borderRadius: 10,
+              padding: '10px 20px', fontSize: 14, color: '#5A6272',
+              cursor: 'pointer', fontFamily: 'var(--font-sans)',
+            }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => { if (canSubmit) onSubmit(name.trim(), description.trim(), agents); }}
+            disabled={!canSubmit}
+            style={{
+              background: canSubmit ? '#E8823A' : '#D0C9BE', color: '#fff', border: 'none',
+              padding: '10px 24px', borderRadius: 10, fontSize: 14,
+              fontWeight: 600, cursor: canSubmit ? 'pointer' : 'default',
+              fontFamily: 'var(--font-sans)', transition: 'background 0.15s',
+              opacity: creating ? 0.6 : 1,
+            }}
+          >
+            {creating ? 'Creando...' : 'Crear equipo'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execSync } from 'node:child_process';
 import { PROJECTS_DIR, ensureDirectories } from '../shared/config.js';
@@ -148,6 +148,48 @@ export function handleListProjects(res: ServerResponse): void {
   } catch {
     json(res, { projects: [] });
   }
+}
+
+export function handleCreateProject(body: unknown, res: ServerResponse): void {
+  const b = body as { name?: string; description?: string };
+  if (!b.name) return error(res, 'Missing required field: name');
+
+  ensureDirectories();
+  const configPath = join(PROJECTS_DIR, `${b.name}.json`);
+  if (existsSync(configPath)) return error(res, `Project already exists: ${b.name}`);
+
+  const config = {
+    name: b.name,
+    description: b.description ?? '',
+    created_at: new Date().toISOString(),
+    agents: [],
+  };
+  writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+  json(res, { ok: true, name: b.name });
+}
+
+export function handleAddAgent(body: unknown, res: ServerResponse): void {
+  const b = body as { project_id?: string; role?: string; cwd?: string; name?: string; instructions?: string };
+  if (!b.project_id || !b.role || !b.cwd) return error(res, 'Missing required fields: project_id, role, cwd');
+
+  const configPath = join(PROJECTS_DIR, `${b.project_id}.json`);
+  if (!existsSync(configPath)) return error(res, `Project not found: ${b.project_id}`, 404);
+
+  const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+  if (config.agents.some((a: { role: string }) => a.role === b.role)) {
+    return error(res, `Agent with role '${b.role}' already exists`);
+  }
+
+  config.agents.push({
+    role: b.role,
+    cwd: b.cwd,
+    name: b.name ?? '',
+    agent_cmd: 'claude',
+    agent_args: [],
+    instructions: b.instructions ?? '',
+  });
+  writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+  json(res, { ok: true });
 }
 
 export function handleProjectUp(body: unknown, res: ServerResponse): void {

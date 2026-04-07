@@ -34,6 +34,8 @@ import {
   handleSearchThreads,
   handleThreadSummary,
   handleListProjects,
+  handleCreateProject,
+  handleAddAgent,
   handleProjectUp,
   handleProjectDown,
 } from './handlers.js';
@@ -61,6 +63,8 @@ const POST_ROUTES: Record<string, PostHandler> = {
   '/api/threads/update': handleUpdateThread,
   '/api/threads/search': handleSearchThreads,
   '/api/threads/summary': handleThreadSummary,
+  '/api/project/create': handleCreateProject,
+  '/api/project/add-agent': handleAddAgent,
   '/api/project/up': handleProjectUp,
   '/api/project/down': handleProjectDown,
 };
