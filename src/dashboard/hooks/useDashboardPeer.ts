@@ -1,10 +1,31 @@
-import { useState, useEffect, useRef } from 'react';
-import { registerDashboard, unregisterDashboard } from '../lib/api';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { registerDashboard } from '../lib/api';
 
 export function useDashboardPeer(projectId: string | undefined): string | undefined {
   const [peerId, setPeerId] = useState<string>();
   const idRef = useRef<string>();
   const heartbeatRef = useRef<ReturnType<typeof setInterval>>();
+  const projectRef = useRef(projectId);
+  projectRef.current = projectId;
+
+  const register = useCallback(async (pid: string) => {
+    try {
+      const resp = await registerDashboard(pid);
+      idRef.current = resp.id;
+      setPeerId(resp.id);
+    } catch {
+      // Retry once after 2s
+      setTimeout(async () => {
+        try {
+          const resp = await registerDashboard(pid);
+          idRef.current = resp.id;
+          setPeerId(resp.id);
+        } catch {
+          // Give up
+        }
+      }, 2000);
+    }
+  }, []);
 
   useEffect(() => {
     if (!projectId) {
@@ -12,36 +33,32 @@ export function useDashboardPeer(projectId: string | undefined): string | undefi
       return;
     }
 
-    let cancelled = false;
+    register(projectId);
 
-    registerDashboard(projectId)
-      .then((resp) => {
-        if (cancelled) return;
-        idRef.current = resp.id;
-        setPeerId(resp.id);
-
-        // Heartbeat every 20s to stay alive
-        heartbeatRef.current = setInterval(() => {
-          fetch('/api/heartbeat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: idRef.current }),
-          }).catch(() => {});
-        }, 20000);
-      })
-      .catch((err) => {
-        console.error('Dashboard registration failed:', err);
-      });
+    // Heartbeat every 15s — also re-registers if peer was cleaned up
+    heartbeatRef.current = setInterval(async () => {
+      if (!idRef.current || !projectRef.current) return;
+      try {
+        const resp = await fetch('/api/heartbeat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: idRef.current }),
+        });
+        if (!resp.ok) {
+          // Peer was cleaned up — re-register
+          await register(projectRef.current);
+        }
+      } catch {
+        // Broker down — try re-register next cycle
+      }
+    }, 15000);
 
     return () => {
-      cancelled = true;
       clearInterval(heartbeatRef.current);
-      // Don't unregister — let the stale peer cleanup handle it
-      // This prevents the gap between unmount and remount where senderId is undefined
       idRef.current = undefined;
       setPeerId(undefined);
     };
-  }, [projectId]);
+  }, [projectId, register]);
 
   return peerId;
 }

@@ -13,6 +13,8 @@ export function cleanStalePeers(): number {
   const peers = selectAllPeers();
   let removed = 0;
   for (const peer of peers) {
+    // Skip dashboard peers — they don't have real PIDs, they use heartbeats
+    if (peer.agent_type === 'dashboard') continue;
     if (!isProcessAlive(peer.pid)) {
       deletePeer(peer.id);
       removed++;
