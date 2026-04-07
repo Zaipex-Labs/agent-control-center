@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { execSync } from 'node:child_process';
 import { PROJECTS_DIR, ensureDirectories } from '../shared/config.js';
 import { generateId, getDefaultName } from '../shared/utils.js';
-import { spawnAgents, registerMcpServer, killTmuxSession, hasTmuxSession as hasTmuxSess } from '../cli/spawn.js';
+import { registerMcpServer, killTmuxSession, hasTmuxSession as hasTmuxSess } from '../cli/spawn.js';
+import { spawnWebAgent, killAllWebAgents } from './terminal.js';
 import { tmuxNotify, tmuxInjectWithContext } from './tmux.js';
 import { broadcast } from './websocket.js';
 import type {
@@ -266,19 +267,24 @@ export function handleProjectUp(body: unknown, res: ServerResponse): void {
     killTmuxSession(b.project_id);
   }
 
+  // Kill existing web agents
+  killAllWebAgents(b.project_id);
+
   const agentNames = config.agents.map((a: { role: string; name?: string }) =>
     a.name || getDefaultName(a.role)
   );
 
   try {
-    const result = spawnAgents(b.project_id, config.agents);
+    // Spawn agents as direct child processes (web mode)
+    for (const agent of config.agents) {
+      spawnWebAgent(b.project_id, agent.role, agent.cwd, agent.name);
+    }
     json(res, {
       ok: true,
-      strategy: result.strategy,
+      strategy: 'web',
       agents: config.agents.length,
       agent_roles: config.agents.map((a: { role: string }) => a.role),
       agent_names: agentNames,
-      tmux_session: result.tmuxSession ?? null,
     });
   } catch (e) {
     error(res, `Failed to start agents: ${e}`);
@@ -302,10 +308,13 @@ export function handleProjectDown(body: unknown, res: ServerResponse): void {
     deletePeer(peer.id);
   }
 
-  // Kill tmux session
+  // Kill tmux session (if started via CLI)
   if (hasTmuxSess(b.project_id)) {
     killTmuxSession(b.project_id);
   }
+
+  // Kill web agents (if started via browser)
+  killAllWebAgents(b.project_id);
 
   // Broadcast disconnections
   for (const peer of peers) {

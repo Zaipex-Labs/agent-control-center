@@ -1,103 +1,184 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import { execSync, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { resolveEntryPoint } from '../shared/utils.js';
 
 const log = (msg: string) => console.error(`[broker:terminal] ${msg}`);
 
 const wss = new WebSocketServer({ noServer: true });
 
-interface ResizeMessage {
-  type: 'resize';
-  cols: number;
-  rows: number;
+// Active agent processes spawned from the web UI
+const agentProcesses = new Map<string, ChildProcess>();
+// Buffer output so WS clients connecting later see the full history
+const outputBuffers = new Map<string, Buffer[]>();
+const MAX_BUFFER = 100000; // ~100KB per agent
+
+function processKey(projectId: string, role: string): string {
+  return `${projectId}:${role}`;
 }
 
-function isResizeMessage(data: unknown): data is ResizeMessage {
-  return typeof data === 'object' && data !== null &&
-    (data as Record<string, unknown>).type === 'resize' &&
-    typeof (data as Record<string, unknown>).cols === 'number' &&
-    typeof (data as Record<string, unknown>).rows === 'number';
+function getServerEntryPath(): string {
+  const thisDir = dirname(fileURLToPath(import.meta.url));
+  return resolveEntryPoint(thisDir, '..', 'server', 'index.ts');
+}
+
+export function spawnWebAgent(projectId: string, role: string, cwd: string, name?: string): ChildProcess {
+  const key = processKey(projectId, role);
+
+  // Kill existing if any
+  const existing = agentProcesses.get(key);
+  if (existing) {
+    existing.kill();
+    agentProcesses.delete(key);
+  }
+
+  const serverPath = getServerEntryPath();
+  const runner = serverPath.endsWith('.ts') ? 'npx' : 'node';
+  const mcpName = 'zaipex-acc';
+
+  const claudeArgs = [
+    '--dangerously-skip-permissions',
+    '--dangerously-load-development-channels',
+    `server:${mcpName}`,
+  ];
+
+  const env = {
+    ...process.env,
+    ACC_PROJECT: projectId,
+    ACC_ROLE: role,
+    ...(name ? { ACC_NAME: name } : {}),
+    TERM: 'xterm-256color',
+  };
+
+  // Use Python PTY wrapper so Claude Code gets a real terminal
+  const ptyWrap = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'src', 'broker', 'pty-wrap.py');
+  const proc = spawn('python3', [ptyWrap, 'claude', ...claudeArgs], {
+    cwd,
+    env,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  agentProcesses.set(key, proc);
+  outputBuffers.set(key, []);
+  log(`spawned web agent ${key} pid=${proc.pid}`);
+
+  // Buffer all output for later WS clients
+  const appendBuffer = (data: Buffer) => {
+    const buf = outputBuffers.get(key);
+    if (!buf) return;
+    buf.push(data);
+    // Trim if too large (keep last MAX_BUFFER bytes)
+    let total = buf.reduce((s, b) => s + b.length, 0);
+    while (total > MAX_BUFFER && buf.length > 1) {
+      total -= buf.shift()!.length;
+    }
+  };
+
+  proc.stdout?.on('data', appendBuffer);
+  proc.stderr?.on('data', appendBuffer);
+
+  proc.on('exit', (code) => {
+    log(`web agent ${key} exited code=${code}`);
+    agentProcesses.delete(key);
+    outputBuffers.delete(key);
+  });
+
+  return proc;
+}
+
+export function killWebAgent(projectId: string, role: string): boolean {
+  const key = processKey(projectId, role);
+  const proc = agentProcesses.get(key);
+  if (!proc) return false;
+  proc.kill();
+  agentProcesses.delete(key);
+  return true;
+}
+
+export function killAllWebAgents(projectId: string): number {
+  let killed = 0;
+  for (const [key, proc] of agentProcesses) {
+    if (key.startsWith(`${projectId}:`)) {
+      proc.kill();
+      agentProcesses.delete(key);
+      killed++;
+    }
+  }
+  return killed;
+}
+
+export function getWebAgent(projectId: string, role: string): ChildProcess | undefined {
+  return agentProcesses.get(processKey(projectId, role));
 }
 
 export function handleTerminalUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, role: string, projectId: string): void {
   wss.handleUpgrade(req, socket, head, (ws) => {
-    const session = `acc-${projectId}`;
-    const target = `${session}:${role}`;
-    log(`connecting to tmux ${target}`);
+    const key = processKey(projectId, role);
+    log(`ws connect for ${key}`);
 
-    // Verify session exists
-    try {
-      execSync(`tmux has-session -t ${session}`, { stdio: 'pipe' });
-    } catch {
-      log(`session ${session} not found`);
-      ws.close(1011, 'tmux session not found');
+    const proc = agentProcesses.get(key);
+    if (!proc || proc.killed) {
+      log(`no active process for ${key}`);
+      ws.close(1011, 'Agent not running');
       return;
     }
 
-    // Send initial screen capture
-    try {
-      const capture = execSync(`tmux capture-pane -t ${target} -p -e`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+    log(`piping ws to process ${key} pid=${proc.pid}`);
+
+    // Send buffered output first
+    const buf = outputBuffers.get(key);
+    if (buf) {
+      for (const chunk of buf) {
+        ws.send(chunk);
+      }
+    }
+
+    // Process stdout → WebSocket
+    const onStdout = (data: Buffer) => {
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(capture);
+        ws.send(data);
       }
-    } catch { /* best effort */ }
+    };
 
-    // Poll tmux pane content every 500ms and send diffs
-    let lastContent = '';
-    const pollInterval = setInterval(() => {
-      if (ws.readyState !== WebSocket.OPEN) {
-        clearInterval(pollInterval);
-        return;
+    const onStderr = (data: Buffer) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(data);
       }
-      try {
-        const content = execSync(`tmux capture-pane -t ${target} -p -e`, {
-          encoding: 'utf-8',
-          stdio: ['pipe', 'pipe', 'pipe'],
-          timeout: 2000,
-        });
-        if (content !== lastContent) {
-          // Clear screen and redraw
-          ws.send('\x1b[2J\x1b[H' + content);
-          lastContent = content;
-        }
-      } catch { /* tmux may be gone */ }
-    }, 500);
+    };
 
-    // WebSocket input → tmux send-keys
+    proc.stdout?.on('data', onStdout);
+    proc.stderr?.on('data', onStderr);
+
+    // Process exit → close WebSocket
+    const onExit = () => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close(1000, 'Agent exited');
+      }
+    };
+    proc.on('exit', onExit);
+
+    // WebSocket → process stdin
     ws.on('message', (raw: Buffer | string) => {
-      const msg = raw.toString();
-
-      try {
-        const parsed: unknown = JSON.parse(msg);
-        if (isResizeMessage(parsed)) {
-          try {
-            execSync(`tmux resize-pane -t ${target} -x ${parsed.cols} -y ${parsed.rows}`, { stdio: 'pipe' });
-          } catch { /* best effort */ }
-          return;
-        }
-      } catch {
-        // Not JSON — terminal input
-      }
-
-      // Send keystrokes to tmux
-      try {
-        // Use -l for literal text to avoid key interpretation issues
-        execSync(`tmux send-keys -t ${target} -l ${shellEscape(msg)}`, { stdio: 'pipe', timeout: 2000 });
-      } catch { /* best effort */ }
+      if (!proc.stdin?.writable) return;
+      proc.stdin.write(raw.toString());
     });
 
+    // Cleanup on WebSocket close
     ws.on('close', () => {
-      log(`ws closed for ${target}`);
-      clearInterval(pollInterval);
+      log(`ws closed for ${key}`);
+      proc.stdout?.off('data', onStdout);
+      proc.stderr?.off('data', onStderr);
+      proc.off('exit', onExit);
     });
 
     ws.on('error', () => {
-      clearInterval(pollInterval);
+      proc.stdout?.off('data', onStdout);
+      proc.stderr?.off('data', onStderr);
+      proc.off('exit', onExit);
     });
   });
-}
-
-function shellEscape(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`;
 }
