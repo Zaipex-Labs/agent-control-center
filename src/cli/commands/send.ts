@@ -18,7 +18,7 @@ export function registerSendCommand(program: Command): void {
       }
 
       // Register a temporary CLI peer to send from
-      const { id } = await brokerFetch<RegisterResponse>('/register', {
+      const { id } = await brokerFetch<RegisterResponse>('/api/register', {
         pid: process.pid,
         cwd: process.cwd(),
         role: 'cli',
@@ -28,7 +28,7 @@ export function registerSendCommand(program: Command): void {
       });
 
       try {
-        const resp = await brokerFetch<SendToRoleResponse>('/send-to-role', {
+        const resp = await brokerFetch<SendToRoleResponse>('/api/send-to-role', {
           project_id: project,
           from_id: id,
           role: opts.toRole,
@@ -43,7 +43,7 @@ export function registerSendCommand(program: Command): void {
         }
       } finally {
         // Unregister the temporary peer
-        await brokerFetch('/unregister', { id }).catch(() => {});
+        await brokerFetch('/api/unregister', { id }).catch(() => {});
       }
     });
 }

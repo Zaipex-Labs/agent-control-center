@@ -115,7 +115,7 @@ export async function main(): Promise<void> {
   log(t('server.project', { project: projectId }));
 
   // Register with broker
-  const reg = await brokerFetch<RegisterResponse>('/register', {
+  const reg = await brokerFetch<RegisterResponse>('/api/register', {
     pid: process.pid,
     cwd,
     git_root: gitRoot,
@@ -166,7 +166,7 @@ export async function main(): Promise<void> {
 
   const pollInterval = setInterval(async () => {
     try {
-      const resp = await brokerFetch<PollMessagesResponse>('/poll-messages', {
+      const resp = await brokerFetch<PollMessagesResponse>('/api/poll-messages', {
         id: identity.id,
       });
       for (const msg of resp.messages) {
@@ -174,7 +174,7 @@ export async function main(): Promise<void> {
         let fromRole = 'unknown';
         let fromCwd = '';
         try {
-          const peers = await brokerFetch<Peer[]>('/list-peers', {
+          const peers = await brokerFetch<Peer[]>('/api/list-peers', {
             project_id: identity.project_id,
             scope: 'project',
           });
@@ -218,7 +218,7 @@ export async function main(): Promise<void> {
   // ── Heartbeat: every 15s ─────────────────────────────────
   const heartbeatInterval = setInterval(async () => {
     try {
-      await brokerFetch('/heartbeat', { id: identity.id });
+      await brokerFetch('/api/heartbeat', { id: identity.id });
     } catch {
       log(t('server.heartbeatFailed'));
     }
@@ -229,7 +229,7 @@ export async function main(): Promise<void> {
     clearInterval(pollInterval);
     clearInterval(heartbeatInterval);
     try {
-      await brokerFetch('/unregister', { id: identity.id });
+      await brokerFetch('/api/unregister', { id: identity.id });
       log(t('server.unregistered'));
     } catch {
       // Broker might already be gone

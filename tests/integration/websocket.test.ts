@@ -22,13 +22,13 @@ import {
 type PostHandler = (body: unknown, res: ServerResponse) => void;
 
 const POST_ROUTES: Record<string, PostHandler> = {
-  '/register': handleRegister,
-  '/unregister': handleUnregister,
-  '/send-message': handleSendMessage,
-  '/poll-messages': handlePollMessages,
-  '/shared/set': handleSharedSet,
-  '/threads/create': handleCreateThread,
-  '/threads/update': handleUpdateThread,
+  '/api/register': handleRegister,
+  '/api/unregister': handleUnregister,
+  '/api/send-message': handleSendMessage,
+  '/api/poll-messages': handlePollMessages,
+  '/api/shared/set': handleSharedSet,
+  '/api/threads/create': handleCreateThread,
+  '/api/threads/update': handleUpdateThread,
 };
 
 let server: Server;
@@ -137,7 +137,7 @@ describe('websocket events', () => {
   it('receives peer:connected on register', async () => {
     const { events, close } = await connectWs('ws-peer');
     try {
-      await post('/register', {
+      await post('/api/register', {
         project_id: 'ws-peer',
         pid: 9001,
         cwd: '/tmp/ws-peer',
@@ -160,13 +160,13 @@ describe('websocket events', () => {
 
   it('receives message:new on send-message', async () => {
     // Register two peers first
-    const { data: p1 } = await post<{ id: string }>('/register', {
+    const { data: p1 } = await post<{ id: string }>('/api/register', {
       project_id: 'ws-msg',
       pid: 9010,
       cwd: '/tmp/ws-msg-1',
       role: 'backend',
     });
-    const { data: p2 } = await post<{ id: string }>('/register', {
+    const { data: p2 } = await post<{ id: string }>('/api/register', {
       project_id: 'ws-msg',
       pid: 9011,
       cwd: '/tmp/ws-msg-2',
@@ -175,7 +175,7 @@ describe('websocket events', () => {
 
     const { events, close } = await connectWs('ws-msg');
     try {
-      await post('/send-message', {
+      await post('/api/send-message', {
         project_id: 'ws-msg',
         from_id: p1.id,
         to_id: p2.id,
@@ -197,7 +197,7 @@ describe('websocket events', () => {
 
   it('receives shared:updated on set', async () => {
     // Need a peer for peer_id
-    const { data: peer } = await post<{ id: string }>('/register', {
+    const { data: peer } = await post<{ id: string }>('/api/register', {
       project_id: 'ws-shared',
       pid: 9020,
       cwd: '/tmp/ws-shared',
@@ -206,7 +206,7 @@ describe('websocket events', () => {
 
     const { events, close } = await connectWs('ws-shared');
     try {
-      await post('/shared/set', {
+      await post('/api/shared/set', {
         project_id: 'ws-shared',
         namespace: 'config',
         key: 'api-url',
@@ -230,7 +230,7 @@ describe('websocket events', () => {
   it('receives thread:created on create', async () => {
     const { events, close } = await connectWs('ws-thread');
     try {
-      await post('/threads/create', {
+      await post('/api/threads/create', {
         project_id: 'ws-thread',
         created_by: 'test-agent',
         name: 'API Design Discussion',
@@ -250,7 +250,7 @@ describe('websocket events', () => {
   });
 
   it('receives peer:disconnected on unregister', async () => {
-    const { data: peer } = await post<{ id: string }>('/register', {
+    const { data: peer } = await post<{ id: string }>('/api/register', {
       project_id: 'ws-unreg',
       pid: 9030,
       cwd: '/tmp/ws-unreg',
@@ -259,7 +259,7 @@ describe('websocket events', () => {
 
     const { events, close } = await connectWs('ws-unreg');
     try {
-      await post('/unregister', { id: peer.id });
+      await post('/api/unregister', { id: peer.id });
 
       await waitMs(100);
 
@@ -276,7 +276,7 @@ describe('websocket events', () => {
   it('project isolation: ws with different project_id does NOT receive events', async () => {
     const { events, close } = await connectWs('ws-iso-A');
     try {
-      await post('/register', {
+      await post('/api/register', {
         project_id: 'ws-iso-B',
         pid: 9040,
         cwd: '/tmp/ws-iso-B',

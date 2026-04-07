@@ -33,26 +33,26 @@ import {
 type PostHandler = (body: unknown, res: ServerResponse) => void;
 
 const POST_ROUTES: Record<string, PostHandler> = {
-  '/register': handleRegister,
-  '/heartbeat': handleHeartbeat,
-  '/unregister': handleUnregister,
-  '/set-summary': handleSetSummary,
-  '/set-role': handleSetRole,
-  '/list-peers': handleListPeers,
-  '/send-message': handleSendMessage,
-  '/send-to-role': handleSendToRole,
-  '/poll-messages': handlePollMessages,
-  '/get-history': handleGetHistory,
-  '/shared/set': handleSharedSet,
-  '/shared/get': handleSharedGet,
-  '/shared/list': handleSharedList,
-  '/shared/delete': handleSharedDelete,
-  '/threads/create': handleCreateThread,
-  '/threads/list': handleListThreads,
-  '/threads/get': handleGetThread,
-  '/threads/update': handleUpdateThread,
-  '/threads/search': handleSearchThreads,
-  '/threads/summary': handleThreadSummary,
+  '/api/register': handleRegister,
+  '/api/heartbeat': handleHeartbeat,
+  '/api/unregister': handleUnregister,
+  '/api/set-summary': handleSetSummary,
+  '/api/set-role': handleSetRole,
+  '/api/list-peers': handleListPeers,
+  '/api/send-message': handleSendMessage,
+  '/api/send-to-role': handleSendToRole,
+  '/api/poll-messages': handlePollMessages,
+  '/api/get-history': handleGetHistory,
+  '/api/shared/set': handleSharedSet,
+  '/api/shared/get': handleSharedGet,
+  '/api/shared/list': handleSharedList,
+  '/api/shared/delete': handleSharedDelete,
+  '/api/threads/create': handleCreateThread,
+  '/api/threads/list': handleListThreads,
+  '/api/threads/get': handleGetThread,
+  '/api/threads/update': handleUpdateThread,
+  '/api/threads/search': handleSearchThreads,
+  '/api/threads/summary': handleThreadSummary,
 };
 
 let server: Server;
@@ -136,33 +136,33 @@ describe('full flow integration', () => {
 
   // 1. Register 3 peers
   it('registers 3 peers: backend/Turing, frontend/Lovelace, qa/Curie', async () => {
-    const reg1 = await post<{ id: string; name: string }>('/register', {
+    const reg1 = await post<{ id: string; name: string }>('/api/register', {
       pid: process.pid, cwd: '/app/backend', role: 'backend', name: 'Turing', project_id: 'fullflow',
     });
     expect(reg1.status).toBe(200);
     expect(reg1.data.id).toHaveLength(8);
     peer1Id = reg1.data.id;
 
-    const reg2 = await post<{ id: string; name: string }>('/register', {
+    const reg2 = await post<{ id: string; name: string }>('/api/register', {
       pid: process.pid, cwd: '/app/frontend', role: 'frontend', name: 'Lovelace', project_id: 'fullflow',
     });
     expect(reg2.status).toBe(200);
     peer2Id = reg2.data.id;
 
-    const reg3 = await post<{ id: string; name: string }>('/register', {
+    const reg3 = await post<{ id: string; name: string }>('/api/register', {
       pid: process.pid, cwd: '/app/qa', role: 'qa', name: 'Curie', project_id: 'fullflow',
     });
     expect(reg3.status).toBe(200);
     peer3Id = reg3.data.id;
 
     // Verify all 3 are listed
-    const peers = await post<Array<{ id: string }>>('/list-peers', { project_id: 'fullflow' });
+    const peers = await post<Array<{ id: string }>>('/api/list-peers', { project_id: 'fullflow' });
     expect(peers.data).toHaveLength(3);
   });
 
   // 2. Create thread
   it('creates thread "Integracion de Customers"', async () => {
-    const resp = await post<{ id: string; name: string }>('/threads/create', {
+    const resp = await post<{ id: string; name: string }>('/api/threads/create', {
       project_id: 'fullflow', name: 'Integracion de Customers', created_by: peer1Id,
     });
     expect(resp.status).toBe(200);
@@ -172,7 +172,7 @@ describe('full flow integration', () => {
 
   // 3. Peer 1 sends message to peer 2 in the thread
   it('peer 1 sends message to peer 2 in thread', async () => {
-    const resp = await post<{ ok: boolean }>('/send-message', {
+    const resp = await post<{ ok: boolean }>('/api/send-message', {
       project_id: 'fullflow', from_id: peer1Id, to_id: peer2Id,
       text: 'Necesitamos el endpoint de customers', thread_id: thread1Id,
     });
@@ -181,7 +181,7 @@ describe('full flow integration', () => {
 
   // 4. Peer 2 polls and receives message with correct thread_id
   it('peer 2 polls and receives message with correct thread_id', async () => {
-    const poll = await post<{ messages: Array<{ text: string; thread_id: string }> }>('/poll-messages', { id: peer2Id });
+    const poll = await post<{ messages: Array<{ text: string; thread_id: string }> }>('/api/poll-messages', { id: peer2Id });
     expect(poll.data.messages).toHaveLength(1);
     expect(poll.data.messages[0].text).toBe('Necesitamos el endpoint de customers');
     expect(poll.data.messages[0].thread_id).toBe(thread1Id);
@@ -189,7 +189,7 @@ describe('full flow integration', () => {
 
   // 5. Peer 2 responds via /send-message back to peer 1 in same thread
   it('peer 2 responds to peer 1 in same thread', async () => {
-    const resp = await post<{ ok: boolean }>('/send-message', {
+    const resp = await post<{ ok: boolean }>('/api/send-message', {
       project_id: 'fullflow', from_id: peer2Id, to_id: peer1Id,
       text: 'Ya tengo el GET /customers listo', thread_id: thread1Id,
     });
@@ -198,7 +198,7 @@ describe('full flow integration', () => {
 
   // 6. Peer 1 polls and receives the response
   it('peer 1 polls and receives response from peer 2', async () => {
-    const poll = await post<{ messages: Array<{ text: string; thread_id: string }> }>('/poll-messages', { id: peer1Id });
+    const poll = await post<{ messages: Array<{ text: string; thread_id: string }> }>('/api/poll-messages', { id: peer1Id });
     expect(poll.data.messages).toHaveLength(1);
     expect(poll.data.messages[0].text).toBe('Ya tengo el GET /customers listo');
     expect(poll.data.messages[0].thread_id).toBe(thread1Id);
@@ -206,7 +206,7 @@ describe('full flow integration', () => {
 
   // 7. get_history with thread_id only returns messages from that thread (should be 2)
   it('get_history with thread_id returns only thread messages', async () => {
-    const history = await post<{ messages: Array<{ text: string; thread_id: string }> }>('/get-history', {
+    const history = await post<{ messages: Array<{ text: string; thread_id: string }> }>('/api/get-history', {
       project_id: 'fullflow', thread_id: thread1Id,
     });
     expect(history.data.messages).toHaveLength(2);
@@ -217,7 +217,7 @@ describe('full flow integration', () => {
 
   // 8. get_history without thread_id returns all messages
   it('get_history without thread_id returns all messages', async () => {
-    const history = await post<{ messages: Array<{ text: string }> }>('/get-history', {
+    const history = await post<{ messages: Array<{ text: string }> }>('/api/get-history', {
       project_id: 'fullflow',
     });
     expect(history.data.messages.length).toBeGreaterThanOrEqual(2);
@@ -226,27 +226,27 @@ describe('full flow integration', () => {
   // 9. Create second thread, send message, verify isolation
   it('thread isolation: second thread does not leak into first', async () => {
     // Create second thread
-    const resp = await post<{ id: string; name: string }>('/threads/create', {
+    const resp = await post<{ id: string; name: string }>('/api/threads/create', {
       project_id: 'fullflow', name: 'Auth Flow', created_by: peer2Id,
     });
     expect(resp.status).toBe(200);
     thread2Id = resp.data.id;
 
     // Send message in second thread
-    const send = await post<{ ok: boolean }>('/send-message', {
+    const send = await post<{ ok: boolean }>('/api/send-message', {
       project_id: 'fullflow', from_id: peer2Id, to_id: peer3Id,
       text: 'Necesito tests de autenticacion', thread_id: thread2Id,
     });
     expect(send.data.ok).toBe(true);
 
     // History for thread 1 should still be 2
-    const history1 = await post<{ messages: Array<{ thread_id: string }> }>('/get-history', {
+    const history1 = await post<{ messages: Array<{ thread_id: string }> }>('/api/get-history', {
       project_id: 'fullflow', thread_id: thread1Id,
     });
     expect(history1.data.messages).toHaveLength(2);
 
     // History for thread 2 should be 1
-    const history2 = await post<{ messages: Array<{ thread_id: string }> }>('/get-history', {
+    const history2 = await post<{ messages: Array<{ thread_id: string }> }>('/api/get-history', {
       project_id: 'fullflow', thread_id: thread2Id,
     });
     expect(history2.data.messages).toHaveLength(1);
@@ -254,7 +254,7 @@ describe('full flow integration', () => {
 
   // 10. Thread summary
   it('thread summary contains message texts', async () => {
-    const resp = await post<{ summary: string }>('/threads/summary', { thread_id: thread1Id });
+    const resp = await post<{ summary: string }>('/api/threads/summary', { thread_id: thread1Id });
     expect(resp.status).toBe(200);
     expect(resp.data.summary).toContain('Necesitamos el endpoint de customers');
     expect(resp.data.summary).toContain('Ya tengo el GET /customers listo');
@@ -263,13 +263,13 @@ describe('full flow integration', () => {
   // 11. Shared state: set, get, list, delete, verify 404 after delete
   it('shared state full lifecycle: set, get, list, delete', async () => {
     // Set
-    const set = await post<{ ok: boolean }>('/shared/set', {
+    const set = await post<{ ok: boolean }>('/api/shared/set', {
       project_id: 'fullflow', namespace: 'contracts', key: 'customers-api', value: '{"version":"1.0"}', peer_id: peer1Id,
     });
     expect(set.data.ok).toBe(true);
 
     // Get
-    const got = await post<{ value: string; updated_by: string }>('/shared/get', {
+    const got = await post<{ value: string; updated_by: string }>('/api/shared/get', {
       project_id: 'fullflow', namespace: 'contracts', key: 'customers-api',
     });
     expect(got.status).toBe(200);
@@ -277,19 +277,19 @@ describe('full flow integration', () => {
     expect(got.data.updated_by).toBe(peer1Id);
 
     // List
-    const list = await post<{ keys: string[] }>('/shared/list', {
+    const list = await post<{ keys: string[] }>('/api/shared/list', {
       project_id: 'fullflow', namespace: 'contracts',
     });
     expect(list.data.keys).toContain('customers-api');
 
     // Delete
-    const del = await post<{ ok: boolean }>('/shared/delete', {
+    const del = await post<{ ok: boolean }>('/api/shared/delete', {
       project_id: 'fullflow', namespace: 'contracts', key: 'customers-api', peer_id: peer1Id,
     });
     expect(del.data.ok).toBe(true);
 
     // Get after delete returns 404
-    const gone = await post<{ error: string }>('/shared/get', {
+    const gone = await post<{ error: string }>('/api/shared/get', {
       project_id: 'fullflow', namespace: 'contracts', key: 'customers-api',
     });
     expect(gone.status).toBe(404);
@@ -299,12 +299,12 @@ describe('full flow integration', () => {
   // 12. Shared state isolation between projects
   it('shared state isolation: project A data not visible from project B', async () => {
     // Set in project A
-    await post<{ ok: boolean }>('/shared/set', {
+    await post<{ ok: boolean }>('/api/shared/set', {
       project_id: 'proj-a', namespace: 'config', key: 'secret', value: '"hidden"', peer_id: 'pa',
     });
 
     // Get from project B returns 404
-    const got = await post<{ error: string }>('/shared/get', {
+    const got = await post<{ error: string }>('/api/shared/get', {
       project_id: 'proj-b', namespace: 'config', key: 'secret',
     });
     expect(got.status).toBe(404);
@@ -313,7 +313,7 @@ describe('full flow integration', () => {
 
   // 13. Search threads by name
   it('search threads by name finds matching thread', async () => {
-    const resp = await post<{ threads: Array<{ id: string; name: string }>; messages: unknown[] }>('/threads/search', {
+    const resp = await post<{ threads: Array<{ id: string; name: string }>; messages: unknown[] }>('/api/threads/search', {
       project_id: 'fullflow', query: 'Customers',
     });
     expect(resp.status).toBe(200);
@@ -324,7 +324,7 @@ describe('full flow integration', () => {
 
   // 14. Search threads by message content
   it('search threads by message content finds matching messages', async () => {
-    const resp = await post<{ threads: Array<{ id: string }>; messages: Array<{ text: string; thread_id: string }> }>('/threads/search', {
+    const resp = await post<{ threads: Array<{ id: string }>; messages: Array<{ text: string; thread_id: string }> }>('/api/threads/search', {
       project_id: 'fullflow', query: 'endpoint de customers',
     });
     expect(resp.status).toBe(200);
@@ -336,20 +336,20 @@ describe('full flow integration', () => {
   // 15. Archive thread and verify list filtering
   it('archive thread: archived thread excluded from active list', async () => {
     // Archive thread 1
-    const upd = await post<{ ok: boolean }>('/threads/update', {
+    const upd = await post<{ ok: boolean }>('/api/threads/update', {
       project_id: 'fullflow', thread_id: thread1Id, status: 'archived',
     });
     expect(upd.data.ok).toBe(true);
 
     // List with status='active' should NOT include archived thread
-    const active = await post<{ threads: Array<{ id: string }> }>('/threads/list', {
+    const active = await post<{ threads: Array<{ id: string }> }>('/api/threads/list', {
       project_id: 'fullflow', status: 'active',
     });
     const archivedInActive = active.data.threads.find(t => t.id === thread1Id);
     expect(archivedInActive).toBeUndefined();
 
     // List without status filter should include it
-    const all = await post<{ threads: Array<{ id: string }> }>('/threads/list', {
+    const all = await post<{ threads: Array<{ id: string }> }>('/api/threads/list', {
       project_id: 'fullflow',
     });
     const found = all.data.threads.find(t => t.id === thread1Id);
@@ -369,13 +369,13 @@ describe('full flow integration', () => {
   // 17. Cleanup peers: register a peer with current pid, verify cleanStalePeers behavior
   it('cleanStalePeers removes peers with dead PIDs', async () => {
     // Register a peer with a PID that does not exist (99999999)
-    const reg = await post<{ id: string }>('/register', {
+    const reg = await post<{ id: string }>('/api/register', {
       pid: 99999999, cwd: '/dead', role: 'ghost', project_id: 'cleanup-test',
     });
     expect(reg.data.id).toHaveLength(8);
 
     // Register a peer with current (alive) PID
-    const alive = await post<{ id: string }>('/register', {
+    const alive = await post<{ id: string }>('/api/register', {
       pid: process.pid, cwd: '/alive', role: 'living', project_id: 'cleanup-test',
     });
 
@@ -384,18 +384,18 @@ describe('full flow integration', () => {
     expect(removed).toBeGreaterThanOrEqual(1);
 
     // The alive peer should still exist
-    const hb = await post<{ ok: boolean }>('/heartbeat', { id: alive.data.id });
+    const hb = await post<{ ok: boolean }>('/api/heartbeat', { id: alive.data.id });
     expect(hb.data.ok).toBe(true);
 
     // The dead peer should be gone
-    const hbDead = await post<{ ok: boolean; error?: string }>('/heartbeat', { id: reg.data.id });
+    const hbDead = await post<{ ok: boolean; error?: string }>('/api/heartbeat', { id: reg.data.id });
     expect(hbDead.status).toBe(404);
   });
 
   // TTL test: expired messages are silently dropped on poll
   it('expired messages (>30min old) are not returned by poll', async () => {
     // Register a fresh peer for this test
-    const reg = await post<{ id: string }>('/register', {
+    const reg = await post<{ id: string }>('/api/register', {
       pid: process.pid, cwd: '/ttl', role: 'ttl-test', project_id: 'ttl-proj',
     });
     const peerId = reg.data.id;
@@ -405,7 +405,7 @@ describe('full flow integration', () => {
     insertMessage('ttl-proj', 'sender-x', peerId, 'message', 'This is old', null, pastDate);
 
     // Poll — should NOT return the expired message
-    const poll = await post<{ messages: Array<{ text: string }> }>('/poll-messages', { id: peerId });
+    const poll = await post<{ messages: Array<{ text: string }> }>('/api/poll-messages', { id: peerId });
     expect(poll.data.messages).toHaveLength(0);
   });
 });

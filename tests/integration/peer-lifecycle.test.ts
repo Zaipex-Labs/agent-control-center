@@ -16,12 +16,12 @@ import {
 type PostHandler = (body: unknown, res: ServerResponse) => void;
 
 const POST_ROUTES: Record<string, PostHandler> = {
-  '/register': handleRegister,
-  '/heartbeat': handleHeartbeat,
-  '/unregister': handleUnregister,
-  '/set-summary': handleSetSummary,
-  '/set-role': handleSetRole,
-  '/list-peers': handleListPeers,
+  '/api/register': handleRegister,
+  '/api/heartbeat': handleHeartbeat,
+  '/api/unregister': handleUnregister,
+  '/api/set-summary': handleSetSummary,
+  '/api/set-role': handleSetRole,
+  '/api/list-peers': handleListPeers,
 };
 
 let server: Server;
@@ -84,7 +84,7 @@ describe('peer lifecycle integration', () => {
     const projId = 'lifecycle';
 
     // Register
-    const reg = await post<{ id: string; name: string }>('/register', {
+    const reg = await post<{ id: string; name: string }>('/api/register', {
       pid: process.pid, cwd: '/lifecycle', role: 'backend', project_id: projId,
     });
     expect(reg.data.id).toHaveLength(8);
@@ -92,19 +92,19 @@ describe('peer lifecycle integration', () => {
     const id = reg.data.id;
 
     // Set summary
-    const sum = await post<{ ok: boolean }>('/set-summary', { id, summary: 'Building REST API' });
+    const sum = await post<{ ok: boolean }>('/api/set-summary', { id, summary: 'Building REST API' });
     expect(sum.data.ok).toBe(true);
 
     // Set role
-    const role = await post<{ ok: boolean }>('/set-role', { id, role: 'devops' });
+    const role = await post<{ ok: boolean }>('/api/set-role', { id, role: 'devops' });
     expect(role.data.ok).toBe(true);
 
     // Heartbeat
-    const hb = await post<{ ok: boolean }>('/heartbeat', { id });
+    const hb = await post<{ ok: boolean }>('/api/heartbeat', { id });
     expect(hb.data.ok).toBe(true);
 
     // List peers — should see updated role and summary
-    const peers = await post<Array<{ id: string; role: string; summary: string }>>('/list-peers', {
+    const peers = await post<Array<{ id: string; role: string; summary: string }>>('/api/list-peers', {
       project_id: projId,
     });
     const me = (peers.data as Array<{ id: string; role: string; summary: string }>).find(p => p.id === id);
@@ -113,30 +113,30 @@ describe('peer lifecycle integration', () => {
     expect(me!.summary).toBe('Building REST API');
 
     // Unregister
-    const unreg = await post<{ ok: boolean }>('/unregister', { id });
+    const unreg = await post<{ ok: boolean }>('/api/unregister', { id });
     expect(unreg.data.ok).toBe(true);
 
     // Heartbeat should fail
-    const hb2 = await post<{ ok: boolean; error: string }>('/heartbeat', { id });
+    const hb2 = await post<{ ok: boolean; error: string }>('/api/heartbeat', { id });
     expect(hb2.status).toBe(404);
   });
 
   it('multiple agents in same project see each other', async () => {
     const projId = 'multi-peer';
 
-    const a = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/ma', role: 'backend', project_id: projId });
-    const b = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/mb', role: 'frontend', project_id: projId });
-    const c = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/mc', role: 'qa', project_id: projId });
+    const a = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/ma', role: 'backend', project_id: projId });
+    const b = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/mb', role: 'frontend', project_id: projId });
+    const c = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/mc', role: 'qa', project_id: projId });
 
-    const peers = await post<Array<{ id: string }>>('/list-peers', { project_id: projId });
+    const peers = await post<Array<{ id: string }>>('/api/list-peers', { project_id: projId });
     expect(peers.data).toHaveLength(3);
 
     // Filter by role
-    const backends = await post<Array<{ id: string }>>('/list-peers', { project_id: projId, role: 'backend' });
+    const backends = await post<Array<{ id: string }>>('/api/list-peers', { project_id: projId, role: 'backend' });
     expect(backends.data).toHaveLength(1);
 
     // Exclude self
-    const withoutA = await post<Array<{ id: string }>>('/list-peers', {
+    const withoutA = await post<Array<{ id: string }>>('/api/list-peers', {
       project_id: projId,
       exclude_id: a.data.id,
     });
@@ -145,38 +145,38 @@ describe('peer lifecycle integration', () => {
   });
 
   it('agents in different projects are isolated', async () => {
-    await post('/register', { pid: process.pid, cwd: '/p1a', role: 'backend', project_id: 'iso-proj-1' });
-    await post('/register', { pid: process.pid, cwd: '/p2a', role: 'backend', project_id: 'iso-proj-2' });
+    await post('/api/register', { pid: process.pid, cwd: '/p1a', role: 'backend', project_id: 'iso-proj-1' });
+    await post('/api/register', { pid: process.pid, cwd: '/p2a', role: 'backend', project_id: 'iso-proj-2' });
 
-    const peers1 = await post<Array<{ id: string }>>('/list-peers', { project_id: 'iso-proj-1' });
+    const peers1 = await post<Array<{ id: string }>>('/api/list-peers', { project_id: 'iso-proj-1' });
     expect(peers1.data).toHaveLength(1);
 
-    const peers2 = await post<Array<{ id: string }>>('/list-peers', { project_id: 'iso-proj-2' });
+    const peers2 = await post<Array<{ id: string }>>('/api/list-peers', { project_id: 'iso-proj-2' });
     expect(peers2.data).toHaveLength(1);
   });
 
   it('scope=machine returns all peers across projects', async () => {
-    await post('/register', { pid: process.pid, cwd: '/m1', role: 'a', project_id: 'scope-p1' });
-    await post('/register', { pid: process.pid, cwd: '/m2', role: 'b', project_id: 'scope-p2' });
+    await post('/api/register', { pid: process.pid, cwd: '/m1', role: 'a', project_id: 'scope-p1' });
+    await post('/api/register', { pid: process.pid, cwd: '/m2', role: 'b', project_id: 'scope-p2' });
 
-    const all = await post<Array<{ id: string }>>('/list-peers', { project_id: '', scope: 'machine' });
+    const all = await post<Array<{ id: string }>>('/api/list-peers', { project_id: '', scope: 'machine' });
     // At least these 2 (might be more from other tests since DB is shared in this suite)
     expect(all.data.length).toBeGreaterThanOrEqual(2);
   });
 
   it('default name assignment by role', async () => {
-    const backend = await post<{ name: string }>('/register', { pid: process.pid, cwd: '/n1', role: 'backend', project_id: 'names' });
+    const backend = await post<{ name: string }>('/api/register', { pid: process.pid, cwd: '/n1', role: 'backend', project_id: 'names' });
     expect(backend.data.name).toBe('Turing');
 
-    const frontend = await post<{ name: string }>('/register', { pid: process.pid, cwd: '/n2', role: 'frontend', project_id: 'names' });
+    const frontend = await post<{ name: string }>('/api/register', { pid: process.pid, cwd: '/n2', role: 'frontend', project_id: 'names' });
     expect(frontend.data.name).toBe('Lovelace');
 
-    const qa = await post<{ name: string }>('/register', { pid: process.pid, cwd: '/n3', role: 'qa', project_id: 'names' });
+    const qa = await post<{ name: string }>('/api/register', { pid: process.pid, cwd: '/n3', role: 'qa', project_id: 'names' });
     expect(qa.data.name).toBe('Curie');
   });
 
   it('custom name overrides default', async () => {
-    const reg = await post<{ name: string }>('/register', {
+    const reg = await post<{ name: string }>('/api/register', {
       pid: process.pid, cwd: '/custom', role: 'backend', project_id: 'names',
       name: 'CustomBot',
     });
@@ -184,13 +184,13 @@ describe('peer lifecycle integration', () => {
   });
 
   it('register rejects missing required fields', async () => {
-    const r1 = await post<{ ok: boolean }>('/register', { pid: 123 });
+    const r1 = await post<{ ok: boolean }>('/api/register', { pid: 123 });
     expect(r1.status).toBe(400);
 
-    const r2 = await post<{ ok: boolean }>('/register', { cwd: '/x' });
+    const r2 = await post<{ ok: boolean }>('/api/register', { cwd: '/x' });
     expect(r2.status).toBe(400);
 
-    const r3 = await post<{ ok: boolean }>('/register', {});
+    const r3 = await post<{ ok: boolean }>('/api/register', {});
     expect(r3.status).toBe(400);
   });
 });

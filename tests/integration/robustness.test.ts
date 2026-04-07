@@ -17,14 +17,14 @@ import {
 
 type PostHandler = (body: unknown, res: ServerResponse) => void;
 const POST_ROUTES: Record<string, PostHandler> = {
-  '/register': handleRegister,
-  '/list-peers': handleListPeers,
-  '/send-message': handleSendMessage,
-  '/send-to-role': handleSendToRole,
-  '/poll-messages': handlePollMessages,
-  '/get-history': handleGetHistory,
-  '/threads/create': handleCreateThread,
-  '/threads/search': handleSearchThreads,
+  '/api/register': handleRegister,
+  '/api/list-peers': handleListPeers,
+  '/api/send-message': handleSendMessage,
+  '/api/send-to-role': handleSendToRole,
+  '/api/poll-messages': handlePollMessages,
+  '/api/get-history': handleGetHistory,
+  '/api/threads/create': handleCreateThread,
+  '/api/threads/search': handleSearchThreads,
 };
 
 let server: Server;
@@ -86,7 +86,7 @@ afterAll(async () => {
 // ── Helpers ────────────────────────────────────────────────────
 
 function registerPeer(projectId: string, role: string) {
-  return post<{ id: string }>('/register', {
+  return post<{ id: string }>('/api/register', {
     project_id: projectId,
     pid: process.pid,
     cwd: '/tmp/test',
@@ -115,7 +115,7 @@ describe('robustness', () => {
       }
     }
 
-    const listRes = await post<Array<{ id: string; role: string }>>('/list-peers', {
+    const listRes = await post<Array<{ id: string; role: string }>>('/api/list-peers', {
       project_id: projectId,
     });
 
@@ -135,7 +135,7 @@ describe('robustness', () => {
     const receiverId = receiverRes.data.id;
 
     for (let i = 0; i < 50; i++) {
-      const r = await post('/send-message', {
+      const r = await post('/api/send-message', {
         project_id: projectId,
         from_id: senderId,
         to_id: receiverId,
@@ -144,7 +144,7 @@ describe('robustness', () => {
       expect(r.status).toBe(200);
     }
 
-    const pollRes = await post<{ messages: Array<{ text: string }> }>('/poll-messages', {
+    const pollRes = await post<{ messages: Array<{ text: string }> }>('/api/poll-messages', {
       id: receiverId,
     });
 
@@ -163,7 +163,7 @@ describe('robustness', () => {
 
     const threadIds: string[] = [];
     for (let i = 0; i < 20; i++) {
-      const r = await post<{ id: string; name: string }>('/threads/create', {
+      const r = await post<{ id: string; name: string }>('/api/threads/create', {
         project_id: projectId,
         created_by: creatorId,
         name: `Thread-${i}`,
@@ -174,7 +174,7 @@ describe('robustness', () => {
     }
 
     // Search for 'Thread-1' should match Thread-1, Thread-10 through Thread-19 (up to 11)
-    const search1 = await post<{ threads: Array<{ name: string }> }>('/threads/search', {
+    const search1 = await post<{ threads: Array<{ name: string }> }>('/api/threads/search', {
       project_id: projectId,
       query: 'Thread-1',
     });
@@ -185,7 +185,7 @@ describe('robustness', () => {
     expect(names1).toContain('Thread-1');
 
     // Search for 'Thread-19' should match exactly 1
-    const search2 = await post<{ threads: Array<{ name: string }> }>('/threads/search', {
+    const search2 = await post<{ threads: Array<{ name: string }> }>('/api/threads/search', {
       project_id: projectId,
       query: 'Thread-19',
     });
@@ -203,7 +203,7 @@ describe('robustness', () => {
 
     // Send 3 messages
     for (let i = 0; i < 3; i++) {
-      await post('/send-message', {
+      await post('/api/send-message', {
         project_id: projectId,
         from_id: senderId,
         to_id: receiverId,
@@ -214,7 +214,7 @@ describe('robustness', () => {
     // Poll 10 times concurrently
     const polls = await Promise.all(
       Array.from({ length: 10 }, () =>
-        post<{ messages: Array<{ text: string }> }>('/poll-messages', { id: receiverId })
+        post<{ messages: Array<{ text: string }> }>('/api/poll-messages', { id: receiverId })
       )
     );
 
@@ -234,7 +234,7 @@ describe('robustness', () => {
     expect(allTexts.size).toBe(3);
 
     // After all polls, one more poll should return 0 messages (all delivered)
-    const finalPoll = await post<{ messages: Array<{ text: string }> }>('/poll-messages', {
+    const finalPoll = await post<{ messages: Array<{ text: string }> }>('/api/poll-messages', {
       id: receiverId,
     });
     expect(finalPoll.status).toBe(200);
@@ -251,13 +251,13 @@ describe('robustness', () => {
     const senderId = senderRes.data.id;
 
     // Send targeted messages
-    await post('/send-message', {
+    await post('/api/send-message', {
       project_id: projectId,
       from_id: senderId,
       to_id: peerAId,
       text: 'for-A',
     });
-    await post('/send-message', {
+    await post('/api/send-message', {
       project_id: projectId,
       from_id: senderId,
       to_id: peerBId,
@@ -266,8 +266,8 @@ describe('robustness', () => {
 
     // Poll both simultaneously
     const [pollA, pollB] = await Promise.all([
-      post<{ messages: Array<{ text: string }> }>('/poll-messages', { id: peerAId }),
-      post<{ messages: Array<{ text: string }> }>('/poll-messages', { id: peerBId }),
+      post<{ messages: Array<{ text: string }> }>('/api/poll-messages', { id: peerAId }),
+      post<{ messages: Array<{ text: string }> }>('/api/poll-messages', { id: peerBId }),
     ]);
 
     expect(pollA.status).toBe(200);

@@ -24,7 +24,7 @@ export function registerStatusCommand(program: Command): void {
       console.log(`  ${label(t('status.pendingLabel'))} ${t('status.messages', { count: String(health.pending_messages) })}`);
 
       if (project) {
-        const peers = await brokerFetch<Peer[]>('/list-peers', {
+        const peers = await brokerFetch<Peer[]>('/api/list-peers', {
           project_id: project,
           scope: 'project',
         });

@@ -17,8 +17,8 @@ export function registerPeersCommand(program: Command): void {
       }
 
       const peers = project
-        ? await brokerFetch<Peer[]>('/list-peers', { project_id: project, scope: 'project' })
-        : await brokerFetch<Peer[]>('/list-peers', { project_id: '', scope: 'machine' });
+        ? await brokerFetch<Peer[]>('/api/list-peers', { project_id: project, scope: 'project' })
+        : await brokerFetch<Peer[]>('/api/list-peers', { project_id: '', scope: 'machine' });
 
       if (peers.length === 0) {
         console.log(dim(`  ${t('peers.noPeers')}`));

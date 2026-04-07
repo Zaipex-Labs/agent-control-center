@@ -1,5 +1,8 @@
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse, Server } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { join, extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ACC_HOST, ACC_PORT, CLEANUP_INTERVAL_MS } from '../shared/config.js';
 import { t } from '../shared/i18n/index.js';
 import { initDatabase } from './database.js';
@@ -35,27 +38,45 @@ import {
 type PostHandler = (body: unknown, res: ServerResponse) => void;
 
 const POST_ROUTES: Record<string, PostHandler> = {
-  '/register': handleRegister,
-  '/heartbeat': handleHeartbeat,
-  '/unregister': handleUnregister,
-  '/set-summary': handleSetSummary,
-  '/set-role': handleSetRole,
-  '/list-peers': handleListPeers,
-  '/send-message': handleSendMessage,
-  '/send-to-role': handleSendToRole,
-  '/poll-messages': handlePollMessages,
-  '/get-history': handleGetHistory,
-  '/shared/set': handleSharedSet,
-  '/shared/get': handleSharedGet,
-  '/shared/list': handleSharedList,
-  '/shared/delete': handleSharedDelete,
-  '/threads/create': handleCreateThread,
-  '/threads/list': handleListThreads,
-  '/threads/get': handleGetThread,
-  '/threads/update': handleUpdateThread,
-  '/threads/search': handleSearchThreads,
-  '/threads/summary': handleThreadSummary,
+  '/api/register': handleRegister,
+  '/api/heartbeat': handleHeartbeat,
+  '/api/unregister': handleUnregister,
+  '/api/set-summary': handleSetSummary,
+  '/api/set-role': handleSetRole,
+  '/api/list-peers': handleListPeers,
+  '/api/send-message': handleSendMessage,
+  '/api/send-to-role': handleSendToRole,
+  '/api/poll-messages': handlePollMessages,
+  '/api/get-history': handleGetHistory,
+  '/api/shared/set': handleSharedSet,
+  '/api/shared/get': handleSharedGet,
+  '/api/shared/list': handleSharedList,
+  '/api/shared/delete': handleSharedDelete,
+  '/api/threads/create': handleCreateThread,
+  '/api/threads/list': handleListThreads,
+  '/api/threads/get': handleGetThread,
+  '/api/threads/update': handleUpdateThread,
+  '/api/threads/search': handleSearchThreads,
+  '/api/threads/summary': handleThreadSummary,
 };
+
+const MIME_TYPES: Record<string, string> = {
+  '.html': 'text/html',
+  '.js': 'application/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+};
+
+// Resolve dashboard dist directory relative to this file
+const __dirname = typeof import.meta.url !== 'undefined'
+  ? join(fileURLToPath(import.meta.url), '..', '..', '..')
+  : process.cwd();
+const DASHBOARD_DIR = join(__dirname, 'dist', 'dashboard');
 
 export function createBrokerServer(): Server {
   initDatabase();
@@ -93,6 +114,31 @@ export function createBrokerServer(): Server {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'Invalid JSON body' }));
           return;
+        }
+      }
+    }
+
+    // Static file serving for dashboard (SPA fallback)
+    if (method === 'GET') {
+      const safePath = url.split('?')[0].replace(/\.\./g, '');
+      const filePath = safePath === '/' ? '/index.html' : safePath;
+      const fullPath = join(DASHBOARD_DIR, filePath);
+
+      try {
+        const content = await readFile(fullPath);
+        const ext = extname(filePath);
+        res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] ?? 'application/octet-stream' });
+        res.end(content);
+        return;
+      } catch {
+        // File not found — SPA fallback to index.html
+        try {
+          const indexContent = await readFile(join(DASHBOARD_DIR, 'index.html'));
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end(indexContent);
+          return;
+        } catch {
+          // Dashboard not built yet
         }
       }
     }

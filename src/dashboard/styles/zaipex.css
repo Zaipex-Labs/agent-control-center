@@ -1,0 +1,50 @@
+:root {
+  --z-navy: #1E2D40;
+  --z-navy-dark: #141F2E;
+  --z-navy-deep: #0F1824;
+  --z-orange: #E8823A;
+  --z-green: #3DBA7A;
+  --z-blue: #4A9FE8;
+  --z-purple: #534AB7;
+  --z-beige: #F0ECE3;
+  --z-surface: #1A2840;
+  --z-text: #C8D8E8;
+  --z-text-secondary: #8AA8C0;
+  --z-text-muted: #5A6272;
+  --z-border: #243D58;
+
+  --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-serif: 'DM Serif Display', Georgia, serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--z-navy-dark);
+  color: var(--z-text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+a {
+  color: var(--z-orange);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+code, pre {
+  font-family: var(--font-mono);
+}

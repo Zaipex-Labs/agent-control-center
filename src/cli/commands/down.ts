@@ -24,7 +24,7 @@ export function registerDownCommand(program: Command): void {
 
       let peers: Peer[] = [];
       if (alive) {
-        peers = await brokerFetch<Peer[]>('/list-peers', {
+        peers = await brokerFetch<Peer[]>('/api/list-peers', {
           project_id: projectName,
           scope: 'project',
         });
@@ -44,7 +44,7 @@ export function registerDownCommand(program: Command): void {
 
         if (alive) {
           try {
-            await brokerFetch('/unregister', { id: peer.id });
+            await brokerFetch('/api/unregister', { id: peer.id });
           } catch {
             // Best effort
           }

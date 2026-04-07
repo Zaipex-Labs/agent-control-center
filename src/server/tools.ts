@@ -32,7 +32,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
       scope: z.enum(['project', 'machine', 'directory', 'repo']).optional(),
     },
     async (args) => {
-      const peers = await brokerFetch<Peer[]>('/list-peers', {
+      const peers = await brokerFetch<Peer[]>('/api/list-peers', {
         project_id: identity.project_id,
         scope: args.scope ?? 'project',
         exclude_id: identity.id,
@@ -78,7 +78,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
       thread_id: z.string().optional(),
     },
     async (args) => {
-      const resp = await brokerFetch<OkResponse>('/send-message', {
+      const resp = await brokerFetch<OkResponse>('/api/send-message', {
         project_id: identity.project_id,
         from_id: identity.id,
         to_id: args.to_id,
@@ -105,7 +105,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
       thread_id: z.string().optional(),
     },
     async (args) => {
-      const resp = await brokerFetch<SendToRoleResponse>('/send-to-role', {
+      const resp = await brokerFetch<SendToRoleResponse>('/api/send-to-role', {
         project_id: identity.project_id,
         from_id: identity.id,
         role: args.role,
@@ -123,7 +123,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
     'check_messages',
     'Poll for new messages sent to this agent. Returns and marks them as delivered.',
     async () => {
-      const resp = await brokerFetch<PollMessagesResponse>('/poll-messages', {
+      const resp = await brokerFetch<PollMessagesResponse>('/api/poll-messages', {
         id: identity.id,
       });
       return {
@@ -145,7 +145,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
       thread_id: z.string().optional(),
     },
     async (args) => {
-      const resp = await brokerFetch<GetHistoryResponse>('/get-history', {
+      const resp = await brokerFetch<GetHistoryResponse>('/api/get-history', {
         project_id: identity.project_id,
         role: args.role,
         type: args.type,
@@ -169,7 +169,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
       value: z.string(),
     },
     async (args) => {
-      const resp = await brokerFetch<OkResponse>('/shared/set', {
+      const resp = await brokerFetch<OkResponse>('/api/shared/set', {
         project_id: identity.project_id,
         namespace: args.namespace,
         key: args.key,
@@ -190,7 +190,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
       key: z.string(),
     },
     async (args) => {
-      const resp = await brokerFetch<SharedGetResponse | { error: string }>('/shared/get', {
+      const resp = await brokerFetch<SharedGetResponse | { error: string }>('/api/shared/get', {
         project_id: identity.project_id,
         namespace: args.namespace,
         key: args.key,
@@ -208,7 +208,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
       namespace: z.string(),
     },
     async (args) => {
-      const resp = await brokerFetch<SharedListResponse>('/shared/list', {
+      const resp = await brokerFetch<SharedListResponse>('/api/shared/list', {
         project_id: identity.project_id,
         namespace: args.namespace,
       });
@@ -227,7 +227,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
       thread_id: z.string(),
     },
     async (args) => {
-      const resp = await brokerFetch<ThreadSummaryResponse>('/threads/summary', {
+      const resp = await brokerFetch<ThreadSummaryResponse>('/api/threads/summary', {
         thread_id: args.thread_id,
       });
       return {
@@ -246,7 +246,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
     },
     async (args) => {
       identity.summary = args.summary;
-      const resp = await brokerFetch<OkResponse>('/set-summary', {
+      const resp = await brokerFetch<OkResponse>('/api/set-summary', {
         id: identity.id,
         summary: args.summary,
       });
@@ -264,7 +264,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
     },
     async (args) => {
       identity.role = args.role;
-      const resp = await brokerFetch<OkResponse>('/set-role', {
+      const resp = await brokerFetch<OkResponse>('/api/set-role', {
         id: identity.id,
         role: args.role,
       });

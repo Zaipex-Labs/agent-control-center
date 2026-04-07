@@ -12,24 +12,35 @@
     "dev": "tsx src/server/index.ts",
     "dev:cli": "tsx src/cli/index.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "dashboard:dev": "vite",
+    "dashboard:build": "vite build"
   },
   "author": "Zaipex Labs",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@types/ws": "^8.18.1",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "better-sqlite3": "^11.9.1",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
     "node-pty": "^1.1.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.14.0",
     "ws": "^8.20.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.17.50",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.7.0",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",
+    "vite": "^6.4.2",
     "vitest": "^3.1.4"
   },
   "engines": {

@@ -29,26 +29,26 @@ import {
 
 type PostHandler = (body: unknown, res: ServerResponse) => void;
 const POST_ROUTES: Record<string, PostHandler> = {
-  '/register': handleRegister,
-  '/heartbeat': handleHeartbeat,
-  '/unregister': handleUnregister,
-  '/set-summary': handleSetSummary,
-  '/set-role': handleSetRole,
-  '/list-peers': handleListPeers,
-  '/send-message': handleSendMessage,
-  '/send-to-role': handleSendToRole,
-  '/poll-messages': handlePollMessages,
-  '/get-history': handleGetHistory,
-  '/shared/set': handleSharedSet,
-  '/shared/get': handleSharedGet,
-  '/shared/list': handleSharedList,
-  '/shared/delete': handleSharedDelete,
-  '/threads/create': handleCreateThread,
-  '/threads/list': handleListThreads,
-  '/threads/get': handleGetThread,
-  '/threads/update': handleUpdateThread,
-  '/threads/search': handleSearchThreads,
-  '/threads/summary': handleThreadSummary,
+  '/api/register': handleRegister,
+  '/api/heartbeat': handleHeartbeat,
+  '/api/unregister': handleUnregister,
+  '/api/set-summary': handleSetSummary,
+  '/api/set-role': handleSetRole,
+  '/api/list-peers': handleListPeers,
+  '/api/send-message': handleSendMessage,
+  '/api/send-to-role': handleSendToRole,
+  '/api/poll-messages': handlePollMessages,
+  '/api/get-history': handleGetHistory,
+  '/api/shared/set': handleSharedSet,
+  '/api/shared/get': handleSharedGet,
+  '/api/shared/list': handleSharedList,
+  '/api/shared/delete': handleSharedDelete,
+  '/api/threads/create': handleCreateThread,
+  '/api/threads/list': handleListThreads,
+  '/api/threads/get': handleGetThread,
+  '/api/threads/update': handleUpdateThread,
+  '/api/threads/search': handleSearchThreads,
+  '/api/threads/summary': handleThreadSummary,
 };
 
 let server: Server;
@@ -111,7 +111,7 @@ afterAll(async () => {
 
 describe('edge cases: registration errors', () => {
   it('register with empty project_id returns 400', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string }>('/register', {
+    const { status, data } = await post<{ ok: boolean; error: string }>('/api/register', {
       pid: process.pid, cwd: '/tmp/test', role: 'test', project_id: '',
     });
     expect(status).toBe(400);
@@ -119,7 +119,7 @@ describe('edge cases: registration errors', () => {
   });
 
   it('register with empty cwd returns 400', async () => {
-    const { status } = await post<{ ok: boolean; error: string }>('/register', {
+    const { status } = await post<{ ok: boolean; error: string }>('/api/register', {
       pid: process.pid, cwd: '', role: 'test', project_id: 'ec-reg-err',
     });
     expect(status).toBe(400);
@@ -130,10 +130,10 @@ describe('edge cases: registration errors', () => {
 
 describe('edge cases: message errors', () => {
   it('send message to nonexistent peer returns 404', async () => {
-    const reg = await post<{ id: string }>('/register', {
+    const reg = await post<{ id: string }>('/api/register', {
       pid: process.pid, cwd: '/tmp', role: 'sender', project_id: 'ec-msg-err1',
     });
-    const { status, data } = await post<{ ok: boolean; error: string }>('/send-message', {
+    const { status, data } = await post<{ ok: boolean; error: string }>('/api/send-message', {
       project_id: 'ec-msg-err1', from_id: reg.data.id, to_id: 'nonexistent-peer', text: 'hello',
     });
     expect(status).toBe(404);
@@ -141,10 +141,10 @@ describe('edge cases: message errors', () => {
   });
 
   it('send message from nonexistent peer returns 404', async () => {
-    const reg = await post<{ id: string }>('/register', {
+    const reg = await post<{ id: string }>('/api/register', {
       pid: process.pid, cwd: '/tmp', role: 'receiver', project_id: 'ec-msg-err2',
     });
-    const { status, data } = await post<{ ok: boolean; error: string }>('/send-message', {
+    const { status, data } = await post<{ ok: boolean; error: string }>('/api/send-message', {
       project_id: 'ec-msg-err2', from_id: 'ghost-sender', to_id: reg.data.id, text: 'hello',
     });
     expect(status).toBe(404);
@@ -152,10 +152,10 @@ describe('edge cases: message errors', () => {
   });
 
   it('send-to-role with no matching peers returns sent_to: 0', async () => {
-    const reg = await post<{ id: string }>('/register', {
+    const reg = await post<{ id: string }>('/api/register', {
       pid: process.pid, cwd: '/tmp', role: 'ops', project_id: 'ec-msg-err3',
     });
-    const { status, data } = await post<{ ok: boolean; sent_to: number }>('/send-to-role', {
+    const { status, data } = await post<{ ok: boolean; sent_to: number }>('/api/send-to-role', {
       project_id: 'ec-msg-err3', from_id: reg.data.id, role: 'nonexistent-role', text: 'anyone?',
     });
     expect(status).toBe(200);
@@ -164,7 +164,7 @@ describe('edge cases: message errors', () => {
   });
 
   it('send message with missing text returns 400', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string }>('/send-message', {
+    const { status, data } = await post<{ ok: boolean; error: string }>('/api/send-message', {
       project_id: 'ec-msg-err4', from_id: 'a', to_id: 'b',
     });
     expect(status).toBe(400);
@@ -176,7 +176,7 @@ describe('edge cases: message errors', () => {
 
 describe('edge cases: poll', () => {
   it('poll with valid-format but nonexistent id returns empty messages', async () => {
-    const { status, data } = await post<{ messages: unknown[] }>('/poll-messages', {
+    const { status, data } = await post<{ messages: unknown[] }>('/api/poll-messages', {
       id: 'does-not-exist',
     });
     expect(status).toBe(200);
@@ -188,7 +188,7 @@ describe('edge cases: poll', () => {
 
 describe('edge cases: threads', () => {
   it('create thread with no name uses default name', async () => {
-    const { status, data } = await post<{ id: string; name: string }>('/threads/create', {
+    const { status, data } = await post<{ id: string; name: string }>('/api/threads/create', {
       project_id: 'ec-thread1', created_by: 'peer-1',
     });
     expect(status).toBe(200);
@@ -197,10 +197,10 @@ describe('edge cases: threads', () => {
   });
 
   it('create thread with duplicate name succeeds', async () => {
-    const r1 = await post<{ id: string; name: string }>('/threads/create', {
+    const r1 = await post<{ id: string; name: string }>('/api/threads/create', {
       project_id: 'ec-thread2', created_by: 'peer-1', name: 'Design Discussion',
     });
-    const r2 = await post<{ id: string; name: string }>('/threads/create', {
+    const r2 = await post<{ id: string; name: string }>('/api/threads/create', {
       project_id: 'ec-thread2', created_by: 'peer-1', name: 'Design Discussion',
     });
     expect(r1.status).toBe(200);
@@ -211,7 +211,7 @@ describe('edge cases: threads', () => {
   });
 
   it('get thread that does not exist returns 404', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string }>('/threads/get', {
+    const { status, data } = await post<{ ok: boolean; error: string }>('/api/threads/get', {
       thread_id: 'nonexistent-thread-id',
     });
     expect(status).toBe(404);
@@ -219,7 +219,7 @@ describe('edge cases: threads', () => {
   });
 
   it('update thread that does not exist returns 404', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string }>('/threads/update', {
+    const { status, data } = await post<{ ok: boolean; error: string }>('/api/threads/update', {
       thread_id: 'nonexistent-thread-id', name: 'New Name',
     });
     expect(status).toBe(404);
@@ -227,7 +227,7 @@ describe('edge cases: threads', () => {
   });
 
   it('thread search with empty query returns 400', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string }>('/threads/search', {
+    const { status, data } = await post<{ ok: boolean; error: string }>('/api/threads/search', {
       project_id: 'ec-thread3',
     });
     expect(status).toBe(400);
@@ -235,10 +235,10 @@ describe('edge cases: threads', () => {
   });
 
   it('thread summary with no messages returns "(no messages yet)"', async () => {
-    const thread = await post<{ id: string }>('/threads/create', {
+    const thread = await post<{ id: string }>('/api/threads/create', {
       project_id: 'ec-thread4', created_by: 'peer-1', name: 'Empty Thread',
     });
-    const { status, data } = await post<{ summary: string }>('/threads/summary', {
+    const { status, data } = await post<{ summary: string }>('/api/threads/summary', {
       thread_id: thread.data.id,
     });
     expect(status).toBe(200);
@@ -250,7 +250,7 @@ describe('edge cases: threads', () => {
 
 describe('edge cases: shared state', () => {
   it('get nonexistent key returns 404 with error "not found"', async () => {
-    const { status, data } = await post<{ error: string }>('/shared/get', {
+    const { status, data } = await post<{ error: string }>('/api/shared/get', {
       project_id: 'ec-shared1', namespace: 'config', key: 'does-not-exist',
     });
     expect(status).toBe(404);
@@ -258,7 +258,7 @@ describe('edge cases: shared state', () => {
   });
 
   it('delete nonexistent key returns ok: true (idempotent)', async () => {
-    const { status, data } = await post<{ ok: boolean }>('/shared/delete', {
+    const { status, data } = await post<{ ok: boolean }>('/api/shared/delete', {
       project_id: 'ec-shared2', namespace: 'config', key: 'does-not-exist', peer_id: 'p1',
     });
     expect(status).toBe(200);
@@ -266,7 +266,7 @@ describe('edge cases: shared state', () => {
   });
 
   it('set shared state with missing fields returns 400', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string }>('/shared/set', {
+    const { status, data } = await post<{ ok: boolean; error: string }>('/api/shared/set', {
       project_id: 'ec-shared3', namespace: 'config',
     });
     expect(status).toBe(400);
@@ -278,13 +278,13 @@ describe('edge cases: shared state', () => {
 
 describe('edge cases: body validation', () => {
   it('empty body to /register returns error about missing fields', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string }>('/register', {});
+    const { status, data } = await post<{ ok: boolean; error: string }>('/api/register', {});
     expect(status).toBe(400);
     expect(data.error).toContain('Missing required fields');
   });
 
   it('body with extra fields to /register succeeds and ignores extras', async () => {
-    const { status, data } = await post<{ id: string }>('/register', {
+    const { status, data } = await post<{ id: string }>('/api/register', {
       pid: process.pid, cwd: '/tmp/extra', role: 'test', project_id: 'ec-body1',
       extra_field: 'should be ignored', another: 42,
     });
@@ -293,13 +293,13 @@ describe('edge cases: body validation', () => {
   });
 
   it('empty body to /send-message returns error about missing fields', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string }>('/send-message', {});
+    const { status, data } = await post<{ ok: boolean; error: string }>('/api/send-message', {});
     expect(status).toBe(400);
     expect(data.error).toContain('Missing required fields');
   });
 
   it('empty body to /threads/create returns error about missing fields', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string }>('/threads/create', {});
+    const { status, data } = await post<{ ok: boolean; error: string }>('/api/threads/create', {});
     expect(status).toBe(400);
     expect(data.error).toContain('Missing required fields');
   });
@@ -309,7 +309,7 @@ describe('edge cases: body validation', () => {
 
 describe('edge cases: heartbeat', () => {
   it('heartbeat with nonexistent ID returns 404', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string }>('/heartbeat', {
+    const { status, data } = await post<{ ok: boolean; error: string }>('/api/heartbeat', {
       id: 'nonexistent-peer-id',
     });
     expect(status).toBe(404);
@@ -324,38 +324,38 @@ describe('edge cases: multiple peers same role', () => {
     const proj = 'ec-multi-role';
 
     // Register sender
-    const sender = await post<{ id: string }>('/register', {
+    const sender = await post<{ id: string }>('/api/register', {
       pid: process.pid, cwd: '/sender', role: 'coordinator', project_id: proj,
     });
 
     // Register 3 backend peers
-    const b1 = await post<{ id: string }>('/register', {
+    const b1 = await post<{ id: string }>('/api/register', {
       pid: process.pid, cwd: '/b1', role: 'backend', project_id: proj,
     });
-    const b2 = await post<{ id: string }>('/register', {
+    const b2 = await post<{ id: string }>('/api/register', {
       pid: process.pid, cwd: '/b2', role: 'backend', project_id: proj,
     });
-    const b3 = await post<{ id: string }>('/register', {
+    const b3 = await post<{ id: string }>('/api/register', {
       pid: process.pid, cwd: '/b3', role: 'backend', project_id: proj,
     });
 
     // Send to all backends
-    const resp = await post<{ ok: boolean; sent_to: number }>('/send-to-role', {
+    const resp = await post<{ ok: boolean; sent_to: number }>('/api/send-to-role', {
       project_id: proj, from_id: sender.data.id, role: 'backend', text: 'Scale up instances',
     });
     expect(resp.data.ok).toBe(true);
     expect(resp.data.sent_to).toBe(3);
 
     // All 3 should receive the message
-    const poll1 = await post<{ messages: Array<{ text: string }> }>('/poll-messages', { id: b1.data.id });
+    const poll1 = await post<{ messages: Array<{ text: string }> }>('/api/poll-messages', { id: b1.data.id });
     expect(poll1.data.messages).toHaveLength(1);
     expect(poll1.data.messages[0].text).toBe('Scale up instances');
 
-    const poll2 = await post<{ messages: Array<{ text: string }> }>('/poll-messages', { id: b2.data.id });
+    const poll2 = await post<{ messages: Array<{ text: string }> }>('/api/poll-messages', { id: b2.data.id });
     expect(poll2.data.messages).toHaveLength(1);
     expect(poll2.data.messages[0].text).toBe('Scale up instances');
 
-    const poll3 = await post<{ messages: Array<{ text: string }> }>('/poll-messages', { id: b3.data.id });
+    const poll3 = await post<{ messages: Array<{ text: string }> }>('/api/poll-messages', { id: b3.data.id });
     expect(poll3.data.messages).toHaveLength(1);
     expect(poll3.data.messages[0].text).toBe('Scale up instances');
   });
@@ -369,39 +369,39 @@ describe('edge cases: cross-project isolation', () => {
     const projB = 'ec-iso-projB';
 
     // Register peers in both projects
-    const peerA1 = await post<{ id: string }>('/register', {
+    const peerA1 = await post<{ id: string }>('/api/register', {
       pid: process.pid, cwd: '/a1', role: 'backend', project_id: projA,
     });
-    const peerA2 = await post<{ id: string }>('/register', {
+    const peerA2 = await post<{ id: string }>('/api/register', {
       pid: process.pid, cwd: '/a2', role: 'frontend', project_id: projA,
     });
-    const peerB1 = await post<{ id: string }>('/register', {
+    const peerB1 = await post<{ id: string }>('/api/register', {
       pid: process.pid, cwd: '/b1', role: 'backend', project_id: projB,
     });
-    const peerB2 = await post<{ id: string }>('/register', {
+    const peerB2 = await post<{ id: string }>('/api/register', {
       pid: process.pid, cwd: '/b2', role: 'frontend', project_id: projB,
     });
 
     // Create thread in project A
-    const thread = await post<{ id: string }>('/threads/create', {
+    const thread = await post<{ id: string }>('/api/threads/create', {
       project_id: projA, created_by: peerA1.data.id, name: 'API Design',
     });
     const threadId = thread.data.id;
 
     // Send message in project A using that thread
-    await post('/send-message', {
+    await post('/api/send-message', {
       project_id: projA, from_id: peerA1.data.id, to_id: peerA2.data.id,
       text: 'Let us design the API', thread_id: threadId,
     });
 
     // Send message in project B using same thread_id (just a tag)
-    await post('/send-message', {
+    await post('/api/send-message', {
       project_id: projB, from_id: peerB1.data.id, to_id: peerB2.data.id,
       text: 'Different project message', thread_id: threadId,
     });
 
     // Get history for project A filtered by thread_id — should have 1 message
-    const histA = await post<{ messages: Array<{ text: string; project_id: string }> }>('/get-history', {
+    const histA = await post<{ messages: Array<{ text: string; project_id: string }> }>('/api/get-history', {
       project_id: projA, thread_id: threadId,
     });
     expect(histA.data.messages.length).toBeGreaterThanOrEqual(1);
@@ -409,7 +409,7 @@ describe('edge cases: cross-project isolation', () => {
     expect(textsA).toContain('Let us design the API');
 
     // Get history for project B filtered by thread_id — should only have the project B message
-    const histB = await post<{ messages: Array<{ text: string; project_id: string }> }>('/get-history', {
+    const histB = await post<{ messages: Array<{ text: string; project_id: string }> }>('/api/get-history', {
       project_id: projB, thread_id: threadId,
     });
     const textsB = histB.data.messages.map(m => m.text);

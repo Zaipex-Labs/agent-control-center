@@ -64,7 +64,7 @@ describe('createBrokerServer', () => {
     });
 
     const addr = server.address() as { port: number };
-    const resp = await fetch(`http://127.0.0.1:${addr.port}/register`, {
+    const resp = await fetch(`http://127.0.0.1:${addr.port}/api/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: 'not-json{{{',
@@ -80,7 +80,7 @@ describe('createBrokerServer', () => {
     });
 
     const addr = server.address() as { port: number };
-    const resp = await fetch(`http://127.0.0.1:${addr.port}/register`, {
+    const resp = await fetch(`http://127.0.0.1:${addr.port}/api/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

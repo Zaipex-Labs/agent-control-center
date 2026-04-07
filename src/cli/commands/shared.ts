@@ -18,7 +18,7 @@ export function registerSharedCommand(program: Command): void {
 
       // Show a specific key
       if (namespace && key) {
-        const resp = await brokerFetch<SharedGetResponse | { error: string }>('/shared/get', {
+        const resp = await brokerFetch<SharedGetResponse | { error: string }>('/api/shared/get', {
           project_id: project,
           namespace,
           key,
@@ -39,7 +39,7 @@ export function registerSharedCommand(program: Command): void {
 
       // List keys in a namespace
       if (namespace) {
-        const resp = await brokerFetch<SharedListResponse>('/shared/list', {
+        const resp = await brokerFetch<SharedListResponse>('/api/shared/list', {
           project_id: project,
           namespace,
         });

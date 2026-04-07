@@ -16,12 +16,12 @@ import {
 type PostHandler = (body: unknown, res: ServerResponse) => void;
 
 const POST_ROUTES: Record<string, PostHandler> = {
-  '/register': handleRegister,
-  '/send-message': handleSendMessage,
-  '/send-to-role': handleSendToRole,
-  '/poll-messages': handlePollMessages,
-  '/get-history': handleGetHistory,
-  '/unregister': handleUnregister,
+  '/api/register': handleRegister,
+  '/api/send-message': handleSendMessage,
+  '/api/send-to-role': handleSendToRole,
+  '/api/poll-messages': handlePollMessages,
+  '/api/get-history': handleGetHistory,
+  '/api/unregister': handleUnregister,
 };
 
 let server: Server;
@@ -83,62 +83,62 @@ describe('message flow integration', () => {
   it('messages between 3 agents in correct order', async () => {
     const projId = 'msg-flow-3';
 
-    const a = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/a', role: 'backend', project_id: projId });
-    const b = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/b', role: 'frontend', project_id: projId });
-    const c = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/c', role: 'qa', project_id: projId });
+    const a = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/a', role: 'backend', project_id: projId });
+    const b = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/b', role: 'frontend', project_id: projId });
+    const c = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/c', role: 'qa', project_id: projId });
 
     // A → B
-    await post('/send-message', { project_id: projId, from_id: a.data.id, to_id: b.data.id, text: 'API ready' });
+    await post('/api/send-message', { project_id: projId, from_id: a.data.id, to_id: b.data.id, text: 'API ready' });
     // B → C
-    await post('/send-message', { project_id: projId, from_id: b.data.id, to_id: c.data.id, text: 'UI ready for testing' });
+    await post('/api/send-message', { project_id: projId, from_id: b.data.id, to_id: c.data.id, text: 'UI ready for testing' });
     // A → C
-    await post('/send-message', { project_id: projId, from_id: a.data.id, to_id: c.data.id, text: 'Check /users endpoint' });
+    await post('/api/send-message', { project_id: projId, from_id: a.data.id, to_id: c.data.id, text: 'Check /users endpoint' });
 
     // B should have 1 message
-    const pollB = await post<{ messages: Array<{ text: string }> }>('/poll-messages', { id: b.data.id });
+    const pollB = await post<{ messages: Array<{ text: string }> }>('/api/poll-messages', { id: b.data.id });
     expect(pollB.data.messages).toHaveLength(1);
     expect(pollB.data.messages[0].text).toBe('API ready');
 
     // C should have 2 messages in order
-    const pollC = await post<{ messages: Array<{ text: string }> }>('/poll-messages', { id: c.data.id });
+    const pollC = await post<{ messages: Array<{ text: string }> }>('/api/poll-messages', { id: c.data.id });
     expect(pollC.data.messages).toHaveLength(2);
     expect(pollC.data.messages[0].text).toBe('UI ready for testing');
     expect(pollC.data.messages[1].text).toBe('Check /users endpoint');
 
     // A should have 0 messages
-    const pollA = await post<{ messages: Array<{ text: string }> }>('/poll-messages', { id: a.data.id });
+    const pollA = await post<{ messages: Array<{ text: string }> }>('/api/poll-messages', { id: a.data.id });
     expect(pollA.data.messages).toHaveLength(0);
   });
 
   it('message types are preserved', async () => {
     const projId = 'msg-types';
-    const a = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/x', role: 'backend', project_id: projId });
-    const b = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/y', role: 'frontend', project_id: projId });
+    const a = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/x', role: 'backend', project_id: projId });
+    const b = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/y', role: 'frontend', project_id: projId });
 
-    await post('/send-message', { project_id: projId, from_id: a.data.id, to_id: b.data.id, type: 'question', text: 'Ready?' });
-    await post('/send-message', { project_id: projId, from_id: b.data.id, to_id: a.data.id, type: 'response', text: 'Yes' });
-    await post('/send-message', { project_id: projId, from_id: a.data.id, to_id: b.data.id, type: 'task_request', text: 'Build form' });
-    await post('/send-message', { project_id: projId, from_id: b.data.id, to_id: a.data.id, type: 'task_complete', text: 'Done' });
+    await post('/api/send-message', { project_id: projId, from_id: a.data.id, to_id: b.data.id, type: 'question', text: 'Ready?' });
+    await post('/api/send-message', { project_id: projId, from_id: b.data.id, to_id: a.data.id, type: 'response', text: 'Yes' });
+    await post('/api/send-message', { project_id: projId, from_id: a.data.id, to_id: b.data.id, type: 'task_request', text: 'Build form' });
+    await post('/api/send-message', { project_id: projId, from_id: b.data.id, to_id: a.data.id, type: 'task_complete', text: 'Done' });
 
-    const pollB = await post<{ messages: Array<{ type: string }> }>('/poll-messages', { id: b.data.id });
+    const pollB = await post<{ messages: Array<{ type: string }> }>('/api/poll-messages', { id: b.data.id });
     expect(pollB.data.messages[0].type).toBe('question');
     expect(pollB.data.messages[1].type).toBe('task_request');
 
-    const pollA = await post<{ messages: Array<{ type: string }> }>('/poll-messages', { id: a.data.id });
+    const pollA = await post<{ messages: Array<{ type: string }> }>('/api/poll-messages', { id: a.data.id });
     expect(pollA.data.messages[0].type).toBe('response');
     expect(pollA.data.messages[1].type).toBe('task_complete');
   });
 
   it('history includes all messages in project', async () => {
     const projId = 'hist-all';
-    const a = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/ha', role: 'backend', project_id: projId });
-    const b = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/hb', role: 'frontend', project_id: projId });
+    const a = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/ha', role: 'backend', project_id: projId });
+    const b = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/hb', role: 'frontend', project_id: projId });
 
-    await post('/send-message', { project_id: projId, from_id: a.data.id, to_id: b.data.id, text: 'msg1' });
-    await post('/send-message', { project_id: projId, from_id: b.data.id, to_id: a.data.id, text: 'msg2' });
-    await post('/send-message', { project_id: projId, from_id: a.data.id, to_id: b.data.id, text: 'msg3' });
+    await post('/api/send-message', { project_id: projId, from_id: a.data.id, to_id: b.data.id, text: 'msg1' });
+    await post('/api/send-message', { project_id: projId, from_id: b.data.id, to_id: a.data.id, text: 'msg2' });
+    await post('/api/send-message', { project_id: projId, from_id: a.data.id, to_id: b.data.id, text: 'msg3' });
 
-    const hist = await post<{ messages: Array<{ text: string; from_role: string; to_role: string }> }>('/get-history', {
+    const hist = await post<{ messages: Array<{ text: string; from_role: string; to_role: string }> }>('/api/get-history', {
       project_id: projId,
     });
     expect(hist.data.messages).toHaveLength(3);
@@ -146,16 +146,16 @@ describe('message flow integration', () => {
 
   it('history filters by role', async () => {
     const projId = 'hist-role';
-    const a = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/ra', role: 'backend', project_id: projId });
-    const b = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/rb', role: 'frontend', project_id: projId });
-    const c = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/rc', role: 'devops', project_id: projId });
+    const a = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/ra', role: 'backend', project_id: projId });
+    const b = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/rb', role: 'frontend', project_id: projId });
+    const c = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/rc', role: 'devops', project_id: projId });
 
-    await post('/send-message', { project_id: projId, from_id: a.data.id, to_id: b.data.id, text: 'A→B' });
-    await post('/send-message', { project_id: projId, from_id: c.data.id, to_id: b.data.id, text: 'C→B' });
-    await post('/send-message', { project_id: projId, from_id: a.data.id, to_id: c.data.id, text: 'A→C' });
+    await post('/api/send-message', { project_id: projId, from_id: a.data.id, to_id: b.data.id, text: 'A→B' });
+    await post('/api/send-message', { project_id: projId, from_id: c.data.id, to_id: b.data.id, text: 'C→B' });
+    await post('/api/send-message', { project_id: projId, from_id: a.data.id, to_id: c.data.id, text: 'A→C' });
 
     // Filter by "devops" — should see C→B (from) and A→C (to)
-    const hist = await post<{ messages: Array<{ text: string }> }>('/get-history', {
+    const hist = await post<{ messages: Array<{ text: string }> }>('/api/get-history', {
       project_id: projId,
       role: 'devops',
     });
@@ -164,14 +164,14 @@ describe('message flow integration', () => {
 
   it('history respects limit', async () => {
     const projId = 'hist-limit';
-    const a = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/la', role: 'backend', project_id: projId });
-    const b = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/lb', role: 'frontend', project_id: projId });
+    const a = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/la', role: 'backend', project_id: projId });
+    const b = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/lb', role: 'frontend', project_id: projId });
 
     for (let i = 0; i < 10; i++) {
-      await post('/send-message', { project_id: projId, from_id: a.data.id, to_id: b.data.id, text: `msg-${i}` });
+      await post('/api/send-message', { project_id: projId, from_id: a.data.id, to_id: b.data.id, text: `msg-${i}` });
     }
 
-    const hist = await post<{ messages: unknown[] }>('/get-history', {
+    const hist = await post<{ messages: unknown[] }>('/api/get-history', {
       project_id: projId,
       limit: 3,
     });
@@ -180,11 +180,11 @@ describe('message flow integration', () => {
 
   it('send-to-role skips sender even if same role', async () => {
     const projId = 'str-self';
-    const a = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/sa', role: 'backend', project_id: projId });
-    const b = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/sb', role: 'backend', project_id: projId });
+    const a = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/sa', role: 'backend', project_id: projId });
+    const b = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/sb', role: 'backend', project_id: projId });
 
     // A sends to role "backend" — both A and B have that role
-    const resp = await post<{ sent_to: number }>('/send-to-role', {
+    const resp = await post<{ sent_to: number }>('/api/send-to-role', {
       project_id: projId,
       from_id: a.data.id,
       role: 'backend',
@@ -196,14 +196,14 @@ describe('message flow integration', () => {
 
   it('unregistered peer cannot receive messages', async () => {
     const projId = 'unreg-recv';
-    const a = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/ua', role: 'backend', project_id: projId });
-    const b = await post<{ id: string }>('/register', { pid: process.pid, cwd: '/ub', role: 'frontend', project_id: projId });
+    const a = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/ua', role: 'backend', project_id: projId });
+    const b = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/ub', role: 'frontend', project_id: projId });
 
     // Unregister B
-    await post('/unregister', { id: b.data.id });
+    await post('/api/unregister', { id: b.data.id });
 
     // Try to send to B — should fail
-    const resp = await post<{ ok: boolean; error: string }>('/send-message', {
+    const resp = await post<{ ok: boolean; error: string }>('/api/send-message', {
       project_id: projId,
       from_id: a.data.id,
       to_id: b.data.id,

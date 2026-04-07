@@ -18,7 +18,7 @@ export function registerHistoryCommand(program: Command): void {
         return;
       }
 
-      const resp = await brokerFetch<GetHistoryResponse>('/get-history', {
+      const resp = await brokerFetch<GetHistoryResponse>('/api/get-history', {
         project_id: project,
         role: opts.role,
         limit: parseInt(opts.last, 10),

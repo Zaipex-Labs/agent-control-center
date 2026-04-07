@@ -15,11 +15,11 @@ import {
 type PostHandler = (body: unknown, res: ServerResponse) => void;
 
 const POST_ROUTES: Record<string, PostHandler> = {
-  '/register': handleRegister,
-  '/shared/set': handleSharedSet,
-  '/shared/get': handleSharedGet,
-  '/shared/list': handleSharedList,
-  '/shared/delete': handleSharedDelete,
+  '/api/register': handleRegister,
+  '/api/shared/set': handleSharedSet,
+  '/api/shared/get': handleSharedGet,
+  '/api/shared/list': handleSharedList,
+  '/api/shared/delete': handleSharedDelete,
 };
 
 let server: Server;
@@ -80,7 +80,7 @@ afterAll(async () => {
 describe('shared state integration', () => {
   it('full CRUD lifecycle: set → get → list → delete → get (404)', async () => {
     // Set a value
-    const setResp = await post<{ ok: boolean }>('/shared/set', {
+    const setResp = await post<{ ok: boolean }>('/api/shared/set', {
       project_id: 'ss-test',
       namespace: 'contracts',
       key: 'user-api',
@@ -90,7 +90,7 @@ describe('shared state integration', () => {
     expect(setResp.data.ok).toBe(true);
 
     // Get it back
-    const getResp = await post<{ value: string; updated_by: string; updated_at: string }>('/shared/get', {
+    const getResp = await post<{ value: string; updated_by: string; updated_at: string }>('/api/shared/get', {
       project_id: 'ss-test',
       namespace: 'contracts',
       key: 'user-api',
@@ -101,14 +101,14 @@ describe('shared state integration', () => {
     expect(getResp.data.updated_by).toBe('agent-1');
 
     // List keys
-    const listResp = await post<{ keys: string[] }>('/shared/list', {
+    const listResp = await post<{ keys: string[] }>('/api/shared/list', {
       project_id: 'ss-test',
       namespace: 'contracts',
     });
     expect(listResp.data.keys).toContain('user-api');
 
     // Delete
-    const delResp = await post<{ ok: boolean }>('/shared/delete', {
+    const delResp = await post<{ ok: boolean }>('/api/shared/delete', {
       project_id: 'ss-test',
       namespace: 'contracts',
       key: 'user-api',
@@ -117,7 +117,7 @@ describe('shared state integration', () => {
     expect(delResp.data.ok).toBe(true);
 
     // Verify deleted
-    const getAgain = await post<{ error: string }>('/shared/get', {
+    const getAgain = await post<{ error: string }>('/api/shared/get', {
       project_id: 'ss-test',
       namespace: 'contracts',
       key: 'user-api',
@@ -126,7 +126,7 @@ describe('shared state integration', () => {
   });
 
   it('upsert overwrites existing value', async () => {
-    await post('/shared/set', {
+    await post('/api/shared/set', {
       project_id: 'ss-test',
       namespace: 'config',
       key: 'port',
@@ -134,7 +134,7 @@ describe('shared state integration', () => {
       peer_id: 'agent-1',
     });
 
-    await post('/shared/set', {
+    await post('/api/shared/set', {
       project_id: 'ss-test',
       namespace: 'config',
       key: 'port',
@@ -142,7 +142,7 @@ describe('shared state integration', () => {
       peer_id: 'agent-2',
     });
 
-    const resp = await post<{ value: string; updated_by: string }>('/shared/get', {
+    const resp = await post<{ value: string; updated_by: string }>('/api/shared/get', {
       project_id: 'ss-test',
       namespace: 'config',
       key: 'port',
@@ -152,7 +152,7 @@ describe('shared state integration', () => {
   });
 
   it('namespaces are isolated', async () => {
-    await post('/shared/set', {
+    await post('/api/shared/set', {
       project_id: 'ss-test',
       namespace: 'ns-a',
       key: 'shared-key',
@@ -160,7 +160,7 @@ describe('shared state integration', () => {
       peer_id: 'p1',
     });
 
-    await post('/shared/set', {
+    await post('/api/shared/set', {
       project_id: 'ss-test',
       namespace: 'ns-b',
       key: 'shared-key',
@@ -168,14 +168,14 @@ describe('shared state integration', () => {
       peer_id: 'p1',
     });
 
-    const respA = await post<{ value: string }>('/shared/get', {
+    const respA = await post<{ value: string }>('/api/shared/get', {
       project_id: 'ss-test',
       namespace: 'ns-a',
       key: 'shared-key',
     });
     expect(respA.data.value).toBe('value-a');
 
-    const respB = await post<{ value: string }>('/shared/get', {
+    const respB = await post<{ value: string }>('/api/shared/get', {
       project_id: 'ss-test',
       namespace: 'ns-b',
       key: 'shared-key',
@@ -184,7 +184,7 @@ describe('shared state integration', () => {
   });
 
   it('projects are isolated', async () => {
-    await post('/shared/set', {
+    await post('/api/shared/set', {
       project_id: 'proj-x',
       namespace: 'ns',
       key: 'k',
@@ -192,7 +192,7 @@ describe('shared state integration', () => {
       peer_id: 'p1',
     });
 
-    const resp = await post<{ error: string }>('/shared/get', {
+    const resp = await post<{ error: string }>('/api/shared/get', {
       project_id: 'proj-y',
       namespace: 'ns',
       key: 'k',
@@ -201,7 +201,7 @@ describe('shared state integration', () => {
   });
 
   it('rejects set with missing fields', async () => {
-    const resp = await post<{ ok: boolean; error: string }>('/shared/set', {
+    const resp = await post<{ ok: boolean; error: string }>('/api/shared/set', {
       project_id: 'ss-test',
       namespace: 'ns',
       // missing: key, value, peer_id
@@ -210,7 +210,7 @@ describe('shared state integration', () => {
   });
 
   it('rejects get with missing fields', async () => {
-    const resp = await post<{ ok: boolean; error: string }>('/shared/get', {
+    const resp = await post<{ ok: boolean; error: string }>('/api/shared/get', {
       project_id: 'ss-test',
       // missing: namespace, key
     });
@@ -218,7 +218,7 @@ describe('shared state integration', () => {
   });
 
   it('list returns empty array for nonexistent namespace', async () => {
-    const resp = await post<{ keys: string[] }>('/shared/list', {
+    const resp = await post<{ keys: string[] }>('/api/shared/list', {
       project_id: 'ss-test',
       namespace: 'nonexistent-ns',
     });
