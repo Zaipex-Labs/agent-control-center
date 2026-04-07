@@ -177,8 +177,13 @@ export function handleListProjects(res: ServerResponse): void {
       .filter(f => f.endsWith('.json'))
       .map(f => {
         const config = JSON.parse(readFileSync(join(PROJECTS_DIR, f), 'utf-8'));
-        const peers = selectPeersByProject(config.name);
-        return { ...config, active_peers: peers.length, peers };
+        const allPeers = selectPeersByProject(config.name);
+        // Filter out zombie peers (process dead) and dashboard peers
+        const livePeers = allPeers.filter(p => {
+          if (p.agent_type === 'dashboard') return false;
+          try { process.kill(p.pid, 0); return true; } catch { return false; }
+        });
+        return { ...config, active_peers: livePeers.length, peers: livePeers };
       })
       .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
     json(res, { projects });
@@ -241,14 +246,24 @@ export function handleProjectUp(body: unknown, res: ServerResponse): void {
     return error(res, 'Project has no agents configured');
   }
 
+  // Clean up zombie peers from previous runs
+  const stalePeers = selectPeersByProject(b.project_id);
+  for (const peer of stalePeers) {
+    if (peer.agent_type === 'dashboard') continue;
+    try { process.kill(peer.pid, 0); } catch {
+      deletePeer(peer.id);
+    }
+  }
+
   try {
     registerMcpServer();
   } catch (e) {
     return error(res, `Failed to register MCP server: ${e}`);
   }
 
+  // Kill existing tmux session if it exists (stale from previous run)
   if (hasTmuxSess(b.project_id)) {
-    return error(res, `Project ${b.project_id} is already running (tmux session exists)`);
+    killTmuxSession(b.project_id);
   }
 
   const agentNames = config.agents.map((a: { role: string; name?: string }) =>
