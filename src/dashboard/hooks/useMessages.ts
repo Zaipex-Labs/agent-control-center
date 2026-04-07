@@ -27,6 +27,7 @@ export function useMessages(
   projectId: string | undefined,
   threadId: string | undefined,
   senderId?: string,
+  threadName?: string,
 ): UseMessagesReturn {
   const [messages, setMessages] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,6 +100,12 @@ export function useMessages(
       setSendError(null);
       setLastSend({ toRole, text, type });
 
+      // Prepend thread context so the agent knows which thread to reply in
+      const contextPrefix = threadId && threadName
+        ? `[Hilo: ${threadName} | thread_id: ${threadId}] Responde usando send_message con thread_id="${threadId}". `
+        : '';
+      const fullText = contextPrefix + text;
+
       if (optimistic) {
         const msg: LogEntry = {
           id: Date.now(),
@@ -118,7 +125,7 @@ export function useMessages(
       }
 
       try {
-        await sendToRole(projectId, senderId, toRole, text, threadId, type);
+        await sendToRole(projectId, senderId, toRole, fullText, threadId, type);
         // Show typing indicator
         setWaitingFor({ toRole, since: Date.now() });
         clearTimeout(waitingTimeout.current);
@@ -128,7 +135,7 @@ export function useMessages(
       } catch {
         // Retry once — re-register might be needed
         try {
-          await sendToRole(projectId, senderId, toRole, text, threadId, type);
+          await sendToRole(projectId, senderId, toRole, fullText, threadId, type);
           setWaitingFor({ toRole, since: Date.now() });
           clearTimeout(waitingTimeout.current);
           waitingTimeout.current = setTimeout(() => {

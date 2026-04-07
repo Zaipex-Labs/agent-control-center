@@ -20,7 +20,7 @@ export default function ProjectPage() {
   const { agents } = useAgents(projectId);
   const dashboardId = useDashboardPeer(projectId);
   const { threads, activeThread, setActiveThread, createThread } = useThreads(projectId);
-  const { messages, loading: messagesLoading, sendMessage, waitingFor, sendError, clearError, retrySend } = useMessages(projectId, activeThread?.id, dashboardId);
+  const { messages, loading: messagesLoading, sendMessage, waitingFor, sendError, clearError, retrySend } = useMessages(projectId, activeThread?.id, dashboardId, activeThread?.name);
   const [creatingThread, setCreatingThread] = useState(false);
   const [newThreadName, setNewThreadName] = useState('');
   const [showSidebar, setShowSidebar] = useState(true);
