@@ -45,9 +45,10 @@ export async function listProjects(): Promise<Project[]> {
 // ── Dashboard peer registration ───────────────────────────────
 
 export async function registerDashboard(projectId: string): Promise<{ id: string; name: string }> {
+  // Use PID 1 (init) which is always alive, so cleanup won't remove us
   return apiFetch<{ id: string; name: string }>('register', {
     project_id: projectId,
-    pid: 0,
+    pid: 1,
     cwd: '/',
     role: 'user',
     name: 'Dashboard',
