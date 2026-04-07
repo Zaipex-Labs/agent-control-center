@@ -36,10 +36,9 @@ export function useDashboardPeer(projectId: string | undefined): string | undefi
     return () => {
       cancelled = true;
       clearInterval(heartbeatRef.current);
-      if (idRef.current) {
-        unregisterDashboard(idRef.current);
-        idRef.current = undefined;
-      }
+      // Don't unregister — let the stale peer cleanup handle it
+      // This prevents the gap between unmount and remount where senderId is undefined
+      idRef.current = undefined;
       setPeerId(undefined);
     };
   }, [projectId]);

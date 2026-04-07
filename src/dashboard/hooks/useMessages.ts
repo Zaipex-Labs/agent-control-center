@@ -121,17 +121,25 @@ export function useMessages(
         await sendToRole(projectId, senderId, toRole, text, threadId, type);
         // Show typing indicator
         setWaitingFor({ toRole, since: Date.now() });
-        // Timeout after 60s
         clearTimeout(waitingTimeout.current);
         waitingTimeout.current = setTimeout(() => {
           setWaitingFor(null);
         }, 60000);
-      } catch (e) {
-        // Remove the optimistic message
-        if (optimistic) {
-          setMessages((prev) => prev.filter(m => !(m.from_id === 'user' && m.text === text)));
+      } catch {
+        // Retry once — re-register might be needed
+        try {
+          await sendToRole(projectId, senderId, toRole, text, threadId, type);
+          setWaitingFor({ toRole, since: Date.now() });
+          clearTimeout(waitingTimeout.current);
+          waitingTimeout.current = setTimeout(() => {
+            setWaitingFor(null);
+          }, 60000);
+        } catch {
+          if (optimistic) {
+            setMessages((prev) => prev.filter(m => !(m.from_id === 'user' && m.text === text)));
+          }
+          setSendError({ text, toRole });
         }
-        setSendError({ text, toRole });
       }
     },
     [projectId, senderId, threadId],
