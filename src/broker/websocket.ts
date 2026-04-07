@@ -1,7 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import type { Server } from 'node:http';
 import type { IncomingMessage } from 'node:http';
-import { URL } from 'node:url';
+import type { Duplex } from 'node:stream';
 
 export type BrokerEvent =
   | 'peer:connected'
@@ -18,34 +17,21 @@ interface WsClient {
 
 const clients = new Set<WsClient>();
 
-let wss: WebSocketServer | null = null;
+const wss = new WebSocketServer({ noServer: true });
 
-export function createWebSocketServer(httpServer: Server): WebSocketServer {
-  wss = new WebSocketServer({ noServer: true });
+export function handleEventsUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, projectId: string | null): void {
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    const client: WsClient = { ws, projectId };
+    clients.add(client);
 
-  httpServer.on('upgrade', (req: IncomingMessage, socket, head) => {
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-    if (url.pathname !== '/ws') {
-      socket.destroy();
-      return;
-    }
+    ws.on('close', () => {
+      clients.delete(client);
+    });
 
-    wss!.handleUpgrade(req, socket, head, (ws) => {
-      const projectId = url.searchParams.get('project_id');
-      const client: WsClient = { ws, projectId };
-      clients.add(client);
-
-      ws.on('close', () => {
-        clients.delete(client);
-      });
-
-      ws.on('error', () => {
-        clients.delete(client);
-      });
+    ws.on('error', () => {
+      clients.delete(client);
     });
   });
-
-  return wss;
 }
 
 export function broadcast(event: BrokerEvent, data: unknown, projectId?: string): void {
@@ -53,7 +39,6 @@ export function broadcast(event: BrokerEvent, data: unknown, projectId?: string)
 
   for (const client of clients) {
     if (client.ws.readyState !== WebSocket.OPEN) continue;
-    // Send to all if no projectId filter, or if client subscribed to this project, or client has no filter
     if (!projectId || !client.projectId || client.projectId === projectId) {
       client.ws.send(payload);
     }

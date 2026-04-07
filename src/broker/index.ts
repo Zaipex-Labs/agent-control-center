@@ -4,7 +4,9 @@ import { ACC_HOST, ACC_PORT, CLEANUP_INTERVAL_MS } from '../shared/config.js';
 import { t } from '../shared/i18n/index.js';
 import { initDatabase } from './database.js';
 import { cleanStalePeers } from './cleanup.js';
-import { createWebSocketServer } from './websocket.js';
+import { URL } from 'node:url';
+import { handleEventsUpgrade } from './websocket.js';
+import { handleTerminalUpgrade } from './terminal.js';
 import {
   parseBody,
   handleHealth,
@@ -99,7 +101,30 @@ export function createBrokerServer(): Server {
     res.end(JSON.stringify({ ok: false, error: 'Not found' }));
   });
 
-  createWebSocketServer(server);
+  // WebSocket upgrade dispatch — route by path
+  server.on('upgrade', (req, socket, head) => {
+    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+
+    if (url.pathname === '/ws') {
+      const projectId = url.searchParams.get('project_id');
+      handleEventsUpgrade(req, socket, head, projectId);
+      return;
+    }
+
+    const termMatch = url.pathname.match(/^\/ws\/terminal\/([a-zA-Z0-9_.\-]+)$/);
+    if (termMatch) {
+      const role = termMatch[1];
+      const projectId = url.searchParams.get('project');
+      if (!projectId) {
+        socket.destroy();
+        return;
+      }
+      handleTerminalUpgrade(req, socket, head, role, projectId);
+      return;
+    }
+
+    socket.destroy();
+  });
 
   return server;
 }
