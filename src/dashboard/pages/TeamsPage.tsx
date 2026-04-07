@@ -42,7 +42,7 @@ function Avatar({ name, role }: { name: string; role: string }) {
   );
 }
 
-function ProjectCard({ project, onClick, onPowerUp }: { project: Project; onClick: () => void; onPowerUp: () => void }) {
+function ProjectCard({ project, onClick, onPowerUp, starting }: { project: Project; onClick: () => void; onPowerUp: () => void; starting: boolean }) {
   const isActive = project.active_peers > 0;
   const lastActivity = project.peers.length > 0
     ? project.peers.reduce((latest, p) => p.last_seen > latest ? p.last_seen : latest, '')
@@ -112,16 +112,18 @@ function ProjectCard({ project, onClick, onPowerUp }: { project: Project; onClic
         {!isActive && project.agents.length > 0 && (
           <button
             onClick={(e) => { e.stopPropagation(); onPowerUp(); }}
+            disabled={starting}
             style={{
-              background: '#3DBA7A', color: '#fff', border: 'none',
+              background: starting ? '#8AA8C0' : '#3DBA7A', color: '#fff', border: 'none',
               padding: '6px 14px', borderRadius: 8, fontSize: 12,
-              fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)',
-              transition: 'background 0.15s',
+              fontWeight: 600, cursor: starting ? 'wait' : 'pointer',
+              fontFamily: 'var(--font-sans)', transition: 'background 0.15s',
+              opacity: starting ? 0.7 : 1,
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#2FA068'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = '#3DBA7A'; }}
+            onMouseEnter={e => { if (!starting) e.currentTarget.style.background = '#2FA068'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = starting ? '#8AA8C0' : '#3DBA7A'; }}
           >
-            Encender
+            {starting ? 'Encendiendo...' : 'Encender'}
           </button>
         )}
       </div>
@@ -156,6 +158,7 @@ export default function TeamsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const reload = () => listProjects().then(setProjects).catch(() => {});
@@ -169,13 +172,14 @@ export default function TeamsPage() {
 
   const handlePowerUp = async (name: string) => {
     setStarting(name);
+    setError(null);
     try {
       await projectUp(name);
-      // Wait a moment for agents to register, then reload
+      // Wait for agents to register, then reload
       setTimeout(reload, 3000);
+      setTimeout(() => setStarting(null), 4000);
     } catch (e) {
-      console.error('Failed to start project:', e);
-    } finally {
+      setError(`Error al encender ${name}: ${e instanceof Error ? e.message : String(e)}`);
       setStarting(null);
     }
   };
@@ -235,6 +239,20 @@ export default function TeamsPage() {
           </p>
         </div>
 
+        {error && (
+          <div style={{
+            background: '#FDF0EC', border: '1px solid #E8823A',
+            borderRadius: 10, padding: '12px 16px', marginBottom: 20,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <span style={{ fontSize: 13, color: '#8B3A1A' }}>{error}</span>
+            <button onClick={() => setError(null)} style={{
+              background: 'none', border: 'none', color: '#8B3A1A',
+              fontSize: 16, cursor: 'pointer', padding: '0 4px',
+            }}>&times;</button>
+          </div>
+        )}
+
         {loading ? (
           <div style={{ textAlign: 'center', padding: 80, color: '#8AA8C0' }}>
             Cargando proyectos...
@@ -251,6 +269,7 @@ export default function TeamsPage() {
                 project={project}
                 onClick={() => navigate(`/${encodeURIComponent(project.name)}`)}
                 onPowerUp={() => handlePowerUp(project.name)}
+                starting={starting === project.name}
               />
             ))}
             <NewTeamCard onClick={() => {/* TODO: new team modal */}} />

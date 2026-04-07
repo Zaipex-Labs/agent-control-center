@@ -25,6 +25,7 @@ export default function ProjectPage() {
   const [sharedRefresh, setSharedRefresh] = useState(0);
   const [terminalTabs, setTerminalTabs] = useState<Array<{ role: string; name: string }>>([]);
   const [powering, setPowering] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'ok' | 'err' } | null>(null);
 
   const terminalRoles = new Set(terminalTabs.map(t => t.role));
 
@@ -39,10 +40,13 @@ export default function ProjectPage() {
   const handlePowerUp = async () => {
     if (!projectId || powering) return;
     setPowering(true);
+    setStatusMsg(null);
     try {
-      await projectUp(projectId);
+      const result = await projectUp(projectId);
+      setStatusMsg({ text: `Equipo encendido (${result.agents} agentes, ${result.strategy})`, type: 'ok' });
+      setTimeout(() => setStatusMsg(null), 5000);
     } catch (e) {
-      console.error('Failed to start project:', e);
+      setStatusMsg({ text: `Error: ${e instanceof Error ? e.message : String(e)}`, type: 'err' });
     } finally {
       setPowering(false);
     }
@@ -50,11 +54,14 @@ export default function ProjectPage() {
 
   const handleShutdown = async () => {
     if (!projectId) return;
+    setStatusMsg(null);
     try {
-      await projectDown(projectId);
+      const result = await projectDown(projectId);
       setTerminalTabs([]);
+      setStatusMsg({ text: `Equipo apagado (${result.killed} agentes detenidos)`, type: 'ok' });
+      setTimeout(() => setStatusMsg(null), 5000);
     } catch (e) {
-      console.error('Failed to stop project:', e);
+      setStatusMsg({ text: `Error: ${e instanceof Error ? e.message : String(e)}`, type: 'err' });
     }
   };
 
@@ -161,6 +168,28 @@ export default function ProjectPage() {
           <div style={{ padding: '0 24px', borderBottom: '1px solid var(--z-border)' }}>
             <AgentChips agents={agents} activeRoles={terminalRoles} onChipClick={handleChipClick} />
           </div>
+
+          {/* Status message */}
+          {statusMsg && (
+            <div style={{
+              padding: '8px 24px',
+              background: statusMsg.type === 'ok' ? 'rgba(61,186,122,0.1)' : 'rgba(220,60,60,0.1)',
+              borderBottom: `1px solid ${statusMsg.type === 'ok' ? 'rgba(61,186,122,0.25)' : 'rgba(220,60,60,0.25)'}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <span style={{
+                fontSize: 13,
+                color: statusMsg.type === 'ok' ? 'var(--z-green)' : '#DC3C3C',
+              }}>
+                {statusMsg.text}
+              </span>
+              <button onClick={() => setStatusMsg(null)} style={{
+                background: 'none', border: 'none',
+                color: 'var(--z-text-muted)', fontSize: 14,
+                cursor: 'pointer', padding: '0 4px',
+              }}>&times;</button>
+            </div>
+          )}
 
           {/* Thread create input (inline) */}
           {creatingThread && (
