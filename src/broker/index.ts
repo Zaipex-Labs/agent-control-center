@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse, Server } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { join, extname } from 'node:path';
+import { join, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ACC_HOST, ACC_PORT, CLEANUP_INTERVAL_MS } from '../shared/config.js';
 import { t } from '../shared/i18n/index.js';
@@ -73,14 +73,14 @@ const MIME_TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
-// Resolve dashboard dist directory relative to this file
-const __dirname = typeof import.meta.url !== 'undefined'
-  ? join(fileURLToPath(import.meta.url), '..', '..', '..')
-  : process.cwd();
-const DASHBOARD_DIR = join(__dirname, 'dist', 'dashboard');
+// Resolve project root: this file is at src/broker/index.ts or dist/broker/index.js
+const __brokerDir = dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = join(__brokerDir, '..', '..');
+const DASHBOARD_DIR = join(PROJECT_ROOT, 'dist', 'dashboard');
 
 export function createBrokerServer(): Server {
   initDatabase();
+  console.error(`[broker] dashboard dir: ${DASHBOARD_DIR}`);
 
   // Clean dead peers on startup
   const removed = cleanStalePeers();
