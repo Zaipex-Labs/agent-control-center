@@ -71,7 +71,7 @@ export default function FolderPicker({ value, onChange }: FolderPickerProps) {
           onMouseEnter={e => { e.currentTarget.style.background = '#E8E4DC'; e.currentTarget.style.borderColor = '#E8823A'; }}
           onMouseLeave={e => { e.currentTarget.style.background = '#F5F3EF'; e.currentTarget.style.borderColor = '#D0C9BE'; }}
         >
-          <span style={{ fontSize: 14 }}>&#128193;</span> Explorar
+          <span style={{ fontSize: 14 }}>📁</span> Explorar
         </button>
       </div>
     );
@@ -148,7 +148,7 @@ export default function FolderPicker({ value, onChange }: FolderPickerProps) {
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
             >
               <span style={{ fontSize: 14, flexShrink: 0 }}>
-                {folder.name === '..' ? '&#11184;' : '&#128193;'}
+                {folder.name === '..' ? '⬆' : '📁'}
               </span>
               <span style={{
                 fontFamily: folder.name === '..' ? 'var(--font-sans)' : 'var(--font-mono)',
