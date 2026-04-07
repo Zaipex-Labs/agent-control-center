@@ -110,7 +110,7 @@ export function spawnWebAgent(projectId: string, role: string, cwd: string, name
         return;
       }
 
-      if (accepted && noSpaces.includes('shortcuts') && !noSpaces.includes('localdevelopment')) {
+      if (accepted && (noSpaces.includes('shortcuts') || noSpaces.includes('bypass')) && !noSpaces.includes('localdevelopment')) {
         const agentName = name || role;
         log(`init prompt for ${key}`);
         setTimeout(() => stdin.write(`Soy ${agentName}, rol ${role}. Ejecuta whoami y set_summary ahora.\r`), 500);
