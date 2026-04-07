@@ -59,6 +59,7 @@ export function useMessages(
       thread_id: string | null;
       from_name: string;
       from_role: string;
+      to_role: string;
       text: string;
       type: MessageType;
     };
@@ -81,7 +82,7 @@ export function useMessages(
       from_id: '',
       from_role: data.from_role,
       to_id: '',
-      to_role: '',
+      to_role: data.to_role || 'user',
       type: data.type,
       text: data.text,
       metadata: null,

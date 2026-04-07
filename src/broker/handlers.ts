@@ -496,6 +496,7 @@ export function handleSendMessage(body: unknown, res: ServerResponse): void {
     thread_id: threadId,
     from_name: fromPeer.name,
     from_role: fromPeer.role,
+    to_role: toPeer.role,
     text: b.text,
     type,
   }, b.project_id);
@@ -571,6 +572,7 @@ export function handleSendToRole(body: unknown, res: ServerResponse): void {
     thread_id: threadId,
     from_name: fromPeer.name,
     from_role: fromPeer.role,
+    to_role: b.role,
     text: b.text,
     type,
   }, b.project_id);
