@@ -88,7 +88,8 @@ export default function Terminal({ projectId, role, visible }: TerminalProps) {
 
       ws.onclose = () => {
         wsRef.current = null;
-        const delay = Math.min(1000 * 2 ** retriesRef.current, 15000);
+        if (retriesRef.current >= 3) return; // stop after 3 retries
+        const delay = Math.min(2000 * 2 ** retriesRef.current, 10000);
         retriesRef.current++;
         reconnectTimer.current = setTimeout(connect, delay);
       };

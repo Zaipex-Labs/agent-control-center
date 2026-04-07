@@ -1,5 +1,5 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import * as pty from 'node-pty';
+import { execSync, spawn } from 'node:child_process';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 
@@ -22,67 +22,82 @@ function isResizeMessage(data: unknown): data is ResizeMessage {
 
 export function handleTerminalUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, role: string, projectId: string): void {
   wss.handleUpgrade(req, socket, head, (ws) => {
-    const sessionTarget = `acc-${projectId}:${role}`;
-    log(`connecting to tmux session ${sessionTarget}`);
+    const session = `acc-${projectId}`;
+    const target = `${session}:${role}`;
+    log(`connecting to tmux ${target}`);
 
-    let term: pty.IPty;
+    // Verify session exists
     try {
-      term = pty.spawn('tmux', ['attach', '-t', sessionTarget], {
-        name: 'xterm-256color',
-        cols: 80,
-        rows: 24,
-        cwd: process.cwd(),
-      });
-    } catch (err) {
-      log(`failed to spawn pty for ${sessionTarget}: ${err}`);
-      ws.close(1011, 'Failed to attach to tmux session');
+      execSync(`tmux has-session -t ${session}`, { stdio: 'pipe' });
+    } catch {
+      log(`session ${session} not found`);
+      ws.close(1011, 'tmux session not found');
       return;
     }
 
-    log(`pty spawned pid=${term.pid} for ${sessionTarget}`);
-
-    // pty → ws
-    term.onData((data: string) => {
+    // Send initial screen capture
+    try {
+      const capture = execSync(`tmux capture-pane -t ${target} -p -e`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
+        ws.send(capture);
       }
-    });
+    } catch { /* best effort */ }
 
-    // pty exit → close ws
-    term.onExit(({ exitCode }) => {
-      log(`pty exited code=${exitCode} for ${sessionTarget}`);
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.close(1000, 'PTY process exited');
+    // Poll tmux pane content every 500ms and send diffs
+    let lastContent = '';
+    const pollInterval = setInterval(() => {
+      if (ws.readyState !== WebSocket.OPEN) {
+        clearInterval(pollInterval);
+        return;
       }
-    });
+      try {
+        const content = execSync(`tmux capture-pane -t ${target} -p -e`, {
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+          timeout: 2000,
+        });
+        if (content !== lastContent) {
+          // Clear screen and redraw
+          ws.send('\x1b[2J\x1b[H' + content);
+          lastContent = content;
+        }
+      } catch { /* tmux may be gone */ }
+    }, 500);
 
-    // ws → pty
+    // WebSocket input → tmux send-keys
     ws.on('message', (raw: Buffer | string) => {
       const msg = raw.toString();
 
-      // Try to parse as JSON for resize commands
       try {
         const parsed: unknown = JSON.parse(msg);
         if (isResizeMessage(parsed)) {
-          term.resize(parsed.cols, parsed.rows);
+          try {
+            execSync(`tmux resize-pane -t ${target} -x ${parsed.cols} -y ${parsed.rows}`, { stdio: 'pipe' });
+          } catch { /* best effort */ }
           return;
         }
       } catch {
-        // Not JSON — treat as terminal input
+        // Not JSON — terminal input
       }
 
-      term.write(msg);
+      // Send keystrokes to tmux
+      try {
+        // Use -l for literal text to avoid key interpretation issues
+        execSync(`tmux send-keys -t ${target} -l ${shellEscape(msg)}`, { stdio: 'pipe', timeout: 2000 });
+      } catch { /* best effort */ }
     });
 
-    // ws close → kill pty
     ws.on('close', () => {
-      log(`ws closed for ${sessionTarget}, killing pty pid=${term.pid}`);
-      term.kill();
+      log(`ws closed for ${target}`);
+      clearInterval(pollInterval);
     });
 
-    ws.on('error', (err) => {
-      log(`ws error for ${sessionTarget}: ${err}`);
-      term.kill();
+    ws.on('error', () => {
+      clearInterval(pollInterval);
     });
   });
+}
+
+function shellEscape(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
 }
