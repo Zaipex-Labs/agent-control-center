@@ -68,6 +68,24 @@ export function useMessages(
   const sendMessage = useCallback(
     async (toRole: string, text: string, type: MessageType = 'message') => {
       if (!projectId || !senderId) return;
+
+      // Optimistic: show message immediately
+      const optimistic: LogEntry = {
+        id: Date.now(),
+        project_id: projectId,
+        from_id: 'user',
+        from_role: 'user',
+        to_id: '',
+        to_role: toRole,
+        type,
+        text,
+        metadata: null,
+        thread_id: threadId ?? null,
+        sent_at: new Date().toISOString(),
+        session_id: '',
+      };
+      setMessages((prev) => [...prev, optimistic]);
+
       await sendToRole(projectId, senderId, toRole, text, threadId, type);
     },
     [projectId, senderId, threadId],

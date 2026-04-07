@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAgents } from '../hooks/useAgents';
 import { useThreads } from '../hooks/useThreads';
 import { useMessages } from '../hooks/useMessages';
+import { useDashboardPeer } from '../hooks/useDashboardPeer';
 import ThreadList from '../components/ThreadList';
 import AgentChips from '../components/AgentChips';
 import Chat from '../components/Chat';
@@ -17,8 +18,9 @@ export default function ProjectPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { agents } = useAgents(projectId);
+  const dashboardId = useDashboardPeer(projectId);
   const { threads, activeThread, setActiveThread, createThread } = useThreads(projectId);
-  const { messages, loading: messagesLoading, sendMessage } = useMessages(projectId, activeThread?.id);
+  const { messages, loading: messagesLoading, sendMessage } = useMessages(projectId, activeThread?.id, dashboardId);
   const [creatingThread, setCreatingThread] = useState(false);
   const [newThreadName, setNewThreadName] = useState('');
   const [showSidebar, setShowSidebar] = useState(true);

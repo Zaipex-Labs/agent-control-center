@@ -42,6 +42,24 @@ export async function listProjects(): Promise<Project[]> {
   return resp.projects;
 }
 
+// ── Dashboard peer registration ───────────────────────────────
+
+export async function registerDashboard(projectId: string): Promise<{ id: string; name: string }> {
+  return apiFetch<{ id: string; name: string }>('register', {
+    project_id: projectId,
+    pid: 0,
+    cwd: '/',
+    role: 'user',
+    name: 'Dashboard',
+    agent_type: 'dashboard',
+    summary: 'Web dashboard',
+  });
+}
+
+export async function unregisterDashboard(id: string): Promise<void> {
+  await apiFetch<{ ok: boolean }>('unregister', { id }).catch(() => {});
+}
+
 // ── File browser ──────────────────────────────────────────────
 
 export interface BrowseEntry {
