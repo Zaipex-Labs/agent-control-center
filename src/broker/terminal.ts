@@ -107,10 +107,12 @@ export function spawnWebAgent(projectId: string, role: string, cwd: string, name
         log(`auto-accept for ${key}`);
         stdin.write('\r');
         accepted = true;
+        // Clear buffer so old text doesn't interfere with next check
+        outputBuffers.set(key, []);
         return;
       }
 
-      if (accepted && (noSpaces.includes('shortcuts') || noSpaces.includes('bypass')) && !noSpaces.includes('localdevelopment')) {
+      if (accepted && (noSpaces.includes('shortcuts') || noSpaces.includes('bypass'))) {
         const agentName = name || role;
         log(`init prompt for ${key}`);
         setTimeout(() => stdin.write(`Soy ${agentName}, rol ${role}. Ejecuta whoami y set_summary ahora.\r`), 500);
