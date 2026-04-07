@@ -87,6 +87,25 @@ export function spawnWebAgent(projectId: string, role: string, cwd: string, name
     outputBuffers.delete(key);
   });
 
+  // Auto-accept channels prompt and send init prompt
+  // Claude Code's interactive prompts need \r (carriage return), not \n
+  if (proc.stdin) {
+    const stdin = proc.stdin;
+    // Accept "I am using this for local development" prompt
+    setTimeout(() => {
+      if (!stdin.writable) return;
+      log(`auto-accept for ${key}`);
+      stdin.write('\r');
+    }, 5000);
+    // Send init prompt once Claude Code is ready (~15s after accept)
+    setTimeout(() => {
+      if (!stdin.writable) return;
+      const agentName = name || role;
+      log(`init prompt for ${key}`);
+      stdin.write(`Soy ${agentName}, rol ${role}. Ejecuta whoami y set_summary ahora.\r`);
+    }, 20000);
+  }
+
   return proc;
 }
 
