@@ -38,7 +38,7 @@ interface MessageBubbleProps {
 }
 
 export default function MessageBubble({ message, compact = false }: MessageBubbleProps) {
-  const isUser = message.from_id === 'user' || message.from_id === 'cli';
+  const isUser = message.from_id === 'user' || message.from_id === 'cli' || message.from_role === 'user';
   const avatarSize = compact ? 22 : 32;
   const initial = isUser
     ? 'JM'

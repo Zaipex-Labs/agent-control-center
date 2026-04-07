@@ -22,7 +22,7 @@ export function useAgents(projectId: string | undefined): UseAgentsReturn {
     }
     setLoading(true);
     listPeers(projectId)
-      .then(setAgents)
+      .then(peers => setAgents(peers.filter(p => p.agent_type !== 'dashboard')))
       .catch(() => setAgents([]))
       .finally(() => setLoading(false));
   }, [projectId]);
@@ -33,6 +33,7 @@ export function useAgents(projectId: string | undefined): UseAgentsReturn {
 
     if (isEvent(lastEvent, 'peer:connected')) {
       const peer = lastEvent.data as Peer;
+      if (peer.agent_type === 'dashboard') return;
       setAgents((prev) => {
         if (prev.some((p) => p.id === peer.id)) return prev;
         return [...prev, peer];
