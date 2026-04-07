@@ -439,6 +439,9 @@ export function handleListPeers(body: unknown, res: ServerResponse): void {
     peers = peers.filter(p => p.id !== b.exclude_id);
   }
 
+  // Hide dashboard peers from agents — they're not real team members
+  peers = peers.filter(p => p.agent_type !== 'dashboard');
+
   json(res, peers);
 }
 
