@@ -464,9 +464,26 @@ export function handleSendMessage(body: unknown, res: ServerResponse): void {
   const now = new Date().toISOString();
   const metadata = b.metadata ?? null;
 
-  const threadId = b.thread_id ?? null;
+  let threadId = b.thread_id ?? null;
 
-  console.error(`[broker:send-message] from=${b.from_id} (${fromPeer.role}) to=${b.to_id} (${toPeer.role})`);
+  // Auto-inherit thread_id: if no thread specified, check if the target sent us
+  // a message with a thread_id in the last 5 minutes (this is a reply)
+  if (!threadId) {
+    const recentHistory = selectHistory(b.project_id, { limit: 20 });
+    const fiveMinAgo = Date.now() - 5 * 60 * 1000;
+    const parentMsg = recentHistory.find(m =>
+      m.from_id === b.to_id &&
+      (m.to_id === b.from_id || m.to_role === fromPeer.role) &&
+      m.thread_id &&
+      new Date(m.sent_at).getTime() > fiveMinAgo
+    );
+    if (parentMsg?.thread_id) {
+      threadId = parentMsg.thread_id;
+      console.error(`[broker:send-message] auto-inherited thread_id=${threadId} from recent message`);
+    }
+  }
+
+  console.error(`[broker:send-message] from=${b.from_id} (${fromPeer.role}) to=${b.to_id} (${toPeer.role}) thread=${threadId}`);
 
   insertMessage(b.project_id, b.from_id, b.to_id, type, b.text, metadata, now, threadId);
   insertLogEntry(
@@ -523,7 +540,22 @@ export function handleSendToRole(body: unknown, res: ServerResponse): void {
   const type: MessageType = b.type ?? 'message';
   const now = new Date().toISOString();
   const metadata = b.metadata ?? null;
-  const threadId = b.thread_id ?? null;
+  let threadId = b.thread_id ?? null;
+
+  // Auto-inherit thread_id from recent messages to this sender
+  if (!threadId) {
+    const recentHistory = selectHistory(b.project_id, { limit: 20 });
+    const fiveMinAgo = Date.now() - 5 * 60 * 1000;
+    const parentMsg = recentHistory.find(m =>
+      m.to_id === b.from_id &&
+      m.thread_id &&
+      new Date(m.sent_at).getTime() > fiveMinAgo
+    );
+    if (parentMsg?.thread_id) {
+      threadId = parentMsg.thread_id;
+      console.error(`[broker:send-to-role] auto-inherited thread_id=${threadId}`);
+    }
+  }
 
   console.error(`[broker:send-to-role] from=${b.from_id} (role=${fromPeer.role}) target_role=${b.role} project=${b.project_id}`);
   console.error(`[broker:send-to-role] found ${targets.length} peer(s) with role "${b.role}":`);
