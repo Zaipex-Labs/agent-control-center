@@ -47,6 +47,9 @@ export function useMessages(
     // Only append if this message belongs to the active thread (or no thread filter)
     if (threadId && data.thread_id !== threadId) return;
 
+    // Skip if this is our own message (already shown via optimistic update)
+    if (data.from_role === 'user') return;
+
     const synthetic: LogEntry = {
       id: Date.now(),
       project_id: projectId ?? '',
