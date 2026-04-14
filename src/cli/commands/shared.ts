@@ -8,7 +8,7 @@ import { t } from '../../shared/i18n/index.js';
 export function registerSharedCommand(program: Command): void {
   program
     .command('shared <project> [namespace] [key]')
-    .description('View shared state. With no args: list namespaces. With namespace: list keys. With both: show value.')
+    .description(t('cmd.shared'))
     .action(async (project: string, namespace?: string, key?: string) => {
       const alive = await isBrokerAlive();
       if (!alive) {

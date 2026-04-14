@@ -18,7 +18,7 @@ function killProcess(pid: number): boolean {
 export function registerDownCommand(program: Command): void {
   program
     .command('down <project>')
-    .description('Stop agents for a project')
+    .description(t('cmd.down'))
     .action(async (projectName: string) => {
       const alive = await isBrokerAlive();
 

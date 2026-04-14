@@ -7,9 +7,9 @@ import { t } from '../../shared/i18n/index.js';
 export function registerSendCommand(program: Command): void {
   program
     .command('send <project> <message>')
-    .description('Send a message to agents by role')
-    .requiredOption('--to-role <role>', 'Target role (e.g. backend, frontend)')
-    .option('-t, --type <type>', 'Message type', 'message')
+    .description(t('cmd.send'))
+    .requiredOption('--to-role <role>', t('cmd.sendRole'))
+    .option('-t, --type <type>', t('cmd.sendType'), 'message')
     .action(async (project: string, message: string, opts: { toRole: string; type: string }) => {
       const alive = await isBrokerAlive();
       if (!alive) {

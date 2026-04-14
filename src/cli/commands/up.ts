@@ -22,9 +22,9 @@ function loadProject(name: string): ProjectConfig {
 export function registerUpCommand(program: Command): void {
   program
     .command('up <project>')
-    .description('Start agents for a project')
-    .option('--only <role>', 'Start only agents with this role')
-    .option('--strategy <s>', 'Force spawn strategy: tmux, windows-terminal, fallback')
+    .description(t('cmd.up'))
+    .option('--only <role>', t('cmd.upOnly'))
+    .option('--strategy <s>', t('cmd.upStrategy'))
     .action(async (projectName: string, opts: { only?: string; strategy?: string }) => {
       const config = loadProject(projectName);
 

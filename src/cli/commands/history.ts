@@ -8,9 +8,9 @@ import { t } from '../../shared/i18n/index.js';
 export function registerHistoryCommand(program: Command): void {
   program
     .command('history <project>')
-    .description('Show message history for a project')
-    .option('-r, --role <role>', 'Filter by role')
-    .option('-l, --last <n>', 'Number of messages to show', '20')
+    .description(t('cmd.history'))
+    .option('-r, --role <role>', t('cmd.historyRole'))
+    .option('-l, --last <n>', t('cmd.historyLast'), '20')
     .action(async (project: string, opts: { role?: string; last: string }) => {
       const alive = await isBrokerAlive();
       if (!alive) {

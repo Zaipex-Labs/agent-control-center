@@ -1,12 +1,34 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { homedir, platform } from 'node:os';
+import { execSync } from 'node:child_process';
 import { en } from './en.js';
 import { es } from './es.js';
 
 const translations: Record<string, Record<string, string>> = { en, es };
 
 let cachedLang: string | null = null;
+
+function matchSupported(raw: string): string | null {
+  const lower = raw.toLowerCase();
+  for (const code of Object.keys(translations)) {
+    if (lower.startsWith(code)) return code;
+  }
+  return null;
+}
+
+function detectMacosLocale(): string | null {
+  if (platform() !== 'darwin') return null;
+  try {
+    const out = execSync('defaults read -g AppleLocale', {
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 500,
+    }).toString().trim();
+    return matchSupported(out);
+  } catch {
+    return null;
+  }
+}
 
 function detectLang(): string {
   // 1. ACC_LANG env var
@@ -24,11 +46,21 @@ function detectLang(): string {
     // Ignore config read errors
   }
 
-  // 3. System LANG
-  const sysLang = process.env['LANG'] ?? '';
-  if (sysLang.includes('es')) return 'es';
+  // 3. macOS system language first (AppleLocale is the real source of truth;
+  //    LANG is usually en_US.UTF-8 by Terminal.app default regardless of UI lang)
+  const mac = detectMacosLocale();
+  if (mac) return mac;
 
-  // 4. Default
+  // 4. POSIX locale env vars (LC_ALL > LC_MESSAGES > LANG > LANGUAGE)
+  for (const key of ['LC_ALL', 'LC_MESSAGES', 'LANG', 'LANGUAGE']) {
+    const v = process.env[key];
+    if (v && v !== 'C' && v !== 'POSIX') {
+      const m = matchSupported(v);
+      if (m) return m;
+    }
+  }
+
+  // 5. Default
   return 'en';
 }
 

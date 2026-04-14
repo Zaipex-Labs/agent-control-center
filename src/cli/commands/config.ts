@@ -28,15 +28,15 @@ const SUPPORTED_LANGS = ['en', 'es'];
 export function registerConfigCommand(program: Command): void {
   const config = program
     .command('config')
-    .description('Manage ACC configuration');
+    .description(t('cmd.config'));
 
   const set = config
     .command('set')
-    .description('Set a configuration value');
+    .description(t('cmd.configSet'));
 
   set
     .command('lang <language>')
-    .description('Set display language (en, es)')
+    .description(t('cmd.configSetLang'))
     .action((lang: string) => {
       if (!SUPPORTED_LANGS.includes(lang)) {
         console.error(err(t('config.invalidLang', { lang })));

@@ -8,7 +8,7 @@ import { t } from '../../shared/i18n/index.js';
 export function registerStatusCommand(program: Command): void {
   program
     .command('status [project]')
-    .description('Show broker status and active peers')
+    .description(t('cmd.status'))
     .action(async (project?: string) => {
       const alive = await isBrokerAlive();
       if (!alive) {

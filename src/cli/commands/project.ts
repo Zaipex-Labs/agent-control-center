@@ -41,7 +41,7 @@ function loadAllProjects(): ProjectConfig[] {
 export function registerProjectsCommand(program: Command): void {
   program
     .command('projects')
-    .description('List all projects')
+    .description(t('cmd.projects'))
     .action(() => {
       printProjectList(loadAllProjects());
     });
@@ -52,12 +52,12 @@ export function registerProjectsCommand(program: Command): void {
 export function registerProjectCommand(program: Command): void {
   const project = program
     .command('project')
-    .description('Manage projects');
+    .description(t('cmd.project'));
 
   project
     .command('create <name>')
-    .description('Create a new project')
-    .option('-d, --description <desc>', 'Project description', '')
+    .description(t('cmd.projectCreate'))
+    .option('-d, --description <desc>', t('cmd.projectCreateDescOpt'), '')
     .action((name: string, opts: { description: string }) => {
       ensureDirectories();
       const path = projectPath(name);
@@ -79,13 +79,13 @@ export function registerProjectCommand(program: Command): void {
 
   project
     .command('add-agent <name>')
-    .description('Add an agent to a project')
-    .requiredOption('-r, --role <role>', 'Agent role (e.g. backend, frontend)')
-    .requiredOption('--cwd <dir>', 'Working directory for the agent')
-    .option('--name <name>', 'Agent display name (auto-assigned if omitted)')
-    .option('--cmd <command>', 'Agent command', 'claude')
-    .option('--args <args>', 'Agent arguments (comma-separated)', '')
-    .option('-i, --instructions <text>', 'Instructions for the agent', '')
+    .description(t('cmd.projectAddAgent'))
+    .requiredOption('-r, --role <role>', t('cmd.projectAddAgentRole'))
+    .requiredOption('--cwd <dir>', t('cmd.projectAddAgentCwd'))
+    .option('--name <name>', t('cmd.projectAddAgentName'))
+    .option('--cmd <command>', t('cmd.projectAddAgentCmd'), 'claude')
+    .option('--args <args>', t('cmd.projectAddAgentArgs'), '')
+    .option('-i, --instructions <text>', t('cmd.projectAddAgentInstr'), '')
     .action((name: string, opts: { role: string; cwd: string; name?: string; cmd: string; args: string; instructions: string }) => {
       const config = loadProject(name);
 
@@ -116,8 +116,8 @@ export function registerProjectCommand(program: Command): void {
 
   project
     .command('remove-agent <name>')
-    .description('Remove an agent from a project')
-    .requiredOption('-r, --role <role>', 'Agent role to remove')
+    .description(t('cmd.projectRemoveAgent'))
+    .requiredOption('-r, --role <role>', t('cmd.projectRemoveAgentRole'))
     .action((name: string, opts: { role: string }) => {
       const config = loadProject(name);
 
@@ -134,7 +134,7 @@ export function registerProjectCommand(program: Command): void {
 
   project
     .command('show <name>')
-    .description('Show project configuration')
+    .description(t('cmd.projectShow'))
     .action((name: string) => {
       const config = loadProject(name);
       printProject(config);

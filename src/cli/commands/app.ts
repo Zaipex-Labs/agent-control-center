@@ -4,6 +4,7 @@ import { platform } from 'node:os';
 import { ensureBroker, isBrokerAlive } from '../../server/broker-client.js';
 import { ACC_PORT } from '../../shared/config.js';
 import { success, dim, err, heading } from '../ui.js';
+import { t } from '../../shared/i18n/index.js';
 
 function openBrowser(url: string): void {
   const cmd = platform() === 'darwin' ? 'open'
@@ -15,9 +16,9 @@ function openBrowser(url: string): void {
 export function registerAppCommand(program: Command): void {
   program
     .command('app')
-    .description('Open the ACC web dashboard in your browser')
-    .option('--port <port>', 'Broker port', String(ACC_PORT))
-    .option('--no-open', 'Do not open the browser automatically')
+    .description(t('cmd.app'))
+    .option('--port <port>', t('cmd.appPort'), String(ACC_PORT))
+    .option('--no-open', t('cmd.appNoOpen'))
     .action(async (opts: { port: string; open: boolean }) => {
       const port = Number(opts.port);
       const url = `http://localhost:${port}`;

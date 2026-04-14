@@ -8,7 +8,7 @@ import { t } from '../../shared/i18n/index.js';
 export function registerPeersCommand(program: Command): void {
   program
     .command('peers [project]')
-    .description('List active peers')
+    .description(t('cmd.peers'))
     .action(async (project?: string) => {
       const alive = await isBrokerAlive();
       if (!alive) {
