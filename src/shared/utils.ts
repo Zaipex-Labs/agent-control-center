@@ -31,32 +31,7 @@ export function getGitBranch(cwd: string): string | null {
   }
 }
 
-const DEFAULT_NAMES: Record<string, string> = {
-  backend: 'Turing',
-  frontend: 'Lovelace',
-  qa: 'Curie',
-  architect: 'Da Vinci',
-  devops: 'Tesla',
-  data: 'Gauss',
-  ml: 'Euler',
-  analytics: 'Fibonacci',
-  security: 'Enigma',
-};
-
-const FALLBACK_NAMES = [
-  'Faraday', 'Newton', 'Hypatia', 'Hawking', 'Galileo',
-  'Ramanujan', 'Noether', 'Fermat', 'Kepler', 'Planck',
-];
-
-export function getDefaultName(role: string): string {
-  if (DEFAULT_NAMES[role]) return DEFAULT_NAMES[role];
-  // Deterministic pick based on role string so same role always gets same name
-  let hash = 0;
-  for (let i = 0; i < role.length; i++) {
-    hash = ((hash << 5) - hash + role.charCodeAt(i)) | 0;
-  }
-  return FALLBACK_NAMES[Math.abs(hash) % FALLBACK_NAMES.length];
-}
+export { getDefaultName } from './names.js';
 
 export function resolveEntryPoint(baseDir: string, ...segments: string[]): string {
   const tsPath = resolve(baseDir, ...segments.slice(0, -1), segments[segments.length - 1].replace(/\.\w+$/, '.ts'));

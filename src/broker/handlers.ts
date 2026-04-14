@@ -239,7 +239,7 @@ export function handleUpdateProject(body: unknown, res: ServerResponse): void {
   const b = body as {
     project_id?: string;
     description?: string;
-    agents?: Array<{ role: string; cwd: string; name?: string; instructions?: string }>;
+    agents?: Array<{ role: string; cwd: string; name?: string; instructions?: string; avatar?: string }>;
   };
   if (!b.project_id) return error(res, 'Missing required field: project_id');
   if (!Array.isArray(b.agents)) return error(res, 'Missing required field: agents (array)');
@@ -277,6 +277,7 @@ export function handleUpdateProject(body: unknown, res: ServerResponse): void {
       agent_cmd: 'claude',
       agent_args: [],
       instructions: a.instructions?.trim() ?? '',
+      avatar: a.avatar ?? '',
     })),
   };
   writeFileSync(configPath, JSON.stringify(updated, null, 2) + '\n');

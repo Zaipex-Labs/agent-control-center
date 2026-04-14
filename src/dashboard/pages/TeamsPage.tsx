@@ -3,7 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { listProjects, projectUp, projectDown, createProject, addAgent, updateProject } from '../lib/api';
 import type { Project, AgentConfig } from '../lib/types';
 import FolderPicker from '../components/FolderPicker';
+import Avatar from '../components/Avatar';
+import AvatarPicker from '../components/AvatarPicker';
 import { t } from '../../shared/i18n/browser';
+import { getDefaultName } from '../../shared/names';
 
 const ROLE_COLORS: Record<string, string> = {
   backend: '#4A9FE8',
@@ -28,24 +31,25 @@ function timeAgo(dateStr: string): string {
   return t('dash.dAgo', { days });
 }
 
-function Avatar({ name, role }: { name: string; role: string }) {
-  const initial = (name || role || '?')[0].toUpperCase();
-  const bg = roleColor(role);
+function AgentBadge({ name, role, avatar }: { name: string; role: string; avatar?: string }) {
   return (
-    <div style={{
-      width: 36, height: 36, borderRadius: '50%',
-      background: bg, color: '#fff',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: 14, fontWeight: 600, fontFamily: 'var(--font-sans)',
-      flexShrink: 0,
-    }} title={`${name} (${role})`}>
-      {initial}
-    </div>
+    <Avatar
+      avatar={avatar}
+      seed={name || role || 'agent'}
+      size={36}
+      background={roleColor(role)}
+      title={`${name} (${role})`}
+    />
   );
 }
 
-function ProjectCard({ project, onClick, onPowerUp, onShutdown, onEdit, starting, stopping }: { project: Project; onClick: () => void; onPowerUp: () => void; onShutdown: () => void; onEdit: () => void; starting: boolean; stopping: boolean }) {
+const AGENTS_PREVIEW = 3;
+
+function ProjectCard({ project, onClick, onPowerUp, onShutdown, onEdit, starting, stopping, startLog }: { project: Project; onClick: () => void; onPowerUp: () => void; onShutdown: () => void; onEdit: () => void; starting: boolean; stopping: boolean; startLog: Array<{ text: string; done: boolean }> }) {
   const isActive = project.active_peers > 0 || project.tmux_running === true;
+  const [agentsExpanded, setAgentsExpanded] = useState(false);
+  const hasOverflow = project.agents.length > AGENTS_PREVIEW;
+  const visibleAgents = agentsExpanded ? project.agents : project.agents.slice(0, AGENTS_PREVIEW);
   const lastActivity = project.peers.length > 0
     ? project.peers.reduce((latest, p) => p.last_seen > latest ? p.last_seen : latest, '')
     : project.created_at;
@@ -56,6 +60,7 @@ function ProjectCard({ project, onClick, onPowerUp, onShutdown, onEdit, starting
       cursor: 'pointer', transition: 'box-shadow 0.2s, transform 0.2s',
       border: '1px solid #E2DDD4',
       display: 'flex', flexDirection: 'column', gap: 16,
+      minHeight: 280,
     }}
     onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 8px 32px rgba(30,45,64,0.12)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
     onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'none'; }}
@@ -94,41 +99,143 @@ function ProjectCard({ project, onClick, onPowerUp, onShutdown, onEdit, starting
         </span>
       </div>
 
+      <div style={{
+        flex: 1, display: 'flex', flexDirection: 'column',
+        justifyContent: 'center', gap: 16, minHeight: 0,
+      }}>
+      {starting && startLog.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {startLog.map((step, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                fontSize: 13,
+                color: step.done ? '#2A8B5A' : '#5A6272',
+              }}>
+                <span style={{
+                  width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 12, fontWeight: 700,
+                  background: step.done ? '#E8F7EF' : '#F5F3EF',
+                  color: step.done ? '#2A8B5A' : '#8AA8C0',
+                }}>
+                  {step.done ? '✓' : '…'}
+                </span>
+                <span>{step.text}</span>
+              </div>
+            ))}
+          </div>
+          {startLog.every(s => s.done) && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onClick(); }}
+              style={{
+                background: '#3DBA7A', color: '#fff', border: 'none',
+                padding: '12px 18px', borderRadius: 10, fontSize: 14,
+                fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                transition: 'background 0.15s',
+                alignSelf: 'stretch',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#2FA068'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#3DBA7A'; }}
+            >
+              {t('dash.enterOffice')} <span style={{ fontSize: 16, lineHeight: 1 }}>→</span>
+            </button>
+          )}
+        </div>
+      ) : <>
       {project.description && (
-        <p style={{ color: '#5A6272', fontSize: 14, margin: 0, lineHeight: 1.5 }}>
+        <p style={{
+          color: '#5A6272', fontSize: 14, margin: 0, lineHeight: 1.5,
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}>
           {project.description}
         </p>
       )}
 
       {project.agents.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {project.agents.map((agent, i) => {
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 10,
+          maxHeight: agentsExpanded ? 220 : 'none',
+          overflowY: agentsExpanded ? 'auto' : 'visible',
+          paddingRight: agentsExpanded ? 6 : 0,
+        }}>
+          {visibleAgents.map((agent, i) => {
             const activePeer = project.peers.find(p => p.role === agent.role);
-            const name = activePeer?.name ?? agent.name ?? agent.role;
+            const rawName = (activePeer?.name || agent.name || '').trim();
+            // If the agent has no name, or it's just a copy of the role,
+            // fall back to the scientist-style default so every card looks
+            // the same (bold name + muted role).
+            const displayName = (!rawName || rawName === agent.role)
+              ? getDefaultName(agent.role)
+              : rawName;
             return (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Avatar name={name} role={agent.role} />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 500, color: '#1E2D40' }}>{name}</div>
+                <AgentBadge name={displayName} role={agent.role} avatar={agent.avatar} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{
+                    fontSize: 14, fontWeight: 500, color: '#1E2D40',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {displayName}
+                  </div>
                   <div style={{ fontSize: 12, color: '#8AA8C0' }}>{agent.role}</div>
                 </div>
                 {activePeer && (
                   <div style={{
                     width: 8, height: 8, borderRadius: '50%', background: '#3DBA7A',
-                    marginLeft: 'auto', flexShrink: 0,
+                    flexShrink: 0,
                   }} title={t('dash.online')} />
                 )}
               </div>
             );
           })}
         </div>
+          {hasOverflow && (() => {
+            const extra = project.agents.length - AGENTS_PREVIEW;
+            const label = agentsExpanded
+              ? t('dash.collapse')
+              : (extra === 1
+                ? t('dash.moreAgentsSingular', { count: extra })
+                : t('dash.moreAgents', { count: extra }));
+            return (
+              <span
+                onClick={(e) => { e.stopPropagation(); setAgentsExpanded(v => !v); }}
+                style={{
+                  color: '#E8823A',
+                  fontSize: 14,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-sans)',
+                  alignSelf: 'flex-start',
+                  padding: '2px 0',
+                  transition: 'opacity 0.15s',
+                  userSelect: 'none',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.opacity = '0.75'; }}
+                onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
+              >
+                {label}
+              </span>
+            );
+          })()}
+        </div>
       )}
+      </>}
+      </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 12, color: '#8AA8C0' }}>
           {t('dash.lastActivity')}: {timeAgo(lastActivity)}
         </span>
-        {isActive ? (
+        {starting && startLog.length > 0 ? (
+          <span />
+        ) : isActive ? (
           <button
             onClick={(e) => { e.stopPropagation(); onShutdown(); }}
             disabled={stopping}
@@ -320,7 +427,9 @@ export default function TeamsPage() {
           log.push({ text: t('dash.teamUp'), done: true });
           setStartLog([...log]);
           await reload();
-          setTimeout(() => { setStarting(null); setStartLog([]); }, 2000);
+          // Keep the log visible + "Enter the office" button until the user
+          // clicks through or navigates away. starting stays truthy so the
+          // card stays in the startup view.
         }
       }, 2000);
     } catch (e) {
@@ -455,38 +564,6 @@ export default function TeamsPage() {
           </div>
         )}
 
-        {startLog.length > 0 && (
-          <div style={{
-            background: '#fff', border: '1px solid #E2DDD4', borderRadius: 12,
-            padding: 20, marginBottom: 20,
-          }}>
-            <div style={{
-              fontSize: 14, fontWeight: 600, color: '#1E2D40', marginBottom: 12,
-              fontFamily: 'var(--font-sans)',
-            }}>
-              {t('dash.poweringUp', { name: starting ?? '' })}
-            </div>
-            {startLog.map((step, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '4px 0', fontSize: 13,
-                color: step.done ? '#2A8B5A' : '#5A6272',
-              }}>
-                <span style={{
-                  width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 11, fontWeight: 700,
-                  background: step.done ? '#E8F7EF' : '#F5F3EF',
-                  color: step.done ? '#2A8B5A' : '#8AA8C0',
-                }}>
-                  {step.done ? '✓' : '⋯'}
-                </span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{step.text}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
         {loading ? (
           <div style={{ textAlign: 'center', padding: 80, color: '#8AA8C0' }}>
             {t('dash.loadingProjects')}
@@ -578,6 +655,7 @@ export default function TeamsPage() {
                     onEdit={() => handleEdit(project)}
                     starting={starting === project.name}
                     stopping={stopping === project.name}
+                    startLog={starting === project.name ? startLog : []}
                   />
                 ))}
                 {!search && <NewTeamCard onClick={() => setShowCreate(true)} />}
@@ -624,22 +702,23 @@ export default function TeamsPage() {
 function EditProjectModal({ project, onClose, onSubmit, saving }: {
   project: Project;
   onClose: () => void;
-  onSubmit: (description: string, agents: Array<{ role: string; cwd: string; name?: string; instructions?: string }>) => void;
+  onSubmit: (description: string, agents: Array<{ role: string; cwd: string; name?: string; instructions?: string; avatar?: string }>) => void;
   saving: boolean;
 }) {
   const [description, setDescription] = useState(project.description ?? '');
-  const [agents, setAgents] = useState<Array<{ role: string; cwd: string; name: string; instructions: string }>>(
+  const [agents, setAgents] = useState<Array<{ role: string; cwd: string; name: string; instructions: string; avatar: string }>>(
     (project.agents ?? []).map((a: AgentConfig) => ({
       role: a.role,
       cwd: a.cwd,
       name: a.name ?? '',
       instructions: a.instructions ?? '',
+      avatar: a.avatar ?? '',
     })),
   );
 
-  const addRow = () => setAgents(prev => [...prev, { role: '', cwd: '', name: '', instructions: '' }]);
+  const addRow = () => setAgents(prev => [...prev, { role: '', cwd: '', name: '', instructions: '', avatar: '' }]);
   const removeRow = (i: number) => setAgents(prev => prev.filter((_, idx) => idx !== i));
-  const updateRow = (i: number, field: 'role' | 'cwd' | 'name' | 'instructions', value: string) => {
+  const updateRow = (i: number, field: 'role' | 'cwd' | 'name' | 'instructions' | 'avatar', value: string) => {
     setAgents(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: value } : a));
   };
 
@@ -710,7 +789,7 @@ function EditProjectModal({ project, onClose, onSubmit, saving }: {
             {agents.map((agent, i) => (
               <div key={i} style={{
                 border: '1px solid #E2DDD4', borderRadius: 10, padding: 14,
-                display: 'flex', flexDirection: 'column', gap: 8,
+                display: 'flex', flexDirection: 'column', gap: 10,
                 background: '#FAFAF8',
               }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -723,7 +802,7 @@ function EditProjectModal({ project, onClose, onSubmit, saving }: {
                   <input
                     value={agent.name}
                     onChange={e => updateRow(i, 'name', e.target.value)}
-                    placeholder={t('dash.agentNamePlaceholder')}
+                    placeholder={agent.role ? getDefaultName(agent.role) : t('dash.agentNamePlaceholder')}
                     style={{ ...inputStyle, flex: 1 }}
                   />
                   <button
@@ -737,6 +816,16 @@ function EditProjectModal({ project, onClose, onSubmit, saving }: {
                     }}
                   >&times;</button>
                 </div>
+                <AvatarPicker
+                  value={agent.avatar}
+                  fallbackSeed={agent.name || agent.role || `agent-${i}`}
+                  onChange={(value) => updateRow(i, 'avatar', value)}
+                />
+                {agent.avatar && agents.some((other, j) => j !== i && other.avatar === agent.avatar) && (
+                  <div style={{ fontSize: 11, color: '#E8823A', marginTop: -4 }}>
+                    {t('dash.avatarDuplicate')}
+                  </div>
+                )}
                 <FolderPicker
                   value={agent.cwd}
                   onChange={(path) => updateRow(i, 'cwd', path)}

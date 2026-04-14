@@ -94,7 +94,7 @@ export async function addAgent(
 export async function updateProject(
   projectId: string,
   description: string,
-  agents: Array<{ role: string; cwd: string; name?: string; instructions?: string }>,
+  agents: Array<{ role: string; cwd: string; name?: string; instructions?: string; avatar?: string }>,
 ): Promise<void> {
   await apiFetch<{ ok: boolean }>('project/update', {
     project_id: projectId, description, agents,

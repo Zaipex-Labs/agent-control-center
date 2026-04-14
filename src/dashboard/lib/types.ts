@@ -64,6 +64,7 @@ export interface AgentConfig {
   agent_cmd: string;
   agent_args: string[];
   instructions: string;
+  avatar?: string;
 }
 
 export interface Project {
