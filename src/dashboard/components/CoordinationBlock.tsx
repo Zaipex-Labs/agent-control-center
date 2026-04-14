@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { LogEntry } from '../lib/types';
 import { t, getLang } from '../../shared/i18n/browser';
 
@@ -19,10 +19,17 @@ function formatTime(dateStr: string): string {
 
 interface CoordinationBlockProps {
   messages: LogEntry[];
+  live?: boolean;
 }
 
-export default function CoordinationBlock({ messages }: CoordinationBlockProps) {
+export default function CoordinationBlock({ messages, live = false }: CoordinationBlockProps) {
   const [expanded, setExpanded] = useState(false);
+
+  // When the block goes live (agents actively chatting), auto-expand so the
+  // user sees the messages stream in instead of a collapsed summary.
+  useEffect(() => {
+    if (live) setExpanded(true);
+  }, [live]);
 
   const roles = Array.from(new Set(messages.flatMap(m => [m.from_role, m.to_role]).filter(Boolean)));
   const label = roles.length === 2
@@ -65,10 +72,13 @@ export default function CoordinationBlock({ messages }: CoordinationBlockProps) 
           {label} {messages.length === 1 ? t('dash.messagesSingular', { count: messages.length }) : t('dash.messagesPlural', { count: messages.length })}
         </span>
 
+        {live && <InlineTypingDots />}
+
         <span style={{
           fontSize: 10, color: 'var(--z-text-muted)',
           transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
           transition: 'transform 0.15s',
+          marginLeft: 6,
         }}>
           &#9654;
         </span>
@@ -117,8 +127,41 @@ export default function CoordinationBlock({ messages }: CoordinationBlockProps) 
               </div>
             </div>
           ))}
+          {live && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '4px 0',
+            }}>
+              <div style={{
+                width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+                background: 'var(--z-surface)', border: '1px dashed var(--z-border)',
+              }} />
+              <InlineTypingDots />
+            </div>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+function InlineTypingDots() {
+  const dot: React.CSSProperties = {
+    width: 5, height: 5, borderRadius: '50%',
+    background: 'var(--z-text-secondary)',
+    animation: 'typing-bounce 1.2s infinite',
+    display: 'inline-block',
+  };
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 3,
+      padding: '2px 8px', borderRadius: 10,
+      background: 'rgba(74,159,232,0.08)',
+      border: '1px solid rgba(74,159,232,0.2)',
+    }}>
+      <span style={{ ...dot, animationDelay: '0s' }} />
+      <span style={{ ...dot, animationDelay: '0.2s' }} />
+      <span style={{ ...dot, animationDelay: '0.4s' }} />
+    </span>
   );
 }

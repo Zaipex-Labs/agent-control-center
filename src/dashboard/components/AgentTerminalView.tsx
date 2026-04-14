@@ -22,8 +22,9 @@ export default function AgentTerminalView({ projectId, tabs, onClose }: AgentTer
     <div style={{
       display: 'flex', flexDirection: 'column',
       borderTop: '1px solid var(--z-border)',
-      height: '50%', minHeight: 200,
+      flex: '0 0 50%', minHeight: 200,
       background: '#141F2E',
+      overflow: 'hidden',
     }}>
       {/* Tab bar */}
       <div style={{

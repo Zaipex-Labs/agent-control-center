@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { LogEntry } from '../lib/types';
 import type { WaitingReply, SendError } from '../hooks/useMessages';
 import MessageBubble from './MessageBubble';
@@ -76,12 +76,24 @@ interface ChatProps {
   onDismissError?: () => void;
 }
 
+// How fresh a coordination block has to be to still show the live
+// typing indicator (ms).
+const LIVE_WINDOW_MS = 20_000;
+
 export default function Chat({ messages, loading, waitingFor, sendError, onRetry, onDismissError }: ChatProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  // Force a re-render periodically so the "live" check against current time
+  // updates and the typing indicator fades out once the block has gone quiet.
+  const [, setNowTick] = useState(0);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
+
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(n => n + 1), 4_000);
+    return () => clearInterval(id);
+  }, []);
 
   if (loading) {
     return (
@@ -109,6 +121,15 @@ export default function Chat({ messages, loading, waitingFor, sendError, onRetry
 
   const items = buildChatItems(messages);
   let lastDay = '';
+
+  // A coordination block is "live" if it's the last item in the chat AND its
+  // most recent message arrived within LIVE_WINDOW_MS.
+  const lastIdx = items.length - 1;
+  const lastItem = items[lastIdx];
+  const now = Date.now();
+  const isLastCoordLive =
+    lastItem && lastItem.kind === 'coordination' &&
+    (now - new Date(lastItem.messages[lastItem.messages.length - 1].sent_at).getTime()) < LIVE_WINDOW_MS;
 
   return (
     <div style={{
@@ -142,7 +163,7 @@ export default function Chat({ messages, loading, waitingFor, sendError, onRetry
             {item.kind === 'message' ? (
               <MessageBubble message={item.message} />
             ) : (
-              <CoordinationBlock messages={item.messages} />
+              <CoordinationBlock messages={item.messages} live={idx === lastIdx && isLastCoordLive} />
             )}
           </div>
         );

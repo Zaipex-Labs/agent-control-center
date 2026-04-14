@@ -228,6 +228,7 @@ export const en: Record<string, string> = {
   'dash.savedToast': 'Saved',
   'dash.duplicateRoles': 'Duplicate roles are not allowed.',
   'dash.autoAvatar': 'Auto avatar',
+  'dash.timeline': 'Timeline',
   'dash.collapse': 'Show less',
   'dash.moreAgents': '+{count} more agents',
   'dash.moreAgentsSingular': '+{count} more agent',

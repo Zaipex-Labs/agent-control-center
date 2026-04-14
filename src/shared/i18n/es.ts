@@ -228,6 +228,7 @@ export const es: Record<string, string> = {
   'dash.savedToast': 'Guardado',
   'dash.duplicateRoles': 'No se permiten roles duplicados.',
   'dash.autoAvatar': 'Avatar autom\u00e1tico',
+  'dash.timeline': 'Timeline',
   'dash.collapse': 'Mostrar menos',
   'dash.moreAgents': '+{count} agentes',
   'dash.moreAgentsSingular': '+{count} agente',

@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import { resolveEntryPoint } from '../shared/utils.js';
+import { selectPeersByProject } from './database.js';
 
 // Locate a usable python3 binary. When the broker is launched via nohup /
 // launchd the PATH can lose /usr/local/bin or /opt/homebrew/bin, and
@@ -119,41 +120,83 @@ export function spawnWebAgent(projectId: string, role: string, cwd: string, name
     outputBuffers.delete(key);
   });
 
-  // Auto-accept channels prompt and send init prompt (polling like the CLI does)
+  // Boot sequence for the web agent, in order:
+  //
+  //   1. Claude Code starts and shows the "local development channel" prompt.
+  //      We press Enter to accept it.
+  //   2. Claude Code finishes loading and renders the shortcuts/bypass banner.
+  //   3. The MCP server inside Claude connects to our broker and calls
+  //      /api/register. Only now does the agent know its own name/role —
+  //      before this point, typing a message results in Claude answering
+  //      without knowing it is "Turing (backend)".
+  //   4. Once we see the peer in the broker's DB, we send the init prompt.
+  //
+  // Step 3 is the one that was missing: previously we sent the prompt as soon
+  // as the shortcuts banner appeared, which raced against the MCP handshake
+  // and some agents ended up answering before they knew who they were.
   if (proc.stdin) {
     const stdin = proc.stdin;
     let accepted = false;
+    let bannerSeen = false;
     let prompted = false;
     const poll = setInterval(() => {
       if (prompted || !stdin.writable) { clearInterval(poll); return; }
       const buf = outputBuffers.get(key);
-      if (!buf || buf.length === 0) return;
 
-      const raw = Buffer.concat(buf).toString();
-      // Strip ANSI for matching
-      const text = raw.replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, '').replace(/\x1b[^[].?/g, '');
+      if (!bannerSeen) {
+        if (!buf || buf.length === 0) return;
+        const raw = Buffer.concat(buf).toString();
+        // Strip ANSI for matching
+        const text = raw.replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, '').replace(/\x1b[^[].?/g, '');
+        const noSpaces = text.replace(/\s/g, '');
 
-      const noSpaces = text.replace(/\s/g, '');
+        if (!accepted && noSpaces.includes('localdevelopment')) {
+          log(`auto-accept for ${key}`);
+          stdin.write('\r');
+          accepted = true;
+          // Clear buffer so old text doesn't interfere with next check
+          outputBuffers.set(key, []);
+          return;
+        }
 
-      if (!accepted && noSpaces.includes('localdevelopment')) {
-        log(`auto-accept for ${key}`);
-        stdin.write('\r');
-        accepted = true;
-        // Clear buffer so old text doesn't interfere with next check
-        outputBuffers.set(key, []);
+        if (accepted && (noSpaces.includes('shortcuts') || noSpaces.includes('bypass'))) {
+          log(`banner ready for ${key} — waiting for MCP registration`);
+          bannerSeen = true;
+          return;
+        }
         return;
       }
 
-      if (accepted && (noSpaces.includes('shortcuts') || noSpaces.includes('bypass'))) {
-        const agentName = name || role;
-        log(`init prompt for ${key}`);
-        setTimeout(() => stdin.write(`Soy ${agentName}, rol ${role}. Ejecuta whoami y set_summary ahora.\r`), 500);
-        prompted = true;
-        clearInterval(poll);
-        return;
+      // Banner is up. Wait until the MCP server inside Claude has registered
+      // this (project, role) with the broker. Only then does the agent know
+      // its own identity well enough to act on the init prompt.
+      try {
+        const peers = selectPeersByProject(projectId);
+        const mine = peers.find(p => p.role === role && p.agent_type !== 'dashboard');
+        if (mine) {
+          const agentName = mine.name || name || role;
+          log(`init prompt for ${key} (peer ${mine.id} registered)`);
+          // Claude Code's TUI treats a combined "text\r" single write as
+          // "text + newline in the input box" (the \r lands inside the
+          // textarea like Shift+Enter). Tmux avoids this by typing the
+          // literal text and then sending Enter as a SEPARATE keypress.
+          // Replicate that by writing the body first, waiting a moment,
+          // and then writing \r on its own so the TUI interprets it as
+          // the submit key instead of a line break.
+          const body = `Soy ${agentName}, rol ${role}. Ejecuta whoami y set_summary ahora.`;
+          setTimeout(() => {
+            stdin.write(body);
+            setTimeout(() => stdin.write('\r'), 250);
+          }, 600);
+          prompted = true;
+          clearInterval(poll);
+        }
+      } catch (err) {
+        log(`peer check failed for ${key}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }, 1000);
-    // Safety: stop polling after 60s
+    // Safety: stop polling after 60s so a stuck boot doesn't leave the
+    // interval running forever.
     setTimeout(() => clearInterval(poll), 60000);
   }
 

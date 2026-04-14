@@ -34,6 +34,18 @@ function isJson(text: string): boolean {
   return (t.startsWith('{') || t.startsWith('[')) && t.length > 2;
 }
 
+// useMessages prepends a thread-context line when the user sends a message
+// so the target agent knows which thread to reply in. That wrapper is saved
+// to message_log, so when the session reloads the stored text looks like
+// `[Hilo: X | thread_id: Y] Responde usando send_message con thread_id="Y". <original>`.
+// Strip that prefix here so the user only ever sees the clean text they typed.
+const THREAD_PREFIX_RE =
+  /^\[Hilo:[^\]]*\]\s*Responde usando send_message con thread_id="[^"]*"\.\s*/;
+
+function stripThreadPrefix(text: string): string {
+  return text.replace(THREAD_PREFIX_RE, '');
+}
+
 interface MessageBubbleProps {
   message: LogEntry;
   compact?: boolean;
@@ -48,7 +60,8 @@ export default function MessageBubble({ message, compact = false }: MessageBubbl
   const avatarBg = isUser ? '#3DBA7A' : roleColor(message.from_role);
   const tag = TYPE_TAGS[message.type] ?? TYPE_TAGS.message;
   const tagLabel = t(tag.key);
-  const jsonContent = isJson(message.text);
+  const cleanText = isUser ? stripThreadPrefix(message.text) : message.text;
+  const jsonContent = isJson(cleanText);
 
   return (
     <div style={{
@@ -122,9 +135,9 @@ export default function MessageBubble({ message, compact = false }: MessageBubbl
           wordBreak: 'break-word',
         }}>
           {jsonContent ? (
-            <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{message.text}</pre>
+            <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{cleanText}</pre>
           ) : (
-            <ReactMarkdown>{message.text}</ReactMarkdown>
+            <ReactMarkdown>{cleanText}</ReactMarkdown>
           )}
         </div>
 
