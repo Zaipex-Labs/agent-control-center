@@ -5,7 +5,30 @@ import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 import { resolveEntryPoint } from '../shared/utils.js';
+
+// Locate a usable python3 binary. When the broker is launched via nohup /
+// launchd the PATH can lose /usr/local/bin or /opt/homebrew/bin, and
+// macOS's /usr/bin/python3 is a stub that needs CLT. Probe common paths.
+let pythonPathCache: string | null = null;
+function findPython3(): string {
+  if (pythonPathCache) return pythonPathCache;
+  const candidates = [
+    '/opt/homebrew/bin/python3',
+    '/usr/local/bin/python3',
+    '/usr/bin/python3',
+    'python3',
+  ];
+  for (const c of candidates) {
+    if (c === 'python3' || existsSync(c)) {
+      pythonPathCache = c;
+      return c;
+    }
+  }
+  pythonPathCache = 'python3';
+  return 'python3';
+}
 
 const log = (msg: string) => console.error(`[broker:terminal] ${msg}`);
 
@@ -56,15 +79,24 @@ export function spawnWebAgent(projectId: string, role: string, cwd: string, name
 
   // Use Python PTY wrapper so Claude Code gets a real terminal
   const ptyWrap = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'src', 'broker', 'pty-wrap.py');
-  const proc = spawn('python3', [ptyWrap, 'claude', ...claudeArgs], {
+  const pythonBin = findPython3();
+  const proc = spawn(pythonBin, [ptyWrap, 'claude', ...claudeArgs], {
     cwd,
     env,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 
+  // Must attach error handler before any other event — otherwise an ENOENT
+  // from spawn bubbles up as an unhandled 'error' and crashes the broker.
+  proc.on('error', (err) => {
+    log(`web agent ${key} spawn error: ${err.message}`);
+    agentProcesses.delete(key);
+    outputBuffers.delete(key);
+  });
+
   agentProcesses.set(key, proc);
   outputBuffers.set(key, []);
-  log(`spawned web agent ${key} pid=${proc.pid}`);
+  log(`spawned web agent ${key} pid=${proc.pid} via ${pythonBin}`);
 
   // Buffer all output for later WS clients
   const appendBuffer = (data: Buffer) => {

@@ -184,7 +184,7 @@ export function handleListProjects(res: ServerResponse): void {
           if (p.agent_type === 'dashboard') return false;
           try { process.kill(p.pid, 0); return true; } catch { return false; }
         });
-        return { ...config, active_peers: livePeers.length, peers: livePeers };
+        return { ...config, active_peers: livePeers.length, peers: livePeers, tmux_running: hasTmuxSess(config.name) };
       })
       .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
     json(res, { projects });
@@ -235,6 +235,54 @@ export function handleAddAgent(body: unknown, res: ServerResponse): void {
   json(res, { ok: true });
 }
 
+export function handleUpdateProject(body: unknown, res: ServerResponse): void {
+  const b = body as {
+    project_id?: string;
+    description?: string;
+    agents?: Array<{ role: string; cwd: string; name?: string; instructions?: string }>;
+  };
+  if (!b.project_id) return error(res, 'Missing required field: project_id');
+  if (!Array.isArray(b.agents)) return error(res, 'Missing required field: agents (array)');
+
+  const configPath = join(PROJECTS_DIR, `${b.project_id}.json`);
+  if (!existsSync(configPath)) return error(res, `Project not found: ${b.project_id}`, 404);
+
+  // Block edits while the project is actively running — rename/remove would
+  // desync the running peers from the new config.
+  const livePeers = selectPeersByProject(b.project_id).filter(p => {
+    if (p.agent_type === 'dashboard') return false;
+    try { process.kill(p.pid, 0); return true; } catch { return false; }
+  });
+  if (livePeers.length > 0 || hasTmuxSess(b.project_id)) {
+    return error(res, 'Cannot edit an active team. Shut it down first.');
+  }
+
+  // Validate agents
+  const seen = new Set<string>();
+  for (const a of b.agents) {
+    if (!a.role || !a.role.trim()) return error(res, 'Every agent must have a role');
+    if (!a.cwd || !a.cwd.trim()) return error(res, `Agent '${a.role}' is missing cwd`);
+    if (seen.has(a.role)) return error(res, `Duplicate role: ${a.role}`);
+    seen.add(a.role);
+  }
+
+  const existing = JSON.parse(readFileSync(configPath, 'utf-8'));
+  const updated = {
+    ...existing,
+    description: b.description ?? existing.description ?? '',
+    agents: b.agents.map(a => ({
+      role: a.role.trim(),
+      cwd: a.cwd.trim(),
+      name: a.name?.trim() ?? '',
+      agent_cmd: 'claude',
+      agent_args: [],
+      instructions: a.instructions?.trim() ?? '',
+    })),
+  };
+  writeFileSync(configPath, JSON.stringify(updated, null, 2) + '\n');
+  json(res, { ok: true });
+}
+
 export function handleProjectUp(body: unknown, res: ServerResponse): void {
   const b = body as { project_id?: string };
   if (!b.project_id) return error(res, 'Missing required field: project_id');
@@ -245,6 +293,18 @@ export function handleProjectUp(body: unknown, res: ServerResponse): void {
   const config = JSON.parse(readFileSync(configPath, 'utf-8'));
   if (!config.agents || config.agents.length === 0) {
     return error(res, 'Project has no agents configured');
+  }
+
+  // Validate every agent cwd up front so we fail loud instead of getting a
+  // cryptic ENOENT from spawn (node reports the exec path, not the missing cwd).
+  const missingCwds: string[] = [];
+  for (const agent of config.agents) {
+    if (!agent.cwd || !existsSync(agent.cwd)) {
+      missingCwds.push(`${agent.role} → ${agent.cwd || '(empty)'}`);
+    }
+  }
+  if (missingCwds.length > 0) {
+    return error(res, `Agent working directories do not exist: ${missingCwds.join(', ')}`);
   }
 
   // Clean up zombie peers from previous runs
@@ -356,6 +416,17 @@ export function handleRegister(body: unknown, res: ServerResponse): void {
     registered_at: now,
     last_seen: now,
   };
+
+  // BUG 2 fix: Remove stale dashboard peers for this project before inserting a new one
+  if (peer.agent_type === 'dashboard') {
+    const existing = selectPeersByProject(peer.project_id);
+    for (const p of existing) {
+      if (p.agent_type === 'dashboard') {
+        deletePeer(p.id);
+        console.error(`[broker:register] removed stale dashboard peer id=${p.id}`);
+      }
+    }
+  }
 
   insertPeer(peer);
   broadcast('peer:connected', peer, peer.project_id);
@@ -469,11 +540,12 @@ export function handleSendMessage(body: unknown, res: ServerResponse): void {
 
   let threadId = b.thread_id ?? null;
 
-  // Auto-inherit thread_id from the user's original message in this conversation
-  // The user chose which thread to send to — all replies should stay in that thread
+  // Auto-inherit thread_id: first try user's original message, then any recent message
+  // sent TO this sender (so agent replies stay in the same thread as the question)
   if (!threadId) {
     const recentHistory = selectHistory(b.project_id, { limit: 30 });
     const fiveMinAgo = Date.now() - 5 * 60 * 1000;
+    // 1. Try user's original message
     const userMsg = recentHistory.find(m =>
       m.from_role === 'user' &&
       m.thread_id &&
@@ -482,6 +554,17 @@ export function handleSendMessage(body: unknown, res: ServerResponse): void {
     if (userMsg?.thread_id) {
       threadId = userMsg.thread_id;
       console.error(`[broker:send-message] inherited thread_id=${threadId} from user message`);
+    } else {
+      // 2. Try the last message received by this sender that has a thread_id
+      const receivedMsg = recentHistory.find(m =>
+        m.to_id === b.from_id &&
+        m.thread_id &&
+        new Date(m.sent_at).getTime() > fiveMinAgo
+      );
+      if (receivedMsg?.thread_id) {
+        threadId = receivedMsg.thread_id;
+        console.error(`[broker:send-message] inherited thread_id=${threadId} from received message`);
+      }
     }
   }
 
@@ -544,7 +627,8 @@ export function handleSendToRole(body: unknown, res: ServerResponse): void {
   const metadata = b.metadata ?? null;
   let threadId = b.thread_id ?? null;
 
-  // Auto-inherit thread_id from the user's original message
+  // Auto-inherit thread_id: first try user's original message, then any recent message
+  // sent TO this sender (so agent replies stay in the same thread as the question)
   if (!threadId) {
     const recentHistory = selectHistory(b.project_id, { limit: 30 });
     const fiveMinAgo = Date.now() - 5 * 60 * 1000;
@@ -556,6 +640,16 @@ export function handleSendToRole(body: unknown, res: ServerResponse): void {
     if (userMsg?.thread_id) {
       threadId = userMsg.thread_id;
       console.error(`[broker:send-to-role] inherited thread_id=${threadId} from user message`);
+    } else {
+      const receivedMsg = recentHistory.find(m =>
+        m.to_id === b.from_id &&
+        m.thread_id &&
+        new Date(m.sent_at).getTime() > fiveMinAgo
+      );
+      if (receivedMsg?.thread_id) {
+        threadId = receivedMsg.thread_id;
+        console.error(`[broker:send-to-role] inherited thread_id=${threadId} from received message`);
+      }
     }
   }
 

@@ -73,6 +73,7 @@ export interface Project {
   agents: AgentConfig[];
   active_peers: number;
   peers: Peer[];
+  tmux_running?: boolean;
 }
 
 export interface HealthResponse {

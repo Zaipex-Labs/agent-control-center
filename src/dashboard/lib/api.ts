@@ -91,6 +91,16 @@ export async function addAgent(
   });
 }
 
+export async function updateProject(
+  projectId: string,
+  description: string,
+  agents: Array<{ role: string; cwd: string; name?: string; instructions?: string }>,
+): Promise<void> {
+  await apiFetch<{ ok: boolean }>('project/update', {
+    project_id: projectId, description, agents,
+  });
+}
+
 export async function projectUp(projectId: string): Promise<{ ok: boolean; strategy: string; agents: number }> {
   return apiFetch<{ ok: boolean; strategy: string; agents: number }>('project/up', {
     project_id: projectId,
