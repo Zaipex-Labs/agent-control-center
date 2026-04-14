@@ -64,7 +64,7 @@ function detectLang(): string {
   return 'en';
 }
 
-function getLang(): string {
+export function getLang(): string {
   if (cachedLang === null) {
     cachedLang = detectLang();
   }

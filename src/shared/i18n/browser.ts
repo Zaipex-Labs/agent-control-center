@@ -43,13 +43,15 @@ export function getLang(): string {
   return cachedLang;
 }
 
-export function setLang(lang: string): void {
+export function setLang(lang: string, persist: boolean = true): void {
   if (!translations[lang]) return;
   cachedLang = lang;
-  try {
-    localStorage.setItem('acc_lang', lang);
-  } catch {
-    // Ignore
+  if (persist) {
+    try {
+      localStorage.setItem('acc_lang', lang);
+    } catch {
+      // Ignore
+    }
   }
 }
 

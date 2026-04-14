@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { join, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ACC_HOST, ACC_PORT, CLEANUP_INTERVAL_MS } from '../shared/config.js';
-import { t } from '../shared/i18n/index.js';
+import { t, getLang } from '../shared/i18n/index.js';
 import { initDatabase } from './database.js';
 import { cleanStalePeers } from './cleanup.js';
 import { URL } from 'node:url';
@@ -116,6 +116,12 @@ export function createBrokerServer(): Server {
 
     if (method === 'GET' && url === '/api/projects') {
       return handleListProjects(res);
+    }
+
+    if (method === 'GET' && url === '/api/lang') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ lang: getLang() }));
+      return;
     }
 
     if (method === 'GET' && url.startsWith('/api/browse')) {
