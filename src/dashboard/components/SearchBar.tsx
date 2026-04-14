@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { searchThreads } from '../lib/api';
 import type { Thread } from '../lib/types';
+import { t } from '../../shared/i18n/browser';
 
 interface SearchBarProps {
   projectId: string;
@@ -60,7 +61,7 @@ export default function SearchBar({ projectId, onResults }: SearchBarProps) {
         value={query}
         onChange={e => handleChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Buscar hilos..."
+        placeholder={t('dash.searchThreads')}
         style={{
           width: '100%', background: 'var(--z-surface)',
           border: '1px solid var(--z-border)', borderRadius: 8,

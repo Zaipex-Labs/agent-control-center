@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { listSharedKeys, getSharedState } from '../lib/api';
 import type { SharedStateEntry } from '../lib/types';
+import { t } from '../../shared/i18n/browser';
 
 const KNOWN_NAMESPACES = ['contracts', 'config', 'types', 'schemas', 'env'];
 
@@ -13,11 +14,11 @@ interface NamespaceData {
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'ahora';
-  if (mins < 60) return `${mins}m`;
+  if (mins < 1) return t('dash.now');
+  if (mins < 60) return t('dash.mins', { mins });
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
-  return `${Math.floor(hrs / 24)}d`;
+  if (hrs < 24) return t('dash.hrs', { hrs });
+  return t('dash.days', { days: Math.floor(hrs / 24) });
 }
 
 function JsonPreview({ value }: { value: string }) {
@@ -82,7 +83,7 @@ function NamespaceCard({ ns, projectId }: { ns: NamespaceData; projectId: string
             {ns.namespace}/
           </div>
           <div style={{ fontSize: 11, color: 'var(--z-text-muted)', marginTop: 2 }}>
-            {ns.keys.length} key{ns.keys.length !== 1 ? 's' : ''}
+            {ns.keys.length === 1 ? t('dash.keysSingular', { count: ns.keys.length }) : t('dash.keys', { count: ns.keys.length })}
             {ns.lastUpdated && (
               <span> &middot; {ns.lastUpdated.by}, {timeAgo(ns.lastUpdated.at)}</span>
             )}
@@ -119,7 +120,7 @@ function NamespaceCard({ ns, projectId }: { ns: NamespaceData; projectId: string
                 <div style={{ padding: '0 12px 8px' }}>
                   <JsonPreview value={keyValue.value} />
                   <div style={{ fontSize: 10, color: 'var(--z-text-muted)', marginTop: 4 }}>
-                    por {keyValue.updated_by} &middot; {timeAgo(keyValue.updated_at)}
+                    {t('dash.by', { user: keyValue.updated_by })} &middot; {timeAgo(keyValue.updated_at)}
                   </div>
                 </div>
               )}
@@ -177,12 +178,12 @@ export default function SharedStatePanel({ projectId, refreshKey }: SharedStateP
         fontSize: 13, fontWeight: 600, color: 'var(--z-text)',
         marginBottom: 12, letterSpacing: -0.2,
       }}>
-        Estado compartido
+        {t('dash.sharedState')}
       </h3>
 
       {loading ? (
         <div style={{ fontSize: 12, color: 'var(--z-text-muted)', padding: 8 }}>
-          Cargando...
+          {t('dash.loading')}
         </div>
       ) : namespaces.length === 0 ? (
         <div style={{
@@ -190,7 +191,7 @@ export default function SharedStatePanel({ projectId, refreshKey }: SharedStateP
           textAlign: 'center', border: '1px dashed var(--z-border)',
           borderRadius: 8,
         }}>
-          Sin datos compartidos
+          {t('dash.noSharedData')}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

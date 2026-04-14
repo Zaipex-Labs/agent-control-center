@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Terminal from './Terminal';
+import { t } from '../../shared/i18n/browser';
 
 interface TerminalTab {
   role: string;
@@ -60,7 +61,7 @@ export default function AgentTerminalView({ projectId, tabs, onClose }: AgentTer
           }}
           onMouseEnter={e => { e.currentTarget.style.color = 'var(--z-text)'; }}
           onMouseLeave={e => { e.currentTarget.style.color = 'var(--z-text-muted)'; }}
-          title="Cerrar terminales"
+          title={t('dash.closeTerminals')}
         >
           &times;
         </button>

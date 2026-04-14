@@ -4,20 +4,22 @@ import type { WaitingReply, SendError } from '../hooks/useMessages';
 import MessageBubble from './MessageBubble';
 import CoordinationBlock from './CoordinationBlock';
 import TypingIndicator from './TypingIndicator';
+import { t, getLang } from '../../shared/i18n/browser';
 
 function formatDateSeparator(dateStr: string): string {
   const d = new Date(dateStr);
   const today = new Date();
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
+  const locale = getLang();
 
   if (d.toDateString() === today.toDateString()) {
-    return `Hoy, ${d.toLocaleDateString('es', { day: 'numeric', month: 'long' })}`;
+    return `${t('dash.today')}, ${d.toLocaleDateString(locale, { day: 'numeric', month: 'long' })}`;
   }
   if (d.toDateString() === yesterday.toDateString()) {
-    return `Ayer, ${d.toLocaleDateString('es', { day: 'numeric', month: 'long' })}`;
+    return `${t('dash.yesterday')}, ${d.toLocaleDateString(locale, { day: 'numeric', month: 'long' })}`;
   }
-  return d.toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' });
+  return d.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
 function dayKey(dateStr: string): string {
@@ -87,7 +89,7 @@ export default function Chat({ messages, loading, waitingFor, sendError, onRetry
         flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
         color: 'var(--z-text-muted)', fontSize: 14,
       }}>
-        Cargando mensajes...
+        {t('dash.loadingMessages')}
       </div>
     );
   }
@@ -100,7 +102,7 @@ export default function Chat({ messages, loading, waitingFor, sendError, onRetry
         color: 'var(--z-text-muted)',
       }}>
         <div style={{ fontSize: 36, marginBottom: 8, opacity: 0.3 }}>&#9993;</div>
-        <div style={{ fontSize: 14 }}>Sin mensajes en este hilo.</div>
+        <div style={{ fontSize: 14 }}>{t('dash.noMessagesInThread')}</div>
       </div>
     );
   }
@@ -158,7 +160,7 @@ export default function Chat({ messages, loading, waitingFor, sendError, onRetry
           borderRadius: 10, padding: '10px 14px',
         }}>
           <span style={{ fontSize: 13, color: '#DC3C3C', flex: 1 }}>
-            No se pudo enviar el mensaje a {sendError.toRole}
+            {t('dash.sendFailed', { role: sendError.toRole })}
           </span>
           {onRetry && (
             <button onClick={onRetry} style={{
@@ -166,7 +168,7 @@ export default function Chat({ messages, loading, waitingFor, sendError, onRetry
               padding: '5px 12px', borderRadius: 6, fontSize: 12,
               fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)',
             }}>
-              Reintentar
+              {t('dash.retry')}
             </button>
           )}
           {onDismissError && (

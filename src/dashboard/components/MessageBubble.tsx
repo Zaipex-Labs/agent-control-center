@@ -1,4 +1,6 @@
+import ReactMarkdown from 'react-markdown';
 import type { LogEntry } from '../lib/types';
+import { t, getLang } from '../../shared/i18n/browser';
 
 const ROLE_COLORS: Record<string, string> = {
   backend: '#4A9FE8',
@@ -8,14 +10,14 @@ const ROLE_COLORS: Record<string, string> = {
   devops: '#3DBA7A',
 };
 
-const TYPE_TAGS: Record<string, { label: string; color: string }> = {
-  question: { label: 'pregunta', color: '#4A9FE8' },
-  response: { label: 'respuesta', color: '#3DBA7A' },
-  contract_update: { label: 'actualizacion', color: '#E8823A' },
-  notification: { label: 'notificacion', color: '#E8823A' },
-  task_request: { label: 'tarea', color: '#534AB7' },
-  task_complete: { label: 'completado', color: '#3DBA7A' },
-  message: { label: 'mensaje', color: '#534AB7' },
+const TYPE_TAGS: Record<string, { key: string; color: string }> = {
+  question: { key: 'dash.type.question', color: '#4A9FE8' },
+  response: { key: 'dash.type.response', color: '#3DBA7A' },
+  contract_update: { key: 'dash.type.contractUpdate', color: '#E8823A' },
+  notification: { key: 'dash.type.notification', color: '#E8823A' },
+  task_request: { key: 'dash.type.taskRequest', color: '#534AB7' },
+  task_complete: { key: 'dash.type.taskComplete', color: '#3DBA7A' },
+  message: { key: 'dash.type.message', color: '#534AB7' },
 };
 
 function roleColor(role: string): string {
@@ -24,7 +26,7 @@ function roleColor(role: string): string {
 
 function formatTime(dateStr: string): string {
   const d = new Date(dateStr);
-  return d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString(getLang(), { hour: '2-digit', minute: '2-digit' });
 }
 
 function isJson(text: string): boolean {
@@ -45,6 +47,7 @@ export default function MessageBubble({ message, compact = false }: MessageBubbl
     : (message.from_role || '?')[0].toUpperCase();
   const avatarBg = isUser ? '#3DBA7A' : roleColor(message.from_role);
   const tag = TYPE_TAGS[message.type] ?? TYPE_TAGS.message;
+  const tagLabel = t(tag.key);
   const jsonContent = isJson(message.text);
 
   return (
@@ -81,7 +84,7 @@ export default function MessageBubble({ message, compact = false }: MessageBubbl
             marginBottom: 4, flexWrap: 'wrap',
           }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text)' }}>
-              {isUser ? 'Tu' : (message.from_role || message.from_id)}
+              {isUser ? t('dash.you') : (message.from_role || message.from_id)}
             </span>
             {message.to_role && (
               <span style={{ fontSize: 12, color: 'var(--z-text-muted)' }}>
@@ -93,7 +96,7 @@ export default function MessageBubble({ message, compact = false }: MessageBubbl
               borderRadius: 4, background: `${tag.color}18`,
               color: tag.color, textTransform: 'uppercase', letterSpacing: 0.5,
             }}>
-              {tag.label}
+              {tagLabel}
             </span>
             <span style={{
               fontSize: 11, color: 'var(--z-text-muted)',
@@ -105,7 +108,7 @@ export default function MessageBubble({ message, compact = false }: MessageBubbl
         )}
 
         {/* Bubble */}
-        <div style={{
+        <div className="msg-bubble" style={{
           background: isUser ? 'rgba(74,159,232,0.09)' : 'var(--z-surface)',
           border: `1px solid ${isUser ? 'rgba(74,159,232,0.15)' : 'var(--z-border)'}`,
           borderRadius: isUser
@@ -116,10 +119,13 @@ export default function MessageBubble({ message, compact = false }: MessageBubbl
           lineHeight: 1.55,
           color: jsonContent ? '#3DBA7A' : 'var(--z-text)',
           fontFamily: jsonContent ? 'var(--font-mono)' : 'var(--font-sans)',
-          whiteSpace: 'pre-wrap',
           wordBreak: 'break-word',
         }}>
-          {message.text}
+          {jsonContent ? (
+            <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{message.text}</pre>
+          ) : (
+            <ReactMarkdown>{message.text}</ReactMarkdown>
+          )}
         </div>
 
         {/* Compact time */}

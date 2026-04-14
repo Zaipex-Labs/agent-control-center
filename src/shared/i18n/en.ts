@@ -160,4 +160,130 @@ export const en: Record<string, string> = {
   'cmd.app': 'Open the ACC web dashboard in your browser',
   'cmd.appPort': 'Broker port',
   'cmd.appNoOpen': 'Do not open the browser automatically',
+
+  // ── Dashboard ───────────────────────────────────────────────
+  // Generic / time
+  'dash.justNow': 'just now',
+  'dash.now': 'now',
+  'dash.minAgo': '{mins}m ago',
+  'dash.hAgo': '{hrs}h ago',
+  'dash.dAgo': '{days}d ago',
+  'dash.mins': '{mins}m',
+  'dash.hrs': '{hrs}h',
+  'dash.days': '{days}d',
+  'dash.today': 'Today',
+  'dash.yesterday': 'Yesterday',
+  'dash.online': 'Online',
+
+  // TeamsPage
+  'dash.teamsTitle': 'Agents Command Center',
+  'dash.newTeam': 'New team',
+  'dash.yourTeams': 'Your teams',
+  'dash.teamsSubtitle': 'Manage your agent teams and their projects.',
+  'dash.active': 'Active',
+  'dash.inactive': 'Inactive',
+  'dash.lastActivity': 'Last activity',
+  'dash.starting': 'Starting...',
+  'dash.powerUp': 'Power up',
+  'dash.createNewTeam': 'Create new team',
+  'dash.poweringUp': 'Powering up {name}...',
+  'dash.loadingProjects': 'Loading projects...',
+  'dash.errorPoweringUp': 'Error powering up {name}: {error}',
+  'dash.errorCreating': 'Error creating: {error}',
+  'dash.registeringMcp': 'Registering MCP server...',
+  'dash.spawningAgents': 'Spawning agents with tmux...',
+  'dash.agentStarted': '{name} ({role}) started',
+  'dash.waitingConnect': 'Waiting for agents to connect...',
+  'dash.teamUp': 'Team up',
+
+  // Create project modal
+  'dash.projectName': 'Project name',
+  'dash.projectNamePlaceholder': 'my-project',
+  'dash.description': 'Description',
+  'dash.descriptionPlaceholder': 'Project description (optional)',
+  'dash.agents': 'Agents',
+  'dash.addAgent': '+ Add',
+  'dash.agentRolePlaceholder': 'Role (backend, frontend...)',
+  'dash.cancel': 'Cancel',
+  'dash.createTeam': 'Create team',
+  'dash.creating': 'Creating...',
+
+  // ProjectPage
+  'dash.teams': 'Teams',
+  'dash.panel': 'Panel',
+  'dash.shutdown': 'Shut down team',
+  'dash.agentsActive': '{count} active agent',
+  'dash.agentsActivePlural': '{count} active agents',
+  'dash.threadNamePlaceholder': 'Thread name...',
+  'dash.create': 'Create',
+  'dash.noActiveAgents': 'No active agents in this project',
+  'dash.powerUpTeam': 'Power up team',
+  'dash.poweringUpShort': 'Powering up...',
+  'dash.selectConversation': 'Select a conversation to start',
+  'dash.teamPoweredOn': 'Team powered up ({agents} agents, {strategy})',
+  'dash.teamPoweredOff': 'Team shut down ({killed} agents stopped)',
+  'dash.error': 'Error: {error}',
+
+  // ThreadList
+  'dash.conversations': 'Conversations',
+  'dash.new': '+ New',
+  'dash.noConversations': 'No conversations yet.',
+  'dash.archived': 'Archived ({count})',
+  'dash.searchThreads': 'Search threads...',
+
+  // Chat
+  'dash.loadingMessages': 'Loading messages...',
+  'dash.noMessagesInThread': 'No messages in this thread.',
+  'dash.sendFailed': 'Could not send the message to {role}',
+  'dash.retry': 'Retry',
+
+  // MessageBubble
+  'dash.you': 'You',
+  'dash.type.question': 'question',
+  'dash.type.response': 'response',
+  'dash.type.contractUpdate': 'update',
+  'dash.type.notification': 'notification',
+  'dash.type.taskRequest': 'task',
+  'dash.type.taskComplete': 'complete',
+  'dash.type.message': 'message',
+
+  // Compose
+  'dash.to': 'To',
+  'dash.all': 'All',
+  'dash.messagePlaceholder': 'Write a message to your team...',
+  'dash.send': 'Send',
+
+  // SharedStatePanel
+  'dash.sharedState': 'Shared state',
+  'dash.loading': 'Loading...',
+  'dash.noSharedData': 'No shared data',
+  'dash.keys': '{count} keys',
+  'dash.keysSingular': '{count} key',
+  'dash.by': 'by {user}',
+
+  // TeamStats
+  'dash.teamActivity': 'Team activity',
+  'dash.messagesToday': 'Messages today',
+  'dash.contracts': 'Contracts',
+  'dash.activeTime': 'Active time',
+
+  // CoordinationBlock
+  'dash.coordinatedTwo': '{a} and {b} coordinated',
+  'dash.coordinatedOne': '{a} coordinated',
+  'dash.messagesSingular': '({count} message)',
+  'dash.messagesPlural': '({count} messages)',
+
+  // AgentChips
+  'dash.agent': 'Agent',
+
+  // AgentTerminalView
+  'dash.closeTerminals': 'Close terminals',
+
+  // FolderPicker
+  'dash.selectFolder': 'Select folder...',
+  'dash.browse': 'Explore',
+  'dash.select': 'Select',
+  'dash.emptyFolder': 'Empty folder',
+  'dash.goUp': 'Go up',
+  'dash.cannotReadDir': 'Cannot read directory',
 };

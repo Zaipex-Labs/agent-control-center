@@ -1,16 +1,17 @@
 import { useState } from 'react';
 import type { Thread } from '../lib/types';
 import SearchBar from './SearchBar';
+import { t } from '../../shared/i18n/browser';
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'ahora';
-  if (mins < 60) return `${mins}m`;
+  if (mins < 1) return t('dash.now');
+  if (mins < 60) return t('dash.mins', { mins });
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
+  if (hrs < 24) return t('dash.hrs', { hrs });
   const days = Math.floor(hrs / 24);
-  return `${days}d`;
+  return t('dash.days', { days });
 }
 
 interface ThreadCardProps {
@@ -101,7 +102,7 @@ export default function ThreadList({ threads, activeThread, onSelect, onCreate, 
         borderBottom: '1px solid var(--z-border)',
       }}>
         <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--z-text)', letterSpacing: -0.2 }}>
-          Conversaciones
+          {t('dash.conversations')}
         </span>
         <button
           onClick={onCreate}
@@ -114,7 +115,7 @@ export default function ThreadList({ threads, activeThread, onSelect, onCreate, 
           onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--z-orange)'; e.currentTarget.style.color = 'var(--z-orange)'; }}
           onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--z-border)'; e.currentTarget.style.color = 'var(--z-text-secondary)'; }}
         >
-          + Nuevo
+          {t('dash.new')}
         </button>
       </div>
 
@@ -127,7 +128,7 @@ export default function ThreadList({ threads, activeThread, onSelect, onCreate, 
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px' }}>
         {active.length === 0 && archived.length === 0 && (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--z-text-muted)', fontSize: 13 }}>
-            Sin conversaciones aun.
+            {t('dash.noConversations')}
           </div>
         )}
 
@@ -157,7 +158,7 @@ export default function ThreadList({ threads, activeThread, onSelect, onCreate, 
                 display: 'inline-block', transform: showArchived ? 'rotate(90deg)' : 'rotate(0deg)',
                 transition: 'transform 0.15s', fontSize: 10,
               }}>&#9654;</span>
-              Archivadas ({archived.length})
+              {t('dash.archived', { count: archived.length })}
             </div>
             {showArchived && archived.map(t => (
               <ThreadCard

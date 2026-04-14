@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { browseFolders } from '../lib/api';
 import type { BrowseEntry } from '../lib/api';
+import { t } from '../../shared/i18n/browser';
 
 interface FolderPickerProps {
   value: string;
@@ -22,7 +23,7 @@ export default function FolderPicker({ value, onChange }: FolderPickerProps) {
       setCurrentPath(resp.path);
       setFolders(resp.folders);
     } catch {
-      setError('No se puede leer el directorio');
+      setError(t('dash.cannotReadDir'));
     } finally {
       setLoading(false);
     }
@@ -57,7 +58,7 @@ export default function FolderPicker({ value, onChange }: FolderPickerProps) {
           onMouseEnter={e => { e.currentTarget.style.borderColor = '#E8823A'; }}
           onMouseLeave={e => { e.currentTarget.style.borderColor = '#D0C9BE'; }}
         >
-          {value || 'Seleccionar carpeta...'}
+          {value || t('dash.selectFolder')}
         </div>
         <button
           onClick={() => setOpen(true)}
@@ -71,7 +72,7 @@ export default function FolderPicker({ value, onChange }: FolderPickerProps) {
           onMouseEnter={e => { e.currentTarget.style.background = '#E8E4DC'; e.currentTarget.style.borderColor = '#E8823A'; }}
           onMouseLeave={e => { e.currentTarget.style.background = '#F5F3EF'; e.currentTarget.style.borderColor = '#D0C9BE'; }}
         >
-          <span style={{ fontSize: 14 }}>📁</span> Explorar
+          <span style={{ fontSize: 14 }}>📁</span> {t('dash.browse')}
         </button>
       </div>
     );
@@ -104,7 +105,7 @@ export default function FolderPicker({ value, onChange }: FolderPickerProps) {
             flexShrink: 0,
           }}
         >
-          Seleccionar
+          {t('dash.select')}
         </button>
         <button
           onClick={() => setOpen(false)}
@@ -114,7 +115,7 @@ export default function FolderPicker({ value, onChange }: FolderPickerProps) {
             cursor: 'pointer', fontFamily: 'var(--font-sans)', flexShrink: 0,
           }}
         >
-          Cancelar
+          {t('dash.cancel')}
         </button>
       </div>
 
@@ -122,7 +123,7 @@ export default function FolderPicker({ value, onChange }: FolderPickerProps) {
       <div style={{ maxHeight: 200, overflowY: 'auto' }}>
         {loading ? (
           <div style={{ padding: 16, textAlign: 'center', color: '#8AA8C0', fontSize: 13 }}>
-            Cargando...
+            {t('dash.loading')}
           </div>
         ) : error ? (
           <div style={{ padding: 16, textAlign: 'center', color: '#DC3C3C', fontSize: 13 }}>
@@ -130,7 +131,7 @@ export default function FolderPicker({ value, onChange }: FolderPickerProps) {
           </div>
         ) : folders.length === 0 ? (
           <div style={{ padding: 16, textAlign: 'center', color: '#8AA8C0', fontSize: 13 }}>
-            Carpeta vacia
+            {t('dash.emptyFolder')}
           </div>
         ) : (
           folders.map((folder) => (
@@ -155,7 +156,7 @@ export default function FolderPicker({ value, onChange }: FolderPickerProps) {
                 fontSize: 13, fontWeight: folder.name === '..' ? 500 : 400,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
-                {folder.name === '..' ? 'Subir un nivel' : folder.name}
+                {folder.name === '..' ? t('dash.goUp') : folder.name}
               </span>
             </div>
           ))

@@ -1,4 +1,5 @@
 import type { Peer } from '../lib/types';
+import { t } from '../../shared/i18n/browser';
 
 const ROLE_COLORS: Record<string, string> = {
   backend: '#4A9FE8',
@@ -73,7 +74,7 @@ function AddChip() {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 14, color: 'var(--z-text-muted)',
       }}>+</div>
-      <span style={{ fontSize: 13, color: 'var(--z-text-muted)' }}>Agente</span>
+      <span style={{ fontSize: 13, color: 'var(--z-text-muted)' }}>{t('dash.agent')}</span>
     </div>
   );
 }

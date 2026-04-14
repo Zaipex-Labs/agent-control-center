@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import type { Peer, MessageType } from '../lib/types';
+import { t } from '../../shared/i18n/browser';
 
 interface ComposeProps {
   agents: Peer[];
@@ -14,7 +15,7 @@ export default function Compose({ agents, onSend }: ComposeProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const roles = Array.from(new Set(agents.map(a => a.role))).filter(Boolean);
-  const displayTarget = targetRole ?? (roles[0] || 'Todos');
+  const displayTarget = targetRole ?? (roles[0] || t('dash.all'));
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
@@ -65,7 +66,7 @@ export default function Compose({ agents, onSend }: ComposeProps) {
             whiteSpace: 'nowrap', fontWeight: 500,
           }}
         >
-          A: {displayTarget} <span style={{ fontSize: 10, marginLeft: 2 }}>&#9660;</span>
+          {t('dash.to')}: {displayTarget} <span style={{ fontSize: 10, marginLeft: 2 }}>&#9660;</span>
         </button>
 
         {showDropdown && (
@@ -85,7 +86,7 @@ export default function Compose({ agents, onSend }: ComposeProps) {
               onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
             >
-              Todos
+              {t('dash.all')}
             </div>
             {roles.map(role => (
               <div
@@ -111,7 +112,7 @@ export default function Compose({ agents, onSend }: ComposeProps) {
         value={text}
         onChange={handleInput}
         onKeyDown={handleKeyDown}
-        placeholder="Escribe un mensaje para tu equipo..."
+        placeholder={t('dash.messagePlaceholder')}
         rows={1}
         style={{
           flex: 1, background: 'var(--z-surface)',
@@ -140,7 +141,7 @@ export default function Compose({ agents, onSend }: ComposeProps) {
           opacity: sending ? 0.6 : 1,
         }}
       >
-        {sending ? '...' : 'Enviar'}
+        {sending ? '...' : t('dash.send')}
       </button>
     </div>
   );

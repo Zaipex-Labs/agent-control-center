@@ -160,4 +160,130 @@ export const es: Record<string, string> = {
   'cmd.app': 'Abrir el dashboard web de ACC en el navegador',
   'cmd.appPort': 'Puerto del broker',
   'cmd.appNoOpen': 'No abrir el navegador autom\u00e1ticamente',
+
+  // ── Dashboard ───────────────────────────────────────────────
+  // Generic / time
+  'dash.justNow': 'justo ahora',
+  'dash.now': 'ahora',
+  'dash.minAgo': 'hace {mins}m',
+  'dash.hAgo': 'hace {hrs}h',
+  'dash.dAgo': 'hace {days}d',
+  'dash.mins': '{mins}m',
+  'dash.hrs': '{hrs}h',
+  'dash.days': '{days}d',
+  'dash.today': 'Hoy',
+  'dash.yesterday': 'Ayer',
+  'dash.online': 'En l\u00ednea',
+
+  // TeamsPage
+  'dash.teamsTitle': 'Agents Command Center',
+  'dash.newTeam': 'Nuevo equipo',
+  'dash.yourTeams': 'Tus equipos',
+  'dash.teamsSubtitle': 'Gestiona tus equipos de agentes y sus proyectos.',
+  'dash.active': 'Activo',
+  'dash.inactive': 'Inactivo',
+  'dash.lastActivity': '\u00daltima actividad',
+  'dash.starting': 'Encendiendo...',
+  'dash.powerUp': 'Encender',
+  'dash.createNewTeam': 'Crear nuevo equipo',
+  'dash.poweringUp': 'Encendiendo {name}...',
+  'dash.loadingProjects': 'Cargando proyectos...',
+  'dash.errorPoweringUp': 'Error al encender {name}: {error}',
+  'dash.errorCreating': 'Error al crear: {error}',
+  'dash.registeringMcp': 'Registrando MCP server...',
+  'dash.spawningAgents': 'Spawneando agentes con tmux...',
+  'dash.agentStarted': '{name} ({role}) iniciado',
+  'dash.waitingConnect': 'Esperando que los agentes se conecten...',
+  'dash.teamUp': 'Equipo encendido',
+
+  // Create project modal
+  'dash.projectName': 'Nombre del proyecto',
+  'dash.projectNamePlaceholder': 'mi-proyecto',
+  'dash.description': 'Descripci\u00f3n',
+  'dash.descriptionPlaceholder': 'Descripci\u00f3n del proyecto (opcional)',
+  'dash.agents': 'Agentes',
+  'dash.addAgent': '+ Agregar',
+  'dash.agentRolePlaceholder': 'Rol (backend, frontend...)',
+  'dash.cancel': 'Cancelar',
+  'dash.createTeam': 'Crear equipo',
+  'dash.creating': 'Creando...',
+
+  // ProjectPage
+  'dash.teams': 'Equipos',
+  'dash.panel': 'Panel',
+  'dash.shutdown': 'Apagar equipo',
+  'dash.agentsActive': '{count} agente activo',
+  'dash.agentsActivePlural': '{count} agentes activos',
+  'dash.threadNamePlaceholder': 'Nombre del hilo...',
+  'dash.create': 'Crear',
+  'dash.noActiveAgents': 'No hay agentes activos en este proyecto',
+  'dash.powerUpTeam': 'Encender equipo',
+  'dash.poweringUpShort': 'Encendiendo...',
+  'dash.selectConversation': 'Selecciona una conversaci\u00f3n para comenzar',
+  'dash.teamPoweredOn': 'Equipo encendido ({agents} agentes, {strategy})',
+  'dash.teamPoweredOff': 'Equipo apagado ({killed} agentes detenidos)',
+  'dash.error': 'Error: {error}',
+
+  // ThreadList
+  'dash.conversations': 'Conversaciones',
+  'dash.new': '+ Nuevo',
+  'dash.noConversations': 'Sin conversaciones a\u00fan.',
+  'dash.archived': 'Archivadas ({count})',
+  'dash.searchThreads': 'Buscar hilos...',
+
+  // Chat
+  'dash.loadingMessages': 'Cargando mensajes...',
+  'dash.noMessagesInThread': 'Sin mensajes en este hilo.',
+  'dash.sendFailed': 'No se pudo enviar el mensaje a {role}',
+  'dash.retry': 'Reintentar',
+
+  // MessageBubble
+  'dash.you': 'T\u00fa',
+  'dash.type.question': 'pregunta',
+  'dash.type.response': 'respuesta',
+  'dash.type.contractUpdate': 'actualizaci\u00f3n',
+  'dash.type.notification': 'notificaci\u00f3n',
+  'dash.type.taskRequest': 'tarea',
+  'dash.type.taskComplete': 'completado',
+  'dash.type.message': 'mensaje',
+
+  // Compose
+  'dash.to': 'A',
+  'dash.all': 'Todos',
+  'dash.messagePlaceholder': 'Escribe un mensaje para tu equipo...',
+  'dash.send': 'Enviar',
+
+  // SharedStatePanel
+  'dash.sharedState': 'Estado compartido',
+  'dash.loading': 'Cargando...',
+  'dash.noSharedData': 'Sin datos compartidos',
+  'dash.keys': '{count} claves',
+  'dash.keysSingular': '{count} clave',
+  'dash.by': 'por {user}',
+
+  // TeamStats
+  'dash.teamActivity': 'Actividad del equipo',
+  'dash.messagesToday': 'Mensajes hoy',
+  'dash.contracts': 'Contratos',
+  'dash.activeTime': 'Tiempo activo',
+
+  // CoordinationBlock
+  'dash.coordinatedTwo': '{a} y {b} coordinaron',
+  'dash.coordinatedOne': '{a} coordin\u00f3',
+  'dash.messagesSingular': '({count} mensaje)',
+  'dash.messagesPlural': '({count} mensajes)',
+
+  // AgentChips
+  'dash.agent': 'Agente',
+
+  // AgentTerminalView
+  'dash.closeTerminals': 'Cerrar terminales',
+
+  // FolderPicker
+  'dash.selectFolder': 'Seleccionar carpeta...',
+  'dash.browse': 'Explorar',
+  'dash.select': 'Seleccionar',
+  'dash.emptyFolder': 'Carpeta vac\u00eda',
+  'dash.goUp': 'Subir un nivel',
+  'dash.cannotReadDir': 'No se puede leer el directorio',
 };

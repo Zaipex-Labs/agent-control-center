@@ -13,6 +13,7 @@ import TeamStats from '../components/TeamStats';
 import AgentTerminalView from '../components/AgentTerminalView';
 import { projectUp, projectDown } from '../lib/api';
 import type { Peer } from '../lib/types';
+import { t } from '../../shared/i18n/browser';
 
 export default function ProjectPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -45,10 +46,10 @@ export default function ProjectPage() {
     setStatusMsg(null);
     try {
       const result = await projectUp(projectId);
-      setStatusMsg({ text: `Equipo encendido (${result.agents} agentes, ${result.strategy})`, type: 'ok' });
+      setStatusMsg({ text: t('dash.teamPoweredOn', { agents: result.agents, strategy: result.strategy }), type: 'ok' });
       setTimeout(() => setStatusMsg(null), 5000);
     } catch (e) {
-      setStatusMsg({ text: `Error: ${e instanceof Error ? e.message : String(e)}`, type: 'err' });
+      setStatusMsg({ text: t('dash.error', { error: e instanceof Error ? e.message : String(e) }), type: 'err' });
     } finally {
       setPowering(false);
     }
@@ -60,10 +61,10 @@ export default function ProjectPage() {
     try {
       const result = await projectDown(projectId);
       setTerminalTabs([]);
-      setStatusMsg({ text: `Equipo apagado (${result.killed} agentes detenidos)`, type: 'ok' });
+      setStatusMsg({ text: t('dash.teamPoweredOff', { killed: result.killed }), type: 'ok' });
       setTimeout(() => setStatusMsg(null), 5000);
     } catch (e) {
-      setStatusMsg({ text: `Error: ${e instanceof Error ? e.message : String(e)}`, type: 'err' });
+      setStatusMsg({ text: t('dash.error', { error: e instanceof Error ? e.message : String(e) }), type: 'err' });
     }
   };
 
@@ -104,7 +105,7 @@ export default function ProjectPage() {
           onMouseEnter={e => { e.currentTarget.style.color = 'var(--z-text)'; }}
           onMouseLeave={e => { e.currentTarget.style.color = 'var(--z-text-secondary)'; }}
         >
-          <span style={{ fontSize: 16 }}>&larr;</span> Equipos
+          <span style={{ fontSize: 16 }}>&larr;</span> {t('dash.teams')}
         </button>
 
         {/* Center: project name */}
@@ -123,7 +124,7 @@ export default function ProjectPage() {
             background: agents.length > 0 ? 'rgba(61,186,122,0.15)' : 'rgba(90,98,114,0.15)',
             color: agents.length > 0 ? 'var(--z-green)' : 'var(--z-text-muted)',
           }}>
-            {agents.length} agente{agents.length !== 1 ? 's' : ''} activo{agents.length !== 1 ? 's' : ''}
+            {agents.length === 1 ? t('dash.agentsActive', { count: agents.length }) : t('dash.agentsActivePlural', { count: agents.length })}
           </span>
           <button
             onClick={() => { setShowSidebar(v => !v); setSharedRefresh(n => n + 1); }}
@@ -135,7 +136,7 @@ export default function ProjectPage() {
               transition: 'background 0.15s',
             }}
           >
-            Panel
+            {t('dash.panel')}
           </button>
           <button
             onClick={handleShutdown}
@@ -148,7 +149,7 @@ export default function ProjectPage() {
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,60,60,0.2)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'rgba(220,60,60,0.1)'; }}
           >
-            Apagar equipo
+            {t('dash.shutdown')}
           </button>
         </div>
       </nav>
@@ -204,7 +205,7 @@ export default function ProjectPage() {
                 value={newThreadName}
                 onChange={e => setNewThreadName(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleCreateThread(); if (e.key === 'Escape') { setCreatingThread(false); setNewThreadName(''); } }}
-                placeholder="Nombre del hilo..."
+                placeholder={t('dash.threadNamePlaceholder')}
                 style={{
                   flex: 1, background: 'var(--z-surface)',
                   border: '1px solid var(--z-border)', borderRadius: 8,
@@ -220,7 +221,7 @@ export default function ProjectPage() {
                   fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)',
                 }}
               >
-                Crear
+                {t('dash.create')}
               </button>
               <button
                 onClick={() => { setCreatingThread(false); setNewThreadName(''); }}
@@ -230,7 +231,7 @@ export default function ProjectPage() {
                   padding: '8px 12px',
                 }}
               >
-                Cancelar
+                {t('dash.cancel')}
               </button>
             </div>
           )}
@@ -256,7 +257,7 @@ export default function ProjectPage() {
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.2 }}>&#9654;</div>
                   <div style={{ fontSize: 16, color: 'var(--z-text-secondary)', marginBottom: 20 }}>
-                    No hay agentes activos en este proyecto
+                    {t('dash.noActiveAgents')}
                   </div>
                   <button
                     onClick={handlePowerUp}
@@ -271,7 +272,7 @@ export default function ProjectPage() {
                     onMouseEnter={e => { if (!powering) e.currentTarget.style.background = '#2FA068'; }}
                     onMouseLeave={e => { e.currentTarget.style.background = '#3DBA7A'; }}
                   >
-                    {powering ? 'Encendiendo...' : 'Encender equipo'}
+                    {powering ? t('dash.poweringUpShort') : t('dash.powerUpTeam')}
                   </button>
                 </div>
               </div>
@@ -281,7 +282,7 @@ export default function ProjectPage() {
               }}>
                 <div style={{ textAlign: 'center', color: 'var(--z-text-muted)' }}>
                   <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.3 }}>&#128172;</div>
-                  <div style={{ fontSize: 15 }}>Selecciona una conversacion para comenzar</div>
+                  <div style={{ fontSize: 15 }}>{t('dash.selectConversation')}</div>
                 </div>
               </div>
             )}

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { LogEntry } from '../lib/types';
+import { t, getLang } from '../../shared/i18n/browser';
 
 const ROLE_COLORS: Record<string, string> = {
   backend: '#4A9FE8',
@@ -13,7 +14,7 @@ function roleColor(role: string): string {
 }
 
 function formatTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+  return new Date(dateStr).toLocaleTimeString(getLang(), { hour: '2-digit', minute: '2-digit' });
 }
 
 interface CoordinationBlockProps {
@@ -25,8 +26,8 @@ export default function CoordinationBlock({ messages }: CoordinationBlockProps) 
 
   const roles = Array.from(new Set(messages.flatMap(m => [m.from_role, m.to_role]).filter(Boolean)));
   const label = roles.length === 2
-    ? `${roles[0]} y ${roles[1]} coordinaron`
-    : `${roles[0]} coordinó`;
+    ? t('dash.coordinatedTwo', { a: roles[0], b: roles[1] })
+    : t('dash.coordinatedOne', { a: roles[0] });
 
   return (
     <div style={{ margin: '4px 0' }}>
@@ -61,7 +62,7 @@ export default function CoordinationBlock({ messages }: CoordinationBlockProps) 
         </div>
 
         <span style={{ fontSize: 12, color: 'var(--z-text-muted)', flex: 1 }}>
-          {label} ({messages.length} mensaje{messages.length !== 1 ? 's' : ''})
+          {label} {messages.length === 1 ? t('dash.messagesSingular', { count: messages.length }) : t('dash.messagesPlural', { count: messages.length })}
         </span>
 
         <span style={{

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { listProjects, projectUp, createProject, addAgent } from '../lib/api';
 import type { Project } from '../lib/types';
 import FolderPicker from '../components/FolderPicker';
+import { t } from '../../shared/i18n/browser';
 
 const ROLE_COLORS: Record<string, string> = {
   backend: '#4A9FE8',
@@ -19,12 +20,12 @@ function roleColor(role: string): string {
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'justo ahora';
-  if (mins < 60) return `hace ${mins}m`;
+  if (mins < 1) return t('dash.justNow');
+  if (mins < 60) return t('dash.minAgo', { mins });
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `hace ${hrs}h`;
+  if (hrs < 24) return t('dash.hAgo', { hrs });
   const days = Math.floor(hrs / 24);
-  return `hace ${days}d`;
+  return t('dash.dAgo', { days });
 }
 
 function Avatar({ name, role }: { name: string; role: string }) {
@@ -72,7 +73,7 @@ function ProjectCard({ project, onClick, onPowerUp, starting }: { project: Proje
           color: isActive ? '#2A8B5A' : '#8A8A8A',
           letterSpacing: 0.3,
         }}>
-          {isActive ? 'Activo' : 'Inactivo'}
+          {isActive ? t('dash.active') : t('dash.inactive')}
         </span>
       </div>
 
@@ -98,7 +99,7 @@ function ProjectCard({ project, onClick, onPowerUp, starting }: { project: Proje
                   <div style={{
                     width: 8, height: 8, borderRadius: '50%', background: '#3DBA7A',
                     marginLeft: 'auto', flexShrink: 0,
-                  }} title="Online" />
+                  }} title={t('dash.online')} />
                 )}
               </div>
             );
@@ -108,7 +109,7 @@ function ProjectCard({ project, onClick, onPowerUp, starting }: { project: Proje
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto' }}>
         <span style={{ fontSize: 12, color: '#8AA8C0' }}>
-          Ultima actividad: {timeAgo(lastActivity)}
+          {t('dash.lastActivity')}: {timeAgo(lastActivity)}
         </span>
         {!isActive && project.agents.length > 0 && (
           <button
@@ -124,7 +125,7 @@ function ProjectCard({ project, onClick, onPowerUp, starting }: { project: Proje
             onMouseEnter={e => { if (!starting) e.currentTarget.style.background = '#2FA068'; }}
             onMouseLeave={e => { e.currentTarget.style.background = starting ? '#8AA8C0' : '#3DBA7A'; }}
           >
-            {starting ? 'Encendiendo...' : 'Encender'}
+            {starting ? t('dash.starting') : t('dash.powerUp')}
           </button>
         )}
       </div>
@@ -150,7 +151,7 @@ function NewTeamCard({ onClick }: { onClick: () => void }) {
         alignItems: 'center', justifyContent: 'center',
         fontSize: 24, color: '#8AA8C0',
       }}>+</div>
-      <span style={{ fontSize: 14, color: '#8AA8C0', fontWeight: 500 }}>Crear nuevo equipo</span>
+      <span style={{ fontSize: 14, color: '#8AA8C0', fontWeight: 500 }}>{t('dash.createNewTeam')}</span>
     </div>
   );
 }
@@ -178,13 +179,13 @@ export default function TeamsPage() {
     setStarting(name);
     setError(null);
     const log: Array<{ text: string; done: boolean }> = [
-      { text: 'Registrando MCP server...', done: false },
+      { text: t('dash.registeringMcp'), done: false },
     ];
     setStartLog([...log]);
 
     try {
       log[0].done = true;
-      log.push({ text: 'Spawneando agentes con tmux...', done: false });
+      log.push({ text: t('dash.spawningAgents'), done: false });
       setStartLog([...log]);
 
       const result = await projectUp(name);
@@ -194,10 +195,10 @@ export default function TeamsPage() {
       const names = (result as any).agent_names as string[] | undefined;
       if (roles && names) {
         for (let i = 0; i < roles.length; i++) {
-          log.push({ text: `${names[i]} (${roles[i]}) iniciado`, done: true });
+          log.push({ text: t('dash.agentStarted', { name: names[i], role: roles[i] }), done: true });
         }
       }
-      log.push({ text: 'Esperando que los agentes se conecten...', done: false });
+      log.push({ text: t('dash.waitingConnect'), done: false });
       setStartLog([...log]);
 
       // Poll for peers to appear
@@ -210,14 +211,14 @@ export default function TeamsPage() {
         if ((updated && updated.active_peers > 0) || attempts >= 10) {
           clearInterval(poll);
           log[log.length - 1].done = true;
-          log.push({ text: 'Equipo encendido', done: true });
+          log.push({ text: t('dash.teamUp'), done: true });
           setStartLog([...log]);
           await reload();
           setTimeout(() => { setStarting(null); setStartLog([]); }, 2000);
         }
       }, 2000);
     } catch (e) {
-      setError(`Error al encender ${name}: ${e instanceof Error ? e.message : String(e)}`);
+      setError(t('dash.errorPoweringUp', { name, error: e instanceof Error ? e.message : String(e) }));
       setStarting(null);
       setStartLog([]);
     }
@@ -234,7 +235,7 @@ export default function TeamsPage() {
       await reload();
       setShowCreate(false);
     } catch (e) {
-      setError(`Error al crear: ${e instanceof Error ? e.message : String(e)}`);
+      setError(t('dash.errorCreating', { error: e instanceof Error ? e.message : String(e) }));
     } finally {
       setCreating(false);
     }
@@ -263,7 +264,7 @@ export default function TeamsPage() {
             fontSize: 16, fontWeight: 600, color: '#1E2D40',
             fontFamily: 'var(--font-sans)', letterSpacing: -0.3,
           }}>
-            Agents Command Center
+            {t('dash.teamsTitle')}
           </span>
         </div>
         <button
@@ -277,7 +278,7 @@ export default function TeamsPage() {
           onMouseEnter={e => { e.currentTarget.style.background = '#D4732E'; }}
           onMouseLeave={e => { e.currentTarget.style.background = '#E8823A'; }}
         >
-          Nuevo equipo
+          {t('dash.newTeam')}
         </button>
       </header>
 
@@ -288,10 +289,10 @@ export default function TeamsPage() {
             fontFamily: 'var(--font-serif)', fontSize: 36, fontWeight: 400,
             color: '#1E2D40', margin: 0, marginBottom: 8,
           }}>
-            Tus equipos
+            {t('dash.yourTeams')}
           </h1>
           <p style={{ color: '#5A6272', fontSize: 16, margin: 0 }}>
-            Gestiona tus equipos de agentes y sus proyectos.
+            {t('dash.teamsSubtitle')}
           </p>
         </div>
 
@@ -318,7 +319,7 @@ export default function TeamsPage() {
               fontSize: 14, fontWeight: 600, color: '#1E2D40', marginBottom: 12,
               fontFamily: 'var(--font-sans)',
             }}>
-              Encendiendo {starting}...
+              {t('dash.poweringUp', { name: starting ?? '' })}
             </div>
             {startLog.map((step, i) => (
               <div key={i} style={{
@@ -343,7 +344,7 @@ export default function TeamsPage() {
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: 80, color: '#8AA8C0' }}>
-            Cargando proyectos...
+            {t('dash.loadingProjects')}
           </div>
         ) : (
           <div style={{
@@ -423,18 +424,18 @@ function CreateProjectModal({ onClose, onSubmit, creating }: {
           fontFamily: 'var(--font-serif)', fontSize: 24, fontWeight: 400,
           color: '#1E2D40', margin: '0 0 24px',
         }}>
-          Nuevo equipo
+          {t('dash.newTeam')}
         </h2>
 
         {/* Name */}
         <label style={{ display: 'block', marginBottom: 16 }}>
           <span style={{ fontSize: 13, fontWeight: 500, color: '#5A6272', display: 'block', marginBottom: 6 }}>
-            Nombre del proyecto
+            {t('dash.projectName')}
           </span>
           <input
             value={name}
             onChange={e => setName(e.target.value)}
-            placeholder="mi-proyecto"
+            placeholder={t('dash.projectNamePlaceholder')}
             style={inputStyle}
             autoFocus
           />
@@ -443,12 +444,12 @@ function CreateProjectModal({ onClose, onSubmit, creating }: {
         {/* Description */}
         <label style={{ display: 'block', marginBottom: 20 }}>
           <span style={{ fontSize: 13, fontWeight: 500, color: '#5A6272', display: 'block', marginBottom: 6 }}>
-            Descripcion
+            {t('dash.description')}
           </span>
           <input
             value={description}
             onChange={e => setDescription(e.target.value)}
-            placeholder="Descripcion del proyecto (opcional)"
+            placeholder={t('dash.descriptionPlaceholder')}
             style={inputStyle}
           />
         </label>
@@ -456,7 +457,7 @@ function CreateProjectModal({ onClose, onSubmit, creating }: {
         {/* Agents */}
         <div style={{ marginBottom: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <span style={{ fontSize: 13, fontWeight: 500, color: '#5A6272' }}>Agentes</span>
+            <span style={{ fontSize: 13, fontWeight: 500, color: '#5A6272' }}>{t('dash.agents')}</span>
             <button
               onClick={addAgent}
               style={{
@@ -465,7 +466,7 @@ function CreateProjectModal({ onClose, onSubmit, creating }: {
                 cursor: 'pointer', fontFamily: 'var(--font-sans)',
               }}
             >
-              + Agregar
+              {t('dash.addAgent')}
             </button>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -478,7 +479,7 @@ function CreateProjectModal({ onClose, onSubmit, creating }: {
                   <input
                     value={agent.role}
                     onChange={e => updateAgent(i, 'role', e.target.value)}
-                    placeholder="Rol (backend, frontend...)"
+                    placeholder={t('dash.agentRolePlaceholder')}
                     style={{ ...inputStyle, flex: 1 }}
                   />
                   {agents.length > 1 && (
@@ -512,7 +513,7 @@ function CreateProjectModal({ onClose, onSubmit, creating }: {
               cursor: 'pointer', fontFamily: 'var(--font-sans)',
             }}
           >
-            Cancelar
+            {t('dash.cancel')}
           </button>
           <button
             onClick={() => { if (canSubmit) onSubmit(name.trim(), description.trim(), agents); }}
@@ -525,7 +526,7 @@ function CreateProjectModal({ onClose, onSubmit, creating }: {
               opacity: creating ? 0.6 : 1,
             }}
           >
-            {creating ? 'Creando...' : 'Crear equipo'}
+            {creating ? t('dash.creating') : t('dash.createTeam')}
           </button>
         </div>
       </div>

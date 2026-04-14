@@ -1,13 +1,14 @@
 import type { Peer, LogEntry } from '../lib/types';
+import { t } from '../../shared/i18n/browser';
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'ahora';
-  if (mins < 60) return `${mins}m`;
+  if (mins < 1) return t('dash.now');
+  if (mins < 60) return t('dash.mins', { mins });
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
-  return `${Math.floor(hrs / 24)}d`;
+  if (hrs < 24) return t('dash.hrs', { hrs });
+  return t('dash.days', { days: Math.floor(hrs / 24) });
 }
 
 function formatDuration(ms: number): string {
@@ -63,20 +64,20 @@ export default function TeamStats({ agents, messages }: TeamStatsProps) {
         fontSize: 13, fontWeight: 600, color: 'var(--z-text)',
         marginBottom: 12, letterSpacing: -0.2,
       }}>
-        Actividad del equipo
+        {t('dash.teamActivity')}
       </h3>
       <div style={{
         border: '1px solid var(--z-border)', borderRadius: 8,
         padding: '4px 12px',
         display: 'flex', flexDirection: 'column',
       }}>
-        <Stat label="Mensajes hoy" value={String(todayMessages)} />
+        <Stat label={t('dash.messagesToday')} value={String(todayMessages)} />
         <div style={{ height: 1, background: 'var(--z-border)' }} />
-        <Stat label="Contratos" value={String(contractMessages)} />
+        <Stat label={t('dash.contracts')} value={String(contractMessages)} />
         <div style={{ height: 1, background: 'var(--z-border)' }} />
-        <Stat label="Tiempo activo" value={activeTime > 0 ? formatDuration(activeTime) : '--'} />
+        <Stat label={t('dash.activeTime')} value={activeTime > 0 ? formatDuration(activeTime) : '--'} />
         <div style={{ height: 1, background: 'var(--z-border)' }} />
-        <Stat label="Ultima actividad" value={latestActivity ? timeAgo(latestActivity) : '--'} />
+        <Stat label={t('dash.lastActivity')} value={latestActivity ? timeAgo(latestActivity) : '--'} />
       </div>
     </div>
   );
