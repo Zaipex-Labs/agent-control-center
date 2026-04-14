@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listProjects, projectUp, projectDown, createProject, addAgent, updateProject } from '../lib/api';
+import { listProjects, projectUp, projectDown, createProject, updateProject } from '../lib/api';
 import type { Project, AgentConfig } from '../lib/types';
-import FolderPicker from '../components/FolderPicker';
 import Avatar from '../components/Avatar';
-import AvatarPicker from '../components/AvatarPicker';
+import AgentIdCard, { type AgentDraft } from '../components/AgentIdCard';
+import CompactAgentIdCard, { type CompactAgentDraft } from '../components/CompactAgentIdCard';
 import { t } from '../../shared/i18n/browser';
 import { getDefaultName } from '../../shared/names';
+import { officeIndex, renderOffice } from '../lib/offices';
 
 const ROLE_COLORS: Record<string, string> = {
   backend: '#4A9FE8',
@@ -47,6 +48,12 @@ const AGENTS_PREVIEW = 3;
 
 function ProjectCard({ project, onClick, onPowerUp, onShutdown, onEdit, starting, stopping, startLog }: { project: Project; onClick: () => void; onPowerUp: () => void; onShutdown: () => void; onEdit: () => void; starting: boolean; stopping: boolean; startLog: Array<{ text: string; done: boolean }> }) {
   const isActive = project.active_peers > 0 || project.tmux_running === true;
+  const showingBootPanel = starting && startLog.length > 0;
+  const bootFinished = showingBootPanel && startLog.every(s => s.done);
+  const bootInProgress = showingBootPanel && !bootFinished;
+  // After boot finishes the peers may not have registered yet, so treat the
+  // card as "active" for visuals until the user navigates away.
+  const displayActive = isActive || bootFinished;
   const [agentsExpanded, setAgentsExpanded] = useState(false);
   const hasOverflow = project.agents.length > AGENTS_PREVIEW;
   const visibleAgents = agentsExpanded ? project.agents : project.agents.slice(0, AGENTS_PREVIEW);
@@ -54,246 +61,331 @@ function ProjectCard({ project, onClick, onPowerUp, onShutdown, onEdit, starting
     ? project.peers.reduce((latest, p) => p.last_seen > latest ? p.last_seen : latest, '')
     : project.created_at;
 
+  const accent = (displayActive || bootInProgress) ? '#3DBA7A' : '#9AA0AA';
+  const officeSvg = renderOffice(
+    officeIndex(project.name),
+    displayActive,
+    project.agents.map(a => ({ color: roleColor(a.role) })),
+  );
+
+  const badgeKey = bootInProgress ? 'boot' : displayActive ? 'on' : 'off';
+  const badgeStyle: React.CSSProperties = {
+    fontFamily: 'var(--font-mono)',
+    fontSize: 11, fontWeight: 500,
+    textTransform: 'uppercase', letterSpacing: 1.2,
+    padding: '5px 12px', borderRadius: 20,
+    flexShrink: 0,
+    ...(badgeKey === 'on' && { background: '#D4F5E4', color: '#1A7A46' }),
+    ...(badgeKey === 'off' && { background: '#E8E5DD', color: '#6B6860' }),
+    ...(badgeKey === 'boot' && {
+      background: '#FFF3CD', color: '#856404',
+      animation: 'acc-bpulse 1.5s ease infinite',
+    }),
+  };
+  const badgeLabel = bootInProgress ? t('dash.starting') : displayActive ? t('dash.active') : t('dash.inactive');
+
   return (
     <div onClick={onClick} style={{
-      background: '#fff', borderRadius: 16, padding: 28,
-      cursor: 'pointer', transition: 'box-shadow 0.2s, transform 0.2s',
-      border: '1px solid #E2DDD4',
-      display: 'flex', flexDirection: 'column', gap: 16,
-      minHeight: 280,
+      display: 'flex', borderRadius: 16, overflow: 'hidden',
+      border: '1px solid #DDD5C8', borderLeft: `4px solid ${accent}`,
+      background: '#FAF7F1', cursor: 'pointer',
+      transition: 'border-color 0.3s',
     }}
-    onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 8px 32px rgba(30,45,64,0.12)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
-    onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'none'; }}
+    onMouseEnter={e => { e.currentTarget.style.borderColor = '#E8823A'; e.currentTarget.style.borderLeftColor = accent; }}
+    onMouseLeave={e => { e.currentTarget.style.borderColor = '#DDD5C8'; e.currentTarget.style.borderLeftColor = accent; }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <h3 style={{
-          fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 400,
-          color: '#1E2D40', margin: 0, flex: 1, minWidth: 0,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {project.name}
-        </h3>
-        <button
-          onClick={(e) => { e.stopPropagation(); onEdit(); }}
-          title={t('dash.edit')}
-          aria-label={t('dash.edit')}
-          style={{
-            background: 'none', border: '1px solid #D0C9BE',
-            borderRadius: 8, padding: '4px 8px', cursor: 'pointer',
-            color: '#5A6272', fontSize: 13, fontFamily: 'var(--font-sans)',
-            transition: 'border-color 0.15s, color 0.15s',
-            flexShrink: 0,
-          }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = '#E8823A'; e.currentTarget.style.color = '#E8823A'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = '#D0C9BE'; e.currentTarget.style.color = '#5A6272'; }}
-        >
-          ✎
-        </button>
-        <span style={{
-          padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-          background: isActive ? '#E8F7EF' : '#F0F0F0',
-          color: isActive ? '#2A8B5A' : '#8A8A8A',
-          letterSpacing: 0.3, flexShrink: 0,
-        }}>
-          {isActive ? t('dash.active') : t('dash.inactive')}
-        </span>
-      </div>
-
+      {/* Left panel: info */}
       <div style={{
-        flex: 1, display: 'flex', flexDirection: 'column',
-        justifyContent: 'center', gap: 16, minHeight: 0,
+        flex: '1 1 0', padding: '32px 40px',
+        display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+        minWidth: 0, position: 'relative',
+        gap: 18,
       }}>
-      {starting && startLog.length > 0 ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {startLog.map((step, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                fontSize: 13,
-                color: step.done ? '#2A8B5A' : '#5A6272',
-              }}>
-                <span style={{
-                  width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 12, fontWeight: 700,
-                  background: step.done ? '#E8F7EF' : '#F5F3EF',
-                  color: step.done ? '#2A8B5A' : '#8AA8C0',
-                }}>
-                  {step.done ? '✓' : '…'}
-                </span>
-                <span>{step.text}</span>
-              </div>
-            ))}
+        <div>
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 10 }}>
+            <span style={{
+              fontFamily: 'var(--font-serif)',
+              fontSize: 'clamp(24px, 2.2vw, 34px)',
+              color: '#1E2D40', letterSpacing: -0.3,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              minWidth: 0,
+            }}>
+              {project.name}
+            </span>
+            <span style={badgeStyle}>{badgeLabel}</span>
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+              title={t('dash.edit')}
+              aria-label={t('dash.edit')}
+              style={{
+                marginLeft: 'auto',
+                background: 'none', border: '1px solid #D0C9BE',
+                borderRadius: 10, padding: '6px 12px', cursor: 'pointer',
+                color: '#5A6272', fontSize: 16, fontFamily: 'var(--font-sans)',
+                transition: 'border-color 0.15s, color 0.15s',
+                flexShrink: 0,
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#E8823A'; e.currentTarget.style.color = '#E8823A'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#D0C9BE'; e.currentTarget.style.color = '#5A6272'; }}
+            >
+              ✎
+            </button>
           </div>
-          {startLog.every(s => s.done) && (
+
+          {/* Description */}
+          {project.description && (
+            <p style={{
+              fontSize: 'clamp(14px, 1vw, 16px)', color: '#5A6272', margin: '0 0 18px',
+              lineHeight: 1.5,
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}>
+              {project.description}
+            </p>
+          )}
+
+          {/* Agents */}
+          {project.agents.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 }}>
+              <div style={{
+                display: 'flex', flexDirection: 'column', gap: 12,
+                maxHeight: agentsExpanded ? 240 : 'none',
+                overflowY: agentsExpanded ? 'auto' : 'visible',
+                paddingRight: agentsExpanded ? 6 : 0,
+              }}>
+                {visibleAgents.map((agent, i) => {
+                  const activePeer = project.peers.find(p => p.role === agent.role);
+                  const rawName = (activePeer?.name || agent.name || '').trim();
+                  const displayName = (!rawName || rawName === agent.role)
+                    ? getDefaultName(agent.role)
+                    : rawName;
+                  return (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <Avatar
+                        avatar={agent.avatar}
+                        seed={displayName || agent.role}
+                        size={40}
+                        background={roleColor(agent.role)}
+                        title={`${displayName} (${agent.role})`}
+                      />
+                      <span style={{
+                        fontSize: 'clamp(15px, 1.1vw, 18px)', fontWeight: 500, color: '#1E2D40',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {displayName}
+                      </span>
+                      <span style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 'clamp(12px, 0.85vw, 14px)',
+                        color: '#5A6272', marginLeft: 'auto',
+                      }}>
+                        {agent.role}
+                      </span>
+                      <span style={{
+                        width: 9, height: 9, borderRadius: '50%', flexShrink: 0,
+                        background: displayActive ? '#3DBA7A' : '#C0BDB5',
+                        boxShadow: displayActive ? '0 0 8px rgba(61,186,122,0.55)' : 'none',
+                      }} title={displayActive ? t('dash.online') : undefined} />
+                    </div>
+                  );
+                })}
+              </div>
+              {hasOverflow && (() => {
+                const extra = project.agents.length - AGENTS_PREVIEW;
+                const label = agentsExpanded
+                  ? t('dash.collapse')
+                  : (extra === 1
+                    ? t('dash.moreAgentsSingular', { count: extra })
+                    : t('dash.moreAgents', { count: extra }));
+                return (
+                  <span
+                    onClick={(e) => { e.stopPropagation(); setAgentsExpanded(v => !v); }}
+                    style={{
+                      color: '#E8823A', fontSize: 13, fontWeight: 500,
+                      cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                      alignSelf: 'flex-start', padding: '2px 0',
+                      transition: 'opacity 0.15s', userSelect: 'none',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.opacity = '0.75'; }}
+                    onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
+                  >
+                    {label}
+                  </span>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Middle section: boot log or enter button */}
+          {showingBootPanel ? (
+            <div style={{
+              marginTop: 12, fontFamily: 'var(--font-mono)',
+              fontSize: 'clamp(12px, 0.9vw, 14px)', lineHeight: 1.9, color: '#1E2D40',
+              display: 'flex', flexDirection: 'column', gap: 2,
+            }}>
+              {startLog.map((step, i) => (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 10,
+                  animation: 'acc-step-in 0.35s ease both',
+                }}>
+                  {step.done ? (
+                    <span style={{ color: '#3DBA7A', fontSize: 15, flexShrink: 0, marginTop: 1 }}>✓</span>
+                  ) : (
+                    <span style={{
+                      display: 'inline-block', width: 15, height: 15,
+                      border: '2px solid #DDD5C8', borderTopColor: '#E8823A',
+                      borderRadius: '50%', flexShrink: 0, marginTop: 3,
+                      animation: 'acc-spin 0.6s linear infinite',
+                    }} />
+                  )}
+                  <span>{step.text}</span>
+                </div>
+              ))}
+              {startLog.every(s => s.done) && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onClick(); }}
+                  style={{
+                    marginTop: 14, width: '100%',
+                    background: '#3DBA7A', color: '#fff', border: 'none',
+                    padding: '14px 16px', borderRadius: 12, fontSize: 15,
+                    fontFamily: 'var(--font-mono)', fontWeight: 500,
+                    letterSpacing: 0.6, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    transition: 'background 0.2s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#2EA568'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '#3DBA7A'; }}
+                >
+                  {t('dash.enterOffice')} →
+                </button>
+              )}
+            </div>
+          ) : displayActive ? (
             <button
               onClick={(e) => { e.stopPropagation(); onClick(); }}
               style={{
+                marginTop: 6, width: '100%',
                 background: '#3DBA7A', color: '#fff', border: 'none',
-                padding: '12px 18px', borderRadius: 10, fontSize: 14,
-                fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                padding: '14px 16px', borderRadius: 12, fontSize: 15,
+                fontFamily: 'var(--font-mono)', fontWeight: 500,
+                letterSpacing: 0.6, cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                transition: 'background 0.15s',
-                alignSelf: 'stretch',
+                transition: 'background 0.2s',
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = '#2FA068'; }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#2EA568'; }}
               onMouseLeave={e => { e.currentTarget.style.background = '#3DBA7A'; }}
             >
-              {t('dash.enterOffice')} <span style={{ fontSize: 16, lineHeight: 1 }}>→</span>
+              {t('dash.enterOffice')} →
+            </button>
+          ) : null}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          paddingTop: 16, marginTop: 16,
+          borderTop: '1px solid #EEE8DD',
+        }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'clamp(11px, 0.85vw, 13px)', color: '#9AA0AA' }}>
+            {t('dash.lastActivity').toLowerCase()}: {timeAgo(lastActivity)}
+          </span>
+          {showingBootPanel ? null : displayActive ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); onShutdown(); }}
+              disabled={stopping}
+              style={{
+                fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 500,
+                letterSpacing: 0.5, padding: '10px 26px', borderRadius: 10,
+                background: 'transparent', color: '#D85A30',
+                border: '1.5px solid #D85A30',
+                cursor: stopping ? 'wait' : 'pointer',
+                transition: 'all 0.2s', opacity: stopping ? 0.7 : 1,
+              }}
+              onMouseEnter={e => { if (!stopping) { e.currentTarget.style.background = '#D85A30'; e.currentTarget.style.color = '#fff'; } }}
+              onMouseLeave={e => { if (!stopping) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#D85A30'; } }}
+            >
+              {stopping ? t('dash.shuttingDown') : t('dash.powerDown')}
+            </button>
+          ) : project.agents.length > 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onPowerUp(); }}
+              disabled={starting}
+              style={{
+                fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 500,
+                letterSpacing: 0.5, padding: '10px 26px', borderRadius: 10,
+                background: '#1E2D40', color: '#F0ECE3', border: 'none',
+                cursor: starting ? 'wait' : 'pointer',
+                transition: 'all 0.2s', opacity: starting ? 0.7 : 1,
+              }}
+              onMouseEnter={e => { if (!starting) e.currentTarget.style.background = '#E8823A'; }}
+              onMouseLeave={e => { if (!starting) e.currentTarget.style.background = '#1E2D40'; }}
+            >
+              {starting ? t('dash.starting') : t('dash.powerUp')}
             </button>
           )}
         </div>
-      ) : <>
-      {project.description && (
-        <p style={{
-          color: '#5A6272', fontSize: 14, margin: 0, lineHeight: 1.5,
-          display: '-webkit-box',
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}>
-          {project.description}
-        </p>
-      )}
-
-      {project.agents.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{
-          display: 'flex', flexDirection: 'column', gap: 10,
-          maxHeight: agentsExpanded ? 220 : 'none',
-          overflowY: agentsExpanded ? 'auto' : 'visible',
-          paddingRight: agentsExpanded ? 6 : 0,
-        }}>
-          {visibleAgents.map((agent, i) => {
-            const activePeer = project.peers.find(p => p.role === agent.role);
-            const rawName = (activePeer?.name || agent.name || '').trim();
-            // If the agent has no name, or it's just a copy of the role,
-            // fall back to the scientist-style default so every card looks
-            // the same (bold name + muted role).
-            const displayName = (!rawName || rawName === agent.role)
-              ? getDefaultName(agent.role)
-              : rawName;
-            return (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <AgentBadge name={displayName} role={agent.role} avatar={agent.avatar} />
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{
-                    fontSize: 14, fontWeight: 500, color: '#1E2D40',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>
-                    {displayName}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#8AA8C0' }}>{agent.role}</div>
-                </div>
-                {activePeer && (
-                  <div style={{
-                    width: 8, height: 8, borderRadius: '50%', background: '#3DBA7A',
-                    flexShrink: 0,
-                  }} title={t('dash.online')} />
-                )}
-              </div>
-            );
-          })}
-        </div>
-          {hasOverflow && (() => {
-            const extra = project.agents.length - AGENTS_PREVIEW;
-            const label = agentsExpanded
-              ? t('dash.collapse')
-              : (extra === 1
-                ? t('dash.moreAgentsSingular', { count: extra })
-                : t('dash.moreAgents', { count: extra }));
-            return (
-              <span
-                onClick={(e) => { e.stopPropagation(); setAgentsExpanded(v => !v); }}
-                style={{
-                  color: '#E8823A',
-                  fontSize: 14,
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  fontFamily: 'var(--font-sans)',
-                  alignSelf: 'flex-start',
-                  padding: '2px 0',
-                  transition: 'opacity 0.15s',
-                  userSelect: 'none',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.opacity = '0.75'; }}
-                onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
-              >
-                {label}
-              </span>
-            );
-          })()}
-        </div>
-      )}
-      </>}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 12, color: '#8AA8C0' }}>
-          {t('dash.lastActivity')}: {timeAgo(lastActivity)}
-        </span>
-        {starting && startLog.length > 0 ? (
-          <span />
-        ) : isActive ? (
-          <button
-            onClick={(e) => { e.stopPropagation(); onShutdown(); }}
-            disabled={stopping}
-            style={{
-              background: stopping ? '#8AA8C0' : 'rgba(220,60,60,0.12)',
-              color: stopping ? '#fff' : '#DC3C3C',
-              border: stopping ? 'none' : '1px solid rgba(220,60,60,0.3)',
-              padding: '6px 14px', borderRadius: 8, fontSize: 12,
-              fontWeight: 600, cursor: stopping ? 'wait' : 'pointer',
-              fontFamily: 'var(--font-sans)', transition: 'background 0.15s',
-              opacity: stopping ? 0.7 : 1,
-            }}
-            onMouseEnter={e => { if (!stopping) e.currentTarget.style.background = 'rgba(220,60,60,0.2)'; }}
-            onMouseLeave={e => { if (!stopping) e.currentTarget.style.background = 'rgba(220,60,60,0.12)'; }}
-          >
-            {stopping ? t('dash.shuttingDown') : t('dash.powerDown')}
-          </button>
-        ) : project.agents.length > 0 && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onPowerUp(); }}
-            disabled={starting}
-            style={{
-              background: starting ? '#8AA8C0' : '#3DBA7A', color: '#fff', border: 'none',
-              padding: '6px 14px', borderRadius: 8, fontSize: 12,
-              fontWeight: 600, cursor: starting ? 'wait' : 'pointer',
-              fontFamily: 'var(--font-sans)', transition: 'background 0.15s',
-              opacity: starting ? 0.7 : 1,
-            }}
-            onMouseEnter={e => { if (!starting) e.currentTarget.style.background = '#2FA068'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = starting ? '#8AA8C0' : '#3DBA7A'; }}
-          >
-            {starting ? t('dash.starting') : t('dash.powerUp')}
-          </button>
-        )}
-      </div>
+      {/* Right panel: office illustration — proportional width that grows with the card */}
+      <div
+        style={{
+          flex: '0 0 42%', minWidth: 320, alignSelf: 'stretch',
+          position: 'relative', overflow: 'hidden',
+          borderLeft: '1px solid #E8E3D8',
+          display: 'flex', alignItems: 'stretch',
+        }}
+        dangerouslySetInnerHTML={{ __html: officeSvg }}
+      />
     </div>
   );
 }
 
-function NewTeamCard({ onClick }: { onClick: () => void }) {
+function SidebarItem({ project, selected, onClick }: { project: Project; selected: boolean; onClick: () => void }) {
+  const active = project.active_peers > 0 || project.tmux_running === true;
+  const count = project.agents.length;
+  const countLabel = count === 1 ? '1 agente' : `${count} agentes`;
+  const statusLabel = active ? t('dash.active').toLowerCase() : t('dash.inactive').toLowerCase();
   return (
-    <div onClick={onClick} style={{
-      background: 'transparent', borderRadius: 16, padding: 28,
-      cursor: 'pointer', transition: 'border-color 0.2s, background 0.2s',
-      border: '2px dashed #D0C9BE',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      gap: 12, minHeight: 200,
-    }}
-    onMouseEnter={e => { e.currentTarget.style.borderColor = '#E8823A'; e.currentTarget.style.background = 'rgba(232,130,58,0.04)'; }}
-    onMouseLeave={e => { e.currentTarget.style.borderColor = '#D0C9BE'; e.currentTarget.style.background = 'transparent'; }}
+    <div
+      onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '10px 12px',
+        borderRadius: 8,
+        marginBottom: 2,
+        cursor: 'pointer',
+        background: selected ? '#F0ECE3' : 'transparent',
+        borderLeft: selected ? '3px solid #E8823A' : '3px solid transparent',
+        transition: 'background 0.12s',
+      }}
+      onMouseEnter={e => { if (!selected) e.currentTarget.style.background = '#F0ECE3'; }}
+      onMouseLeave={e => { if (!selected) e.currentTarget.style.background = 'transparent'; }}
     >
-      <div style={{
-        width: 48, height: 48, borderRadius: '50%',
-        border: '2px dashed #D0C9BE', display: 'flex',
-        alignItems: 'center', justifyContent: 'center',
-        fontSize: 24, color: '#8AA8C0',
-      }}>+</div>
-      <span style={{ fontSize: 14, color: '#8AA8C0', fontWeight: 500 }}>{t('dash.createNewTeam')}</span>
+      <span style={{
+        width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+        background: active ? '#3DBA7A' : '#C0BDB5',
+        boxShadow: active ? '0 0 6px rgba(61,186,122,0.5)' : 'none',
+      }} />
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{
+          fontFamily: 'var(--font-serif)', fontSize: 15,
+          color: '#1E2D40', lineHeight: 1.25,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {project.name}
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-mono)', fontSize: 10,
+          color: '#9AA0AA', marginTop: 2,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {countLabel} · {statusLabel}
+        </div>
+      </div>
     </div>
   );
 }
@@ -312,6 +404,7 @@ export default function TeamsPage() {
   const [switchConfirm, setSwitchConfirm] = useState<{ current: string; next: string } | null>(null);
   const [editing, setEditing] = useState<Project | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [selectedName, setSelectedName] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const isProjectActive = (p: Project): boolean =>
@@ -359,6 +452,23 @@ export default function TeamsPage() {
       .catch(() => setProjects([]))
       .finally(() => setLoading(false));
   }, []);
+
+  // Auto-select the first project once they load, prefer active ones so the
+  // user always lands on something live. Re-selects if the current selection
+  // disappears after a reload.
+  useEffect(() => {
+    if (projects.length === 0) {
+      if (selectedName !== null) setSelectedName(null);
+      return;
+    }
+    const stillExists = selectedName && projects.some(p => p.name === selectedName);
+    if (!stillExists) {
+      const active = projects.find(p => isProjectActive(p));
+      setSelectedName((active ?? projects[0]).name);
+    }
+  }, [projects, selectedName]);
+
+  const selectedProject = projects.find(p => p.name === selectedName) ?? null;
 
   const handlePowerUp = async (name: string) => {
     // Enforce single-active invariant: if another project is already active,
@@ -478,13 +588,17 @@ export default function TeamsPage() {
     }
   };
 
-  const handleCreate = async (name: string, description: string, agents: Array<{ role: string; cwd: string }>) => {
+  const handleCreate = async (
+    name: string,
+    description: string,
+    agents: Array<{ role: string; cwd: string; name?: string; instructions?: string; model?: string }>,
+  ) => {
     setCreating(true);
     setError(null);
     try {
       await createProject(name, description);
-      for (const agent of agents) {
-        await addAgent(name, agent.role, agent.cwd);
+      if (agents.length > 0) {
+        await updateProject(name, description, agents);
       }
       await reload();
       setShowCreate(false);
@@ -500,55 +614,74 @@ export default function TeamsPage() {
       minHeight: '100vh', background: '#F0ECE3',
       color: '#1E2D40',
     }}>
-      {/* Header */}
-      <header style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '20px 40px',
-        borderBottom: '1px solid #E2DDD4',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: 8,
-            background: '#1E2D40', display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            color: '#E8823A', fontWeight: 700, fontSize: 16,
-            fontFamily: 'var(--font-sans)',
-          }}>Z</div>
-          <span style={{
-            fontSize: 16, fontWeight: 600, color: '#1E2D40',
-            fontFamily: 'var(--font-sans)', letterSpacing: -0.3,
-          }}>
-            {t('dash.teamsTitle')}
-          </span>
+      <main style={{ maxWidth: 1200, margin: '0 auto', padding: '40px 32px' }}>
+        {/* Page header */}
+        <div style={{
+          display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+          marginBottom: 28, gap: 16,
+        }}>
+          <div>
+            <h1 style={{
+              fontFamily: 'var(--font-serif)', fontSize: 32, fontWeight: 400,
+              color: '#1E2D40', margin: 0, marginBottom: 4,
+            }}>
+              {t('dash.yourTeams')}
+            </h1>
+            <p style={{ color: '#5A6272', fontSize: 14, margin: 0 }}>
+              {t('dash.teamsSubtitle')}
+            </p>
+          </div>
+          <button
+            onClick={() => setShowCreate(true)}
+            style={{
+              background: '#E8823A', color: '#fff', border: 'none',
+              padding: '9px 18px', borderRadius: 10, fontSize: 13,
+              fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)',
+              letterSpacing: 0.2, flexShrink: 0,
+              transition: 'background 0.2s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#D4732E'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#E8823A'; }}
+          >
+            + {t('dash.newTeam')}
+          </button>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          style={{
-            background: '#E8823A', color: '#fff', border: 'none',
-            padding: '10px 20px', borderRadius: 10, fontSize: 14,
-            fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)',
-            transition: 'background 0.2s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = '#D4732E'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = '#E8823A'; }}
-        >
-          {t('dash.newTeam')}
-        </button>
-      </header>
 
-      {/* Content */}
-      <main style={{ maxWidth: 960, margin: '0 auto', padding: '48px 40px' }}>
-        <div style={{ marginBottom: 40 }}>
-          <h1 style={{
-            fontFamily: 'var(--font-serif)', fontSize: 36, fontWeight: 400,
-            color: '#1E2D40', margin: 0, marginBottom: 8,
-          }}>
-            {t('dash.yourTeams')}
-          </h1>
-          <p style={{ color: '#5A6272', fontSize: 16, margin: 0 }}>
-            {t('dash.teamsSubtitle')}
-          </p>
-        </div>
+        {projects.length > 0 && (
+          <div style={{ position: 'relative', marginBottom: 20 }}>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder={t('dash.searchTeams')}
+              style={{
+                width: '100%', padding: '10px 32px 10px 36px',
+                borderRadius: 10, border: '1px solid #DDD5C8',
+                fontSize: 14, fontFamily: 'var(--font-sans)',
+                background: '#FAF7F1', color: '#1E2D40', outline: 'none',
+                transition: 'border-color 0.15s, background 0.15s',
+              }}
+              onFocus={e => { e.currentTarget.style.borderColor = '#4A9FE8'; e.currentTarget.style.background = '#fff'; }}
+              onBlur={e => { e.currentTarget.style.borderColor = '#DDD5C8'; e.currentTarget.style.background = '#FAF7F1'; }}
+            />
+            <span style={{
+              position: 'absolute', left: 12, top: '50%',
+              transform: 'translateY(-50%)', fontSize: 14,
+              color: '#9AA0AA', pointerEvents: 'none',
+            }}>&#9906;</span>
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                style={{
+                  position: 'absolute', right: 8, top: '50%',
+                  transform: 'translateY(-50%)', background: 'none',
+                  border: 'none', color: '#9AA0AA', fontSize: 16,
+                  cursor: 'pointer', padding: '0 4px', lineHeight: 1,
+                }}
+                aria-label={t('dash.cancel')}
+              >&times;</button>
+            )}
+          </div>
+        )}
 
         {error && (
           <div style={{
@@ -568,100 +701,30 @@ export default function TeamsPage() {
           <div style={{ textAlign: 'center', padding: 80, color: '#8AA8C0' }}>
             {t('dash.loadingProjects')}
           </div>
+        ) : visibleProjects.length === 0 ? (
+          <div style={{
+            textAlign: 'center', padding: 60, color: '#9AA0AA',
+            border: '1px dashed #DDD5C8', borderRadius: 12,
+            background: '#FAF7F1',
+          }}>
+            {search ? t('dash.noMatches') : t('ui.noProjects')}
+          </div>
         ) : (
-          <>
-            {/* Search + sort toolbar */}
-            {projects.length > 0 && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                marginBottom: 20,
-              }}>
-                <div style={{ flex: 1, position: 'relative' }}>
-                  <input
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    placeholder={t('dash.searchTeams')}
-                    style={{
-                      width: '100%', padding: '10px 14px 10px 36px',
-                      borderRadius: 10, border: '1px solid #D0C9BE',
-                      fontSize: 14, fontFamily: 'var(--font-sans)',
-                      background: '#fff', color: '#1E2D40', outline: 'none',
-                      transition: 'border-color 0.15s',
-                    }}
-                    onFocus={e => { e.currentTarget.style.borderColor = '#E8823A'; }}
-                    onBlur={e => { e.currentTarget.style.borderColor = '#D0C9BE'; }}
-                  />
-                  <span style={{
-                    position: 'absolute', left: 12, top: '50%',
-                    transform: 'translateY(-50%)', fontSize: 14,
-                    color: '#8AA8C0', pointerEvents: 'none',
-                  }}>&#9906;</span>
-                  {search && (
-                    <button
-                      onClick={() => setSearch('')}
-                      style={{
-                        position: 'absolute', right: 8, top: '50%',
-                        transform: 'translateY(-50%)', background: 'none',
-                        border: 'none', color: '#8AA8C0', fontSize: 16,
-                        cursor: 'pointer', padding: '0 4px', lineHeight: 1,
-                      }}
-                      aria-label={t('dash.cancel')}
-                    >&times;</button>
-                  )}
-                </div>
-                <label style={{
-                  display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
-                  fontSize: 13, color: '#5A6272', fontFamily: 'var(--font-sans)',
-                }}>
-                  <span>{t('dash.sortBy')}:</span>
-                  <select
-                    value={sortMode}
-                    onChange={e => setSortMode(e.target.value as 'recent' | 'name' | 'status')}
-                    style={{
-                      padding: '9px 12px', borderRadius: 10,
-                      border: '1px solid #D0C9BE', background: '#fff',
-                      color: '#1E2D40', fontSize: 14, fontFamily: 'var(--font-sans)',
-                      cursor: 'pointer', outline: 'none',
-                    }}
-                  >
-                    <option value="recent">{t('dash.sortRecent')}</option>
-                    <option value="name">{t('dash.sortName')}</option>
-                    <option value="status">{t('dash.sortStatus')}</option>
-                  </select>
-                </label>
-              </div>
-            )}
-
-            {visibleProjects.length === 0 && search ? (
-              <div style={{
-                textAlign: 'center', padding: 60, color: '#8AA8C0',
-                border: '1px dashed #D0C9BE', borderRadius: 12,
-              }}>
-                {t('dash.noMatches')}
-              </div>
-            ) : (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(2, 1fr)',
-                gap: 24,
-              }}>
-                {visibleProjects.map((project) => (
-                  <ProjectCard
-                    key={project.name}
-                    project={project}
-                    onClick={() => navigate(`/${encodeURIComponent(project.name)}`)}
-                    onPowerUp={() => handlePowerUp(project.name)}
-                    onShutdown={() => handleShutdown(project.name)}
-                    onEdit={() => handleEdit(project)}
-                    starting={starting === project.name}
-                    stopping={stopping === project.name}
-                    startLog={starting === project.name ? startLog : []}
-                  />
-                ))}
-                {!search && <NewTeamCard onClick={() => setShowCreate(true)} />}
-              </div>
-            )}
-          </>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {visibleProjects.map(project => (
+              <ProjectCard
+                key={project.name}
+                project={project}
+                onClick={() => navigate(`/${encodeURIComponent(project.name)}`)}
+                onPowerUp={() => handlePowerUp(project.name)}
+                onShutdown={() => handleShutdown(project.name)}
+                onEdit={() => handleEdit(project)}
+                starting={starting === project.name}
+                stopping={stopping === project.name}
+                startLog={starting === project.name ? startLog : []}
+              />
+            ))}
+          </div>
         )}
       </main>
 
@@ -702,163 +765,149 @@ export default function TeamsPage() {
 function EditProjectModal({ project, onClose, onSubmit, saving }: {
   project: Project;
   onClose: () => void;
-  onSubmit: (description: string, agents: Array<{ role: string; cwd: string; name?: string; instructions?: string; avatar?: string }>) => void;
+  onSubmit: (description: string, agents: Array<{ role: string; cwd: string; name?: string; instructions?: string; avatar?: string; model?: string }>) => void;
   saving: boolean;
 }) {
   const [description, setDescription] = useState(project.description ?? '');
-  const [agents, setAgents] = useState<Array<{ role: string; cwd: string; name: string; instructions: string; avatar: string }>>(
+  const [agents, setAgents] = useState<AgentDraft[]>(
     (project.agents ?? []).map((a: AgentConfig) => ({
       role: a.role,
       cwd: a.cwd,
       name: a.name ?? '',
       instructions: a.instructions ?? '',
       avatar: a.avatar ?? '',
+      model: a.model ?? '',
     })),
   );
 
-  const addRow = () => setAgents(prev => [...prev, { role: '', cwd: '', name: '', instructions: '', avatar: '' }]);
-  const removeRow = (i: number) => setAgents(prev => prev.filter((_, idx) => idx !== i));
-  const updateRow = (i: number, field: 'role' | 'cwd' | 'name' | 'instructions' | 'avatar', value: string) => {
-    setAgents(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: value } : a));
-  };
+  const addCard = () => setAgents(prev => [
+    ...prev,
+    { role: '', cwd: '', name: '', instructions: '', avatar: '', model: '' },
+  ]);
+  const removeCard = (i: number) => setAgents(prev => prev.filter((_, idx) => idx !== i));
+  const replaceCard = (i: number, next: AgentDraft) =>
+    setAgents(prev => prev.map((a, idx) => idx === i ? next : a));
 
   const roles = agents.map(a => a.role.trim());
   const hasDuplicate = roles.some((r, i) => r && roles.indexOf(r) !== i);
   const allValid = agents.length > 0 && agents.every(a => a.role.trim() && a.cwd.trim()) && !hasDuplicate;
   const canSubmit = allValid && !saving;
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '10px 12px', borderRadius: 8,
-    border: '1px solid #D0C9BE', fontSize: 14, fontFamily: 'var(--font-sans)',
-    outline: 'none', background: '#fff', color: '#1E2D40',
-  };
-
   return (
     <div
       onClick={onClose}
       style={{
         position: 'fixed', inset: 0, background: 'rgba(15,24,36,0.5)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 100,
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        zIndex: 100, padding: '40px 20px', overflowY: 'auto',
       }}
     >
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: '#fff', borderRadius: 16, padding: 32,
-          width: 620, maxHeight: '85vh', overflowY: 'auto',
+          background: '#F0ECE3', borderRadius: 16, padding: '28px 32px 32px',
+          width: '100%', maxWidth: 1000,
           boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+          display: 'flex', flexDirection: 'column', gap: 20,
         }}
       >
-        <h2 style={{
-          fontFamily: 'var(--font-serif)', fontSize: 24, fontWeight: 400,
-          color: '#1E2D40', margin: '0 0 24px',
-        }}>
-          {t('dash.editTeamTitle', { name: project.name })}
-        </h2>
+        {/* Header */}
+        <div>
+          <h2 style={{
+            fontFamily: 'var(--font-serif)', fontSize: 28, fontWeight: 400,
+            color: '#1E2D40', margin: 0,
+          }}>
+            {t('dash.editTeamTitle', { name: project.name })}
+          </h2>
+          <p style={{ fontSize: 14, color: '#5A6272', margin: '4px 0 0' }}>
+            {t('dash.teamsSubtitle')}
+          </p>
+        </div>
 
         {/* Description */}
-        <label style={{ display: 'block', marginBottom: 20 }}>
-          <span style={{ fontSize: 13, fontWeight: 500, color: '#5A6272', display: 'block', marginBottom: 6 }}>
+        <label style={{ display: 'block' }}>
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontSize: 10,
+            textTransform: 'uppercase', letterSpacing: 1.5,
+            color: '#9AA0AA', display: 'block', marginBottom: 6,
+          }}>
             {t('dash.description')}
           </span>
           <input
             value={description}
             onChange={e => setDescription(e.target.value)}
             placeholder={t('dash.descriptionPlaceholder')}
-            style={inputStyle}
+            style={{
+              width: '100%', padding: '10px 14px', borderRadius: 10,
+              border: '1px solid #DDD5C8', fontSize: 14, fontFamily: 'var(--font-sans)',
+              outline: 'none', background: '#FAF7F1', color: '#1E2D40',
+              transition: 'border-color 0.2s, background 0.2s',
+            }}
+            onFocus={e => { e.currentTarget.style.borderColor = '#4A9FE8'; e.currentTarget.style.background = '#fff'; }}
+            onBlur={e => { e.currentTarget.style.borderColor = '#DDD5C8'; e.currentTarget.style.background = '#FAF7F1'; }}
           />
         </label>
 
-        {/* Agents */}
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <span style={{ fontSize: 13, fontWeight: 500, color: '#5A6272' }}>{t('dash.agents')}</span>
-            <button
-              onClick={addRow}
-              style={{
-                background: 'none', border: '1px solid #D0C9BE', borderRadius: 6,
-                padding: '3px 10px', fontSize: 12, color: '#5A6272',
-                cursor: 'pointer', fontFamily: 'var(--font-sans)',
-              }}
-            >
-              {t('dash.addAgent')}
-            </button>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {agents.map((agent, i) => (
-              <div key={i} style={{
-                border: '1px solid #E2DDD4', borderRadius: 10, padding: 14,
-                display: 'flex', flexDirection: 'column', gap: 10,
-                background: '#FAFAF8',
-              }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input
-                    value={agent.role}
-                    onChange={e => updateRow(i, 'role', e.target.value)}
-                    placeholder={t('dash.agentRolePlaceholder')}
-                    style={{ ...inputStyle, flex: 1 }}
-                  />
-                  <input
-                    value={agent.name}
-                    onChange={e => updateRow(i, 'name', e.target.value)}
-                    placeholder={agent.role ? getDefaultName(agent.role) : t('dash.agentNamePlaceholder')}
-                    style={{ ...inputStyle, flex: 1 }}
-                  />
-                  <button
-                    onClick={() => removeRow(i)}
-                    title={t('dash.removeAgent')}
-                    aria-label={t('dash.removeAgent')}
-                    style={{
-                      background: 'none', border: '1px solid #E8C0B0', borderRadius: 8,
-                      padding: '8px 10px', cursor: 'pointer', color: '#DC3C3C',
-                      fontSize: 14, flexShrink: 0, lineHeight: 1,
-                    }}
-                  >&times;</button>
-                </div>
-                <AvatarPicker
-                  value={agent.avatar}
-                  fallbackSeed={agent.name || agent.role || `agent-${i}`}
-                  onChange={(value) => updateRow(i, 'avatar', value)}
-                />
-                {agent.avatar && agents.some((other, j) => j !== i && other.avatar === agent.avatar) && (
-                  <div style={{ fontSize: 11, color: '#E8823A', marginTop: -4 }}>
-                    {t('dash.avatarDuplicate')}
-                  </div>
-                )}
-                <FolderPicker
-                  value={agent.cwd}
-                  onChange={(path) => updateRow(i, 'cwd', path)}
-                />
-                <textarea
-                  value={agent.instructions}
-                  onChange={e => updateRow(i, 'instructions', e.target.value)}
-                  placeholder={t('dash.instructions')}
-                  rows={2}
-                  style={{
-                    ...inputStyle,
-                    resize: 'vertical', minHeight: 48,
-                    fontFamily: 'var(--font-sans)', lineHeight: 1.45,
-                  }}
-                />
-              </div>
-            ))}
-          </div>
+        {/* Agent ID cards */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {agents.map((agent, i) => {
+            const isDup = !!agent.avatar && agents.some((other, j) => j !== i && other.avatar === agent.avatar);
+            const peer = project.peers.find(p => p.role === agent.role);
+            return (
+              <AgentIdCard
+                key={i}
+                draft={agent}
+                project={project.name}
+                status={peer ? 'online' : 'offline'}
+                duplicateAvatar={isDup}
+                onChange={next => replaceCard(i, next)}
+                onDelete={() => removeCard(i)}
+              />
+            );
+          })}
+
+          {/* Add agent */}
+          <button
+            onClick={addCard}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: 8, width: '100%', padding: 16, borderRadius: 16,
+              border: '2px dashed #DDD5C8', background: 'transparent',
+              fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500,
+              color: '#9AA0AA', cursor: 'pointer', transition: 'all 0.2s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor = '#E8823A';
+              e.currentTarget.style.color = '#E8823A';
+              e.currentTarget.style.background = '#FEF9F4';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = '#DDD5C8';
+              e.currentTarget.style.color = '#9AA0AA';
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            + {t('dash.addAgent')}
+          </button>
+
           {hasDuplicate && (
-            <div style={{ fontSize: 12, color: '#DC3C3C', marginTop: 8 }}>
-              Duplicate roles are not allowed.
+            <div style={{ fontSize: 12, color: '#D85A30', marginTop: -4 }}>
+              {t('dash.duplicateRoles')}
             </div>
           )}
         </div>
 
         {/* Actions */}
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        <div style={{
+          display: 'flex', gap: 10, justifyContent: 'flex-end',
+          paddingTop: 12, borderTop: '1px solid #DDD5C8',
+        }}>
           <button
             onClick={onClose}
             style={{
-              background: 'none', border: '1px solid #D0C9BE', borderRadius: 10,
-              padding: '10px 20px', fontSize: 14, color: '#5A6272',
-              cursor: 'pointer', fontFamily: 'var(--font-sans)',
+              fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 0.5,
+              background: 'none', border: '1px solid #DDD5C8', borderRadius: 8,
+              padding: '10px 22px', color: '#5A6272', cursor: 'pointer',
             }}
           >
             {t('dash.cancel')}
@@ -867,11 +916,12 @@ function EditProjectModal({ project, onClose, onSubmit, saving }: {
             onClick={() => { if (canSubmit) onSubmit(description.trim(), agents); }}
             disabled={!canSubmit}
             style={{
-              background: canSubmit ? '#E8823A' : '#D0C9BE', color: '#fff', border: 'none',
-              padding: '10px 24px', borderRadius: 10, fontSize: 14,
-              fontWeight: 600, cursor: canSubmit ? 'pointer' : 'default',
-              fontFamily: 'var(--font-sans)', transition: 'background 0.15s',
-              opacity: saving ? 0.6 : 1,
+              fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 0.5,
+              background: canSubmit ? '#3DBA7A' : '#C0BDB5', color: '#fff', border: 'none',
+              padding: '10px 26px', borderRadius: 8,
+              fontWeight: 500, cursor: canSubmit ? 'pointer' : 'default',
+              transition: 'background 0.2s',
+              opacity: saving ? 0.65 : 1,
             }}
           >
             {saving ? t('dash.saving') : t('dash.save')}
@@ -952,137 +1002,171 @@ function ConfirmModal({
 
 function CreateProjectModal({ onClose, onSubmit, creating }: {
   onClose: () => void;
-  onSubmit: (name: string, description: string, agents: Array<{ role: string; cwd: string }>) => void;
+  onSubmit: (name: string, description: string, agents: Array<{ role: string; cwd: string; name?: string; instructions?: string; model?: string }>) => void;
   creating: boolean;
 }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [agents, setAgents] = useState<Array<{ role: string; cwd: string }>>([
-    { role: 'backend', cwd: '' },
+  const [agents, setAgents] = useState<CompactAgentDraft[]>([
+    { role: 'backend',  name: '', cwd: '', instructions: '', model: '' },
+    { role: 'frontend', name: '', cwd: '', instructions: '', model: '' },
   ]);
 
-  const addAgent = () => setAgents(prev => [...prev, { role: '', cwd: '' }]);
-  const removeAgent = (i: number) => setAgents(prev => prev.filter((_, idx) => idx !== i));
-  const updateAgent = (i: number, field: 'role' | 'cwd', value: string) => {
-    setAgents(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: value } : a));
-  };
+  const addAgentRow = () =>
+    setAgents(prev => [...prev, { role: '', name: '', cwd: '', instructions: '', model: '' }]);
+  const removeAgentRow = (i: number) =>
+    setAgents(prev => prev.filter((_, idx) => idx !== i));
+  const replaceRow = (i: number, next: CompactAgentDraft) =>
+    setAgents(prev => prev.map((a, idx) => idx === i ? next : a));
 
-  const canSubmit = name.trim() && agents.every(a => a.role.trim() && a.cwd.trim()) && !creating;
-
-  const inputStyle = {
-    width: '100%', padding: '10px 12px', borderRadius: 8,
-    border: '1px solid #D0C9BE', fontSize: 14, fontFamily: 'var(--font-sans)',
-    outline: 'none', background: '#fff', color: '#1E2D40',
-  };
+  const roles = agents.map(a => a.role.trim());
+  const hasDuplicate = roles.some((r, i) => r && roles.indexOf(r) !== i);
+  const canSubmit =
+    !!name.trim() &&
+    agents.length > 0 &&
+    agents.every(a => a.role.trim() && a.cwd.trim()) &&
+    !hasDuplicate &&
+    !creating;
 
   return (
     <div
       onClick={onClose}
       style={{
         position: 'fixed', inset: 0, background: 'rgba(15,24,36,0.5)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 100,
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        zIndex: 100, padding: '40px 20px', overflowY: 'auto',
       }}
     >
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: '#fff', borderRadius: 16, padding: 32,
-          width: 520, maxHeight: '80vh', overflowY: 'auto',
+          background: '#F0ECE3', borderRadius: 16, padding: '28px 32px 32px',
+          width: '100%', maxWidth: 820,
           boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+          display: 'flex', flexDirection: 'column', gap: 20,
         }}
       >
-        <h2 style={{
-          fontFamily: 'var(--font-serif)', fontSize: 24, fontWeight: 400,
-          color: '#1E2D40', margin: '0 0 24px',
-        }}>
-          {t('dash.newTeam')}
-        </h2>
+        {/* Header */}
+        <div>
+          <h2 style={{
+            fontFamily: 'var(--font-serif)', fontSize: 28, fontWeight: 400,
+            color: '#1E2D40', margin: 0,
+          }}>
+            {t('dash.newTeam')}
+          </h2>
+        </div>
 
-        {/* Name */}
-        <label style={{ display: 'block', marginBottom: 16 }}>
-          <span style={{ fontSize: 13, fontWeight: 500, color: '#5A6272', display: 'block', marginBottom: 6 }}>
-            {t('dash.projectName')}
-          </span>
-          <input
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder={t('dash.projectNamePlaceholder')}
-            style={inputStyle}
-            autoFocus
-          />
-        </label>
-
-        {/* Description */}
-        <label style={{ display: 'block', marginBottom: 20 }}>
-          <span style={{ fontSize: 13, fontWeight: 500, color: '#5A6272', display: 'block', marginBottom: 6 }}>
-            {t('dash.description')}
-          </span>
-          <input
-            value={description}
-            onChange={e => setDescription(e.target.value)}
-            placeholder={t('dash.descriptionPlaceholder')}
-            style={inputStyle}
-          />
-        </label>
+        {/* Name + description */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <label style={{ display: 'block' }}>
+            <span style={{
+              fontFamily: 'var(--font-mono)', fontSize: 10,
+              textTransform: 'uppercase', letterSpacing: 1.5,
+              color: '#9AA0AA', display: 'block', marginBottom: 6,
+            }}>
+              {t('dash.projectName')}
+            </span>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder={t('dash.projectNamePlaceholder')}
+              autoFocus
+              style={{
+                width: '100%', padding: '10px 14px', borderRadius: 10,
+                border: '1px solid #DDD5C8', fontSize: 14,
+                fontFamily: 'var(--font-mono)',
+                outline: 'none', background: '#FAF7F1', color: '#1E2D40',
+                transition: 'border-color 0.2s, background 0.2s',
+              }}
+              onFocus={e => { e.currentTarget.style.borderColor = '#4A9FE8'; e.currentTarget.style.background = '#fff'; }}
+              onBlur={e => { e.currentTarget.style.borderColor = '#DDD5C8'; e.currentTarget.style.background = '#FAF7F1'; }}
+            />
+          </label>
+          <label style={{ display: 'block' }}>
+            <span style={{
+              fontFamily: 'var(--font-mono)', fontSize: 10,
+              textTransform: 'uppercase', letterSpacing: 1.5,
+              color: '#9AA0AA', display: 'block', marginBottom: 6,
+            }}>
+              {t('dash.description')}
+            </span>
+            <input
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder={t('dash.descriptionPlaceholder')}
+              style={{
+                width: '100%', padding: '10px 14px', borderRadius: 10,
+                border: '1px solid #DDD5C8', fontSize: 14,
+                fontFamily: 'var(--font-sans)',
+                outline: 'none', background: '#FAF7F1', color: '#1E2D40',
+                transition: 'border-color 0.2s, background 0.2s',
+              }}
+              onFocus={e => { e.currentTarget.style.borderColor = '#4A9FE8'; e.currentTarget.style.background = '#fff'; }}
+              onBlur={e => { e.currentTarget.style.borderColor = '#DDD5C8'; e.currentTarget.style.background = '#FAF7F1'; }}
+            />
+          </label>
+        </div>
 
         {/* Agents */}
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <span style={{ fontSize: 13, fontWeight: 500, color: '#5A6272' }}>{t('dash.agents')}</span>
-            <button
-              onClick={addAgent}
-              style={{
-                background: 'none', border: '1px solid #D0C9BE', borderRadius: 6,
-                padding: '3px 10px', fontSize: 12, color: '#5A6272',
-                cursor: 'pointer', fontFamily: 'var(--font-sans)',
-              }}
-            >
-              {t('dash.addAgent')}
-            </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{
+            fontFamily: 'var(--font-mono)', fontSize: 10,
+            textTransform: 'uppercase', letterSpacing: 1.5,
+            color: '#9AA0AA',
+          }}>
+            {t('dash.agents')}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {agents.map((agent, i) => (
-              <div key={i} style={{
-                border: '1px solid #E2DDD4', borderRadius: 10, padding: 12,
-                display: 'flex', flexDirection: 'column', gap: 8,
-              }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input
-                    value={agent.role}
-                    onChange={e => updateAgent(i, 'role', e.target.value)}
-                    placeholder={t('dash.agentRolePlaceholder')}
-                    style={{ ...inputStyle, flex: 1 }}
-                  />
-                  {agents.length > 1 && (
-                    <button
-                      onClick={() => removeAgent(i)}
-                      style={{
-                        background: 'none', border: 'none', color: '#8AA8C0',
-                        fontSize: 18, cursor: 'pointer', padding: '0 4px', flexShrink: 0,
-                      }}
-                    >
-                      &times;
-                    </button>
-                  )}
-                </div>
-                <FolderPicker
-                  value={agent.cwd}
-                  onChange={(path) => updateAgent(i, 'cwd', path)}
-                />
-              </div>
-            ))}
-          </div>
+
+          {agents.map((agent, i) => (
+            <CompactAgentIdCard
+              key={i}
+              draft={agent}
+              onChange={next => replaceRow(i, next)}
+              onDelete={() => removeAgentRow(i)}
+            />
+          ))}
+
+          <button
+            onClick={addAgentRow}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: 8, width: '100%', padding: 14, borderRadius: 14,
+              border: '2px dashed #DDD5C8', background: 'transparent',
+              fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500,
+              color: '#9AA0AA', cursor: 'pointer', transition: 'all 0.2s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor = '#E8823A';
+              e.currentTarget.style.color = '#E8823A';
+              e.currentTarget.style.background = '#FEF9F4';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = '#DDD5C8';
+              e.currentTarget.style.color = '#9AA0AA';
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            + {t('dash.addAgent')}
+          </button>
+
+          {hasDuplicate && (
+            <div style={{ fontSize: 12, color: '#D85A30' }}>
+              {t('dash.duplicateRoles')}
+            </div>
+          )}
         </div>
 
         {/* Actions */}
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        <div style={{
+          display: 'flex', gap: 10, justifyContent: 'flex-end',
+          paddingTop: 12, borderTop: '1px solid #DDD5C8',
+        }}>
           <button
             onClick={onClose}
             style={{
-              background: 'none', border: '1px solid #D0C9BE', borderRadius: 10,
-              padding: '10px 20px', fontSize: 14, color: '#5A6272',
-              cursor: 'pointer', fontFamily: 'var(--font-sans)',
+              fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 0.5,
+              background: 'none', border: '1px solid #DDD5C8', borderRadius: 8,
+              padding: '10px 22px', color: '#5A6272', cursor: 'pointer',
             }}
           >
             {t('dash.cancel')}
@@ -1091,11 +1175,12 @@ function CreateProjectModal({ onClose, onSubmit, creating }: {
             onClick={() => { if (canSubmit) onSubmit(name.trim(), description.trim(), agents); }}
             disabled={!canSubmit}
             style={{
-              background: canSubmit ? '#E8823A' : '#D0C9BE', color: '#fff', border: 'none',
-              padding: '10px 24px', borderRadius: 10, fontSize: 14,
-              fontWeight: 600, cursor: canSubmit ? 'pointer' : 'default',
-              fontFamily: 'var(--font-sans)', transition: 'background 0.15s',
-              opacity: creating ? 0.6 : 1,
+              fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 0.5,
+              background: canSubmit ? '#3DBA7A' : '#C0BDB5', color: '#fff', border: 'none',
+              padding: '10px 26px', borderRadius: 8,
+              fontWeight: 500, cursor: canSubmit ? 'pointer' : 'default',
+              transition: 'background 0.2s',
+              opacity: creating ? 0.65 : 1,
             }}
           >
             {creating ? t('dash.creating') : t('dash.createTeam')}
