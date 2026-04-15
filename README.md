@@ -13,10 +13,11 @@
 └─────────────────────────────────────────────────────────┘
 ```
 
+[![CI](https://github.com/zaipex-labs/zaipex-acc/actions/workflows/ci.yml/badge.svg)](https://github.com/zaipex-labs/zaipex-acc/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](https://www.typescriptlang.org)
-[![Version](https://img.shields.io/badge/version-0.1.0-brightgreen.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.2.0-brightgreen.svg)](package.json)
 
 ---
 
@@ -36,6 +37,8 @@
 - [MCP Tools Reference](#mcp-tools-reference)
 - [Configuración / Configuration](#configuración--configuration)
 - [Arquitectura / Architecture](#arquitectura--architecture)
+- [Dashboard](#dashboard)
+- [Seguridad / Security](#seguridad--security)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
@@ -64,19 +67,25 @@ A local HTTP broker orchestrates communication. Each agent connects as an MCP se
 ```bash
 # 1. Clonar e instalar / Clone and install
 git clone https://github.com/zaipex-labs/zaipex-acc.git
-cd zaipex-acc && npm install && npm run build && npm link
+cd zaipex-acc
+npm install
+npm run build               # compila el servidor y CLI
+npm run dashboard:build     # compila el dashboard web
+npm link                    # instala el comando "acc" global
 
-# 2. Crear proyecto / Create project
+# 2. Crear proyecto desde el dashboard / Create project from the dashboard
+acc broker start            # arranca el broker en 127.0.0.1:7899
+open http://127.0.0.1:7899  # abre el dashboard en el navegador
+
+#    (o desde el CLI / or from the CLI)
 acc project create my-app -d "My application"
-
-# 3. Agregar agentes / Add agents
 acc project add-agent my-app --role backend --cwd ~/app/backend
 acc project add-agent my-app --role frontend --cwd ~/app/frontend
 
-# 4. Levantar / Start
+# 3. Levantar el equipo / Start the team
 acc up my-app
 
-# 5. Monitorear / Monitor
+# 4. Monitorear / Monitor
 acc status my-app
 acc history my-app
 ```
@@ -87,10 +96,15 @@ acc history my-app
 
 ### Requisitos / Requirements
 
-- **Node.js** 20+
-- **npm** 9+
-- **tmux** (recomendado para Linux/macOS — spawns agents in split panes)
-- **Claude Code CLI** (para agentes Claude Code)
+**Obligatorios**
+- **Node.js** 20+ y **npm** 9+
+- **Python 3** en el `PATH` — el broker lo usa para darle un PTY a Claude Code cuando lanza agentes desde el dashboard web. Ya viene instalado en macOS y la mayoría de distros Linux.
+- **Claude Code CLI** (`claude`) en el `PATH`, con soporte para `--dangerously-load-development-channels`. Es la dependencia principal: cada agente es una instancia de Claude Code.
+
+**Recomendados**
+- **tmux** (Linux/macOS) — si prefieres lanzar agentes desde el CLI (`acc up`) en vez del dashboard, se abren cada uno en un split pane de tmux.
+
+> 💡 Zaipex ACC corre **100% en localhost**. No necesitas cuentas, API keys, servidores externos, ni abrir puertos al internet. Todo se guarda en `~/.zaipex-acc/`.
 
 ### Desde el código fuente / From source
 
@@ -98,8 +112,17 @@ acc history my-app
 git clone https://github.com/zaipex-labs/zaipex-acc.git
 cd zaipex-acc
 npm install
-npm run build
-npm link          # instala "acc" globalmente / installs "acc" globally
+npm run build            # compila TypeScript (servidor + CLI)
+npm run dashboard:build  # compila el dashboard React (Vite)
+npm link                 # instala "acc" globalmente / installs "acc" globally
+```
+
+Después puedes arrancar el broker y abrir el dashboard:
+
+```bash
+acc broker start
+open http://127.0.0.1:7899    # macOS
+xdg-open http://127.0.0.1:7899  # Linux
 ```
 
 <details>
@@ -374,12 +397,44 @@ Herramientas disponibles para los agentes via el protocolo MCP:
 
 ---
 
+## Dashboard
+
+Zaipex ACC incluye un dashboard web que se sirve desde el mismo broker en `http://127.0.0.1:7899`. Desde ahí puedes:
+
+- Crear y editar equipos con editor visual de agentes (nombre, rol, modelo Claude, cwd, instrucciones personalizadas)
+- Levantar y apagar proyectos con botones (igual que `acc up` / `acc down`)
+- Ver el chat en vivo entre agentes como hilos de conversación, con juntas colapsables para la coordinación agente ↔ agente
+- Ver el **status line real de Claude Code** (`Thinking… (12s · ↓ 230 tokens)`) de cada agente en tiempo real
+- Avatares generativos por agente (DiceBear bottts), nombres de científicos por rol default (Turing, Lovelace, Curie, Da Vinci…)
+- Tech Lead / Arquitecto permanente en cada proyecto que coordina al equipo y mantiene documentación viva (`progress.md`, `decisions.md`, `current.md`)
+- Explorar el estado compartido (`shared_state`) por namespace
+- Reconexión automática al recargar la página
+
+> 📸 _Screenshot y GIF en `docs/screenshots/` — pendiente de actualizar tras cambios recientes._
+
+---
+
+## Seguridad / Security
+
+Zaipex ACC está diseñado para **uso local exclusivo en tu máquina de desarrollo**. Algunas cosas importantes que debes saber:
+
+- **Sin autenticación.** El broker no requiere ni acepta credenciales. Cualquier proceso local puede pegarle al endpoint HTTP.
+- **Solo localhost.** El servidor SIEMPRE escucha en `127.0.0.1`, nunca en `0.0.0.0`. Esto no es configurable por diseño.
+- **No lo expongas a internet.** No lo pongas detrás de un reverse proxy, un túnel SSH público, ngrok, ni nada que sea accesible desde fuera de tu máquina. Si lo haces, cualquier persona podría ver tus mensajes entre agentes y manipular tu estado compartido.
+- **Los agentes usan `--dangerously-skip-permissions`.** Cuando el dashboard lanza un Claude Code, lo hace con ese flag para no bloquearse en diálogos de confirmación. Asegúrate de que los `cwd` que configures sean directorios donde confíes en que el agente edite archivos.
+- **Datos sensibles.** Los mensajes, el historial, los summaries y el estado compartido se guardan en texto plano en `~/.zaipex-acc/acc.db`. Si compartes tu máquina, ese archivo contiene todo lo que tus agentes han dicho.
+
+Si encuentras una vulnerabilidad, por favor **no abras un issue público**. Escríbenos a <security@zaipex.ai> (o al correo que el equipo indique). Más detalles en [`SECURITY.md`](SECURITY.md).
+
+---
+
 ## Roadmap
 
 | Version | Features |
 |---------|----------|
-| **v0.2** | Dashboard web en tiempo real, webhooks para integraciones externas, soporte para más agent runtimes |
-| **v0.3** | Sistema de plugins, task management integrado, métricas y observabilidad |
+| **v0.2** ✅ | Dashboard web en tiempo real, tech lead permanente, avatares generativos, status line en vivo, reconexión automática |
+| **v0.3** | Webhooks para integraciones externas, soporte para más agent runtimes (Gemini CLI, Codex), sistema de plugins |
+| **v0.4** | Task management integrado, métricas y observabilidad |
 | **v1.0** | Publicación en npm, API estable, documentación completa, soporte para Windows Terminal |
 
 <details>
@@ -387,8 +442,9 @@ Herramientas disponibles para los agentes via el protocolo MCP:
 
 | Version | Features |
 |---------|----------|
-| **v0.2** | Real-time web dashboard, webhooks for external integrations, support for more agent runtimes |
-| **v0.3** | Plugin system, integrated task management, metrics and observability |
+| **v0.2** ✅ | Real-time web dashboard, permanent tech lead, generative avatars, live status line, auto-reconnect |
+| **v0.3** | Webhooks for external integrations, support for more agent runtimes (Gemini CLI, Codex), plugin system |
+| **v0.4** | Integrated task management, metrics and observability |
 | **v1.0** | npm publish, stable API, complete documentation, Windows Terminal support |
 
 </details>
@@ -397,35 +453,38 @@ Herramientas disponibles para los agentes via el protocolo MCP:
 
 ## Contributing
 
-¡Contribuciones son bienvenidas! / Contributions are welcome!
+¡Contribuciones son bienvenidas! Lee [`CONTRIBUTING.md`](CONTRIBUTING.md) para el flujo completo. En corto:
 
-1. Fork el repositorio / Fork the repository
-2. Crea una rama / Create a branch: `git checkout -b feat/my-feature`
-3. Haz tus cambios y agrega tests / Make changes and add tests
-4. Asegúrate que pasa todo / Ensure everything passes:
+1. Fork el repositorio
+2. Crea una rama: `git checkout -b feat/mi-feature`
+3. Haz tus cambios y agrega tests
+4. Asegúrate que pasa todo:
    ```bash
    npm run build
+   npm run dashboard:build
    npm test
    npx tsc --noEmit
    ```
-5. Abre un PR con descripción clara / Open a PR with a clear description
+5. Abre un PR con descripción clara
 
 ### Guidelines
 
-- TypeScript strict mode — no `any` unless unavoidable
-- All broker handlers return JSON
-- Localhost only (`127.0.0.1`) — never `0.0.0.0`
-- Errors must be descriptive — never silently catch
-- ESM imports only — no `require`
+- **Idioma del código**: inglés (identificadores, APIs, nombres de archivos).
+- **Idioma de la documentación**: español primario, inglés como sección colapsable. Es el estilo de **Zaipex Labs**.
+- TypeScript strict mode — evita `any` a menos que sea inevitable
+- Todos los handlers del broker devuelven JSON
+- Solo localhost (`127.0.0.1`) — nunca `0.0.0.0`
+- Errores descriptivos — nunca hagas `catch { /* ignored */ }` sin razón
+- Solo ESM imports — no `require`
 
 ---
 
 ## License
 
-[MIT](LICENSE) — Zaipex Labs
+[MIT](LICENSE) — © 2026 Zaipex Labs
 
 ---
 
 <p align="center">
-  Made with ❤️ by <a href="https://zaipex.ai">Zaipex Labs</a>
+  Hecho con ❤️ por el <strong>equipo de <a href="https://zaipex.ai">Zaipex Labs</a></strong>
 </p>

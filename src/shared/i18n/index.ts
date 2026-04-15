@@ -48,8 +48,12 @@ function detectLang(): string {
 
   // 3. macOS system language first (AppleLocale is the real source of truth;
   //    LANG is usually en_US.UTF-8 by Terminal.app default regardless of UI lang)
-  const mac = detectMacosLocale();
-  if (mac) return mac;
+  //    ACC_DISABLE_OS_LOCALE is an undocumented test-only escape hatch so the
+  //    POSIX-env fallback can be tested deterministically on macOS.
+  if (!process.env['ACC_DISABLE_OS_LOCALE']) {
+    const mac = detectMacosLocale();
+    if (mac) return mac;
+  }
 
   // 4. POSIX locale env vars (LC_ALL > LC_MESSAGES > LANG > LANGUAGE)
   for (const key of ['LC_ALL', 'LC_MESSAGES', 'LANG', 'LANGUAGE']) {

@@ -29,6 +29,7 @@ describe('i18n - t()', () => {
 
   it('falls back to English for unknown language', () => {
     process.env['ACC_LANG'] = 'fr';
+    process.env['ACC_DISABLE_OS_LOCALE'] = '1';
     resetLangCache();
     // Should fall back to English
     expect(t('ui.noProjects')).toContain('No projects found');
@@ -65,6 +66,7 @@ describe('i18n - t()', () => {
 
   it('detects Spanish from system LANG env var', () => {
     delete process.env['ACC_LANG'];
+    process.env['ACC_DISABLE_OS_LOCALE'] = '1';
     process.env['LANG'] = 'es_MX.UTF-8';
     resetLangCache();
     expect(t('ui.projectsHeading')).toBe('Proyectos');
@@ -72,6 +74,7 @@ describe('i18n - t()', () => {
 
   it('defaults to English when LANG has no Spanish indicator', () => {
     delete process.env['ACC_LANG'];
+    process.env['ACC_DISABLE_OS_LOCALE'] = '1';
     process.env['LANG'] = 'en_US.UTF-8';
     resetLangCache();
     expect(t('ui.projectsHeading')).toBe('Projects');
