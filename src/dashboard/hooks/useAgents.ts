@@ -47,7 +47,12 @@ export function useAgents(projectId: string | undefined): UseAgentsReturn {
       if (peer.agent_type === 'dashboard') return;
       setAgents((prev) => {
         if (prev.some((p) => p.id === peer.id)) return prev;
-        return [...prev, peer];
+        // Dedupe by role too — if a peer with the same role is already in
+        // state (usually a zombie left over from before a restart), drop
+        // it and keep only the fresh one. Without this the sidebar ends
+        // up showing duplicate rows like "Turing / Turing".
+        const filtered = peer.role ? prev.filter(p => p.role !== peer.role) : prev;
+        return [...filtered, peer];
       });
     }
 

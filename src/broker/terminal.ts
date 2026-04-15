@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import { resolveEntryPoint } from '../shared/utils.js';
 import { selectPeersByProject, getSharedState, deleteSharedState } from './database.js';
+import { broadcast } from './websocket.js';
 
 // Locate a usable python3 binary. When the broker is launched via nohup /
 // launchd the PATH can lose /usr/local/bin or /opt/homebrew/bin, and
@@ -40,6 +41,99 @@ const agentProcesses = new Map<string, ChildProcess>();
 // Buffer output so WS clients connecting later see the full history
 const outputBuffers = new Map<string, Buffer[]>();
 const MAX_BUFFER = 100000; // ~100KB per agent
+// Last-seen live status line per agent ("Nesting… (1m 11s · ↓ 1.0k tokens)")
+// so we only broadcast when it actually changes, and new WS clients can
+// hydrate without us flooding.
+const agentStatus = new Map<string, string>();
+// When the same status string was last seen. Claude Code's TUI bumps the
+// `(Xs)` counter every second while active, so if the string is identical
+// for more than STALE_MS we know the agent is idle and the line is just
+// lingering in the scrollback.
+const agentStatusLastSeen = new Map<string, number>();
+const STALE_MS = 2000;
+
+export function getAgentStatus(key: string): string | undefined {
+  return agentStatus.get(key);
+}
+
+// Match Claude Code's TUI status line. Shape examples:
+//   Nesting… (1m 11s · ↓ 1.0k tokens · thought for 2s)
+//   Thinking… (12s · ↑ 234 tokens)
+//   Reading config.ts… (3s · esc to interrupt)
+// The action word is the first token ending in … or ..., the parens hold
+// the live metadata. We trim off "esc to interrupt" noise.
+const STATUS_LINE_RE = /\b([A-Z][a-zA-Z]+)(?:…|\.\.\.)\s*\(([^)]+)\)/g;
+
+function extractStatusLine(raw: string): string | null {
+  // Strip ANSI control codes so regex actually matches
+  const text = raw
+    .replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, '')
+    .replace(/\x1b[^[].?/g, '');
+  // Only look at the last ~400 chars — that's what's on screen in the
+  // Claude Code TUI right now. Scrollback above it is not visible and
+  // anything matched up there would be stale.
+  const window = text.slice(-400);
+  // Idle detection: Claude Code's input box renders rounded-corner
+  // borders (╭╮╰╯) when it's waiting for input. If we see any of those
+  // the agent is not working — return null immediately. This is
+  // cheaper and more reliable than aging out via STALE_MS alone.
+  if (/[╭╮╰╯]/.test(window)) return null;
+
+  let last: RegExpExecArray | null = null;
+  let m: RegExpExecArray | null;
+  STATUS_LINE_RE.lastIndex = 0;
+  while ((m = STATUS_LINE_RE.exec(window)) !== null) {
+    last = m;
+  }
+  if (!last) return null;
+  // Require the match to be close to the very end of the window so
+  // we don't latch onto old "Reading…" prints that scrolled by.
+  if (last.index < window.length - 200) return null;
+  const action = last[1];
+  const meta = last[2]
+    .replace(/\s*·\s*esc to interrupt\s*$/i, '')
+    .trim();
+  return meta ? `${action}… (${meta})` : `${action}…`;
+}
+
+function pollStatusLine(projectId: string, role: string): void {
+  const key = processKey(projectId, role);
+  const buf = outputBuffers.get(key);
+  if (!buf || buf.length === 0) return;
+  // Only look at the tail — status lines are always at the bottom of the
+  // TUI, and scanning the whole buffer is wasted work.
+  const tail = Buffer.concat(buf).toString().slice(-1500);
+  const parsed = extractStatusLine(tail);
+  const prev = agentStatus.get(key);
+  const now = Date.now();
+
+  // No status line in the tail at all — clear immediately if we had one.
+  if (!parsed) {
+    if (prev) {
+      agentStatus.delete(key);
+      agentStatusLastSeen.delete(key);
+      broadcast('agent:status', { role, status: null }, projectId);
+    }
+    return;
+  }
+
+  // The string changed (counter ticked or action swapped) — live update.
+  if (parsed !== prev) {
+    agentStatus.set(key, parsed);
+    agentStatusLastSeen.set(key, now);
+    broadcast('agent:status', { role, status: parsed }, projectId);
+    return;
+  }
+
+  // Same string as before. Check age: if the counter hasn't ticked in
+  // STALE_MS the agent is idle and the line is just stuck in scrollback.
+  const lastChange = agentStatusLastSeen.get(key) ?? now;
+  if (now - lastChange > STALE_MS) {
+    agentStatus.delete(key);
+    agentStatusLastSeen.delete(key);
+    broadcast('agent:status', { role, status: null }, projectId);
+  }
+}
 
 function processKey(projectId: string, role: string): string {
   return `${projectId}:${role}`;
@@ -318,6 +412,23 @@ export function spawnWebAgent(projectId: string, role: string, cwd: string, name
       }
     }, 2000);
     proc.on('exit', () => clearInterval(autoContinue));
+
+    // Live status line poller. Reads the PTY output tail every ~800ms
+    // and broadcasts 'agent:status' when the line changes. This is what
+    // surfaces "Thinking… (12s · ↓ 230 tokens)" on the dashboard card.
+    const statusPoll = setInterval(() => {
+      if (proc.killed) { clearInterval(statusPoll); return; }
+      pollStatusLine(projectId, role);
+    }, 800);
+    proc.on('exit', () => {
+      clearInterval(statusPoll);
+      // Emit one final clear so the UI drops the dots when the agent dies.
+      if (agentStatus.has(key)) {
+        agentStatus.delete(key);
+        agentStatusLastSeen.delete(key);
+        broadcast('agent:status', { role, status: null }, projectId);
+      }
+    });
   }
 
   return proc;

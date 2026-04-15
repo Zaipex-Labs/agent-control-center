@@ -12,23 +12,49 @@ interface UseThreadsReturn {
   loading: boolean;
 }
 
+function activeThreadStorageKey(projectId: string): string {
+  return `acc.activeThread.${projectId}`;
+}
+
 export function useThreads(projectId: string | undefined): UseThreadsReturn {
   const [threads, setThreads] = useState<Thread[]>([]);
-  const [activeThread, setActiveThread] = useState<Thread | null>(null);
+  const [activeThread, setActiveThreadState] = useState<Thread | null>(null);
   const [loading, setLoading] = useState(true);
   const { lastEvent } = useWebSocket(projectId);
 
-  // Initial fetch
+  // Wrapper so every write also persists the id to localStorage. Keeps
+  // the selection across reloads — without this you always landed on the
+  // empty-office view after F5.
+  const setActiveThread = useCallback((thread: Thread | null) => {
+    setActiveThreadState(thread);
+    if (!projectId) return;
+    try {
+      const key = activeThreadStorageKey(projectId);
+      if (thread) localStorage.setItem(key, thread.id);
+      else localStorage.removeItem(key);
+    } catch { /* ignore */ }
+  }, [projectId]);
+
+  // Initial fetch + restore the previously-selected thread from storage.
   useEffect(() => {
     if (!projectId) {
       setThreads([]);
-      setActiveThread(null);
+      setActiveThreadState(null);
       setLoading(false);
       return;
     }
     setLoading(true);
     fetchThreads(projectId)
-      .then(setThreads)
+      .then(list => {
+        setThreads(list);
+        try {
+          const storedId = localStorage.getItem(activeThreadStorageKey(projectId));
+          if (storedId) {
+            const restored = list.find(t => t.id === storedId);
+            if (restored) setActiveThreadState(restored);
+          }
+        } catch { /* ignore */ }
+      })
       .catch(() => setThreads([]))
       .finally(() => setLoading(false));
   }, [projectId]);

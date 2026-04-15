@@ -12,9 +12,10 @@ const ROLE_COLORS: Record<string, string> = {
 interface TypingIndicatorProps {
   role: string;
   agents?: Peer[];
+  status?: string;
 }
 
-export default function TypingIndicator({ role, agents = [] }: TypingIndicatorProps) {
+export default function TypingIndicator({ role, agents = [], status }: TypingIndicatorProps) {
   const bg = ROLE_COLORS[role.toLowerCase()] ?? '#5A6272';
   const peer = agents.find(a => a.role === role);
   const displayName = peer?.name || role || '?';
@@ -29,6 +30,23 @@ export default function TypingIndicator({ role, agents = [] }: TypingIndicatorPr
         background={bg}
         title={displayName}
       />
+      {status && (
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0,
+        }}>
+          <span style={{
+            fontSize: 11, fontWeight: 500, color: 'var(--z-text-secondary)',
+          }}>
+            {displayName}
+          </span>
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontSize: 10,
+            color: 'var(--z-orange)',
+          }}>
+            {status}
+          </span>
+        </div>
+      )}
       <div style={{
         background: 'var(--z-surface)',
         border: '1px solid var(--z-border)',

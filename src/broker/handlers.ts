@@ -60,6 +60,7 @@ import {
   countPendingMessages,
   insertThread,
   selectThreadsByProject,
+  selectThreadParticipants,
   selectThreadById,
   updateThread,
   deleteThread,
@@ -899,6 +900,25 @@ export function handleListPeers(body: unknown, res: ServerResponse): void {
   // Hide dashboard peers from agents — they're not real team members
   peers = peers.filter(p => p.agent_type !== 'dashboard');
 
+  // Liveness check in real time — without this, a page reload sees the
+  // stale rows still in the DB (cleanStalePeers only runs every 30s) and
+  // reports zombie peers as online. process.kill(pid, 0) is a cheap
+  // syscall that throws if the process is dead.
+  const deadIds: string[] = [];
+  peers = peers.filter(p => {
+    try {
+      process.kill(p.pid, 0);
+      return true;
+    } catch {
+      deadIds.push(p.id);
+      return false;
+    }
+  });
+  // Fire-and-forget eviction so the DB catches up for future callers.
+  for (const id of deadIds) {
+    try { deletePeer(id); } catch { /* ignore */ }
+  }
+
   json(res, peers);
 }
 
@@ -1222,7 +1242,14 @@ export function handleListThreads(body: unknown, res: ServerResponse): void {
   }
 
   const threads = selectThreadsByProject(b.project_id, b.status ?? undefined);
-  json(res, { threads });
+  // Attach the list of roles that participated in each thread so the
+  // sidebar can show their avatars on each card. 'user' is intentionally
+  // excluded — we only want agent avatars.
+  const withParticipants = threads.map(thread => ({
+    ...thread,
+    participants: selectThreadParticipants(b.project_id, thread.id).filter(r => r && r !== 'user' && r !== 'system'),
+  }));
+  json(res, { threads: withParticipants });
 }
 
 export function handleGetThread(body: unknown, res: ServerResponse): void {

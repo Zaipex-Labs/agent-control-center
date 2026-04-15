@@ -301,6 +301,21 @@ export function insertThread(thread: Thread): void {
   `).run(thread);
 }
 
+// Distinct roles that ever sent or received a message in a given thread.
+// Used to paint agent avatars on the conversations sidebar.
+export function selectThreadParticipants(projectId: string, threadId: string): string[] {
+  const rows = getDb().prepare(`
+    SELECT DISTINCT role FROM (
+      SELECT from_role AS role FROM message_log
+      WHERE project_id = ? AND thread_id = ?
+      UNION
+      SELECT to_role AS role FROM message_log
+      WHERE project_id = ? AND thread_id = ?
+    ) WHERE role IS NOT NULL AND role != ''
+  `).all(projectId, threadId, projectId, threadId) as Array<{ role: string }>;
+  return rows.map(r => r.role);
+}
+
 export function selectThreadsByProject(projectId: string, status?: ThreadStatus): Thread[] {
   if (status) {
     return getDb().prepare(

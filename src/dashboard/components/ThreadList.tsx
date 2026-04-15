@@ -1,7 +1,10 @@
 import { useState } from 'react';
-import type { Thread } from '../lib/types';
+import type { Thread, Peer } from '../lib/types';
 import SearchBar from './SearchBar';
+import Avatar from './Avatar';
 import { t } from '../../shared/i18n/browser';
+import { getDefaultName } from '../../shared/names';
+import { roleStyle } from '../lib/roles';
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -17,13 +20,19 @@ function timeAgo(dateStr: string): string {
 interface ThreadCardProps {
   thread: Thread;
   active: boolean;
+  agents: Peer[];
   onClick: () => void;
 }
 
-function ThreadCard({ thread, active, onClick }: ThreadCardProps) {
+function ThreadCard({ thread, active, agents, onClick }: ThreadCardProps) {
   const preview = thread.summary
     ? thread.summary.split('\n').pop() ?? ''
     : '';
+
+  const participantRoles = thread.participants ?? [];
+  // Cap at 4 avatars visible — extra get "+N" chip.
+  const visible = participantRoles.slice(0, 4);
+  const extra = participantRoles.length - visible.length;
 
   return (
     <div
@@ -59,8 +68,52 @@ function ThreadCard({ thread, active, onClick }: ThreadCardProps) {
           overflow: 'hidden', textOverflow: 'ellipsis',
           display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
           lineHeight: 1.4,
+          marginBottom: visible.length > 0 ? 8 : 0,
         }}>
           {preview}
+        </div>
+      )}
+
+      {visible.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginTop: preview ? 0 : 6 }}>
+          {visible.map((role, i) => {
+            const peer = agents.find(a => a.role === role);
+            const seed = peer?.name || getDefaultName(role);
+            const bg = roleStyle(role).avatar;
+            return (
+              <div
+                key={role}
+                title={peer?.name || role}
+                style={{
+                  marginLeft: i === 0 ? 0 : -8,
+                  border: '2px solid var(--z-navy-deep)',
+                  borderRadius: '50%',
+                  display: 'inline-block',
+                }}
+              >
+                <Avatar
+                  avatar={peer?.avatar ?? null}
+                  seed={seed}
+                  size={22}
+                  background={bg}
+                />
+              </div>
+            );
+          })}
+          {extra > 0 && (
+            <span style={{
+              marginLeft: -6,
+              fontFamily: 'var(--font-mono)', fontSize: 10,
+              color: 'var(--z-text-muted)',
+              background: 'var(--z-surface)',
+              border: '2px solid var(--z-navy-deep)',
+              borderRadius: '50%',
+              width: 22, height: 22,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              +{extra}
+            </span>
+          )}
         </div>
       )}
     </div>
@@ -70,12 +123,13 @@ function ThreadCard({ thread, active, onClick }: ThreadCardProps) {
 interface ThreadListProps {
   threads: Thread[];
   activeThread: Thread | null;
+  agents: Peer[];
   onSelect: (thread: Thread) => void;
   onCreate: () => void;
   projectId: string;
 }
 
-export default function ThreadList({ threads, activeThread, onSelect, onCreate, projectId }: ThreadListProps) {
+export default function ThreadList({ threads, activeThread, agents, onSelect, onCreate, projectId }: ThreadListProps) {
   const [showArchived, setShowArchived] = useState(false);
   const [searchResults, setSearchResults] = useState<Thread[] | null>(null);
 
@@ -136,6 +190,7 @@ export default function ThreadList({ threads, activeThread, onSelect, onCreate, 
           <ThreadCard
             key={t.id}
             thread={t}
+            agents={agents}
             active={activeThread?.id === t.id}
             onClick={() => onSelect(t)}
           />

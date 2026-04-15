@@ -49,6 +49,8 @@ export interface Thread {
   created_by: string;
   created_at: string;
   updated_at: string;
+  // Roles that participated in this thread (populated server-side on list).
+  participants?: string[];
 }
 
 export interface SharedStateEntry {
@@ -91,7 +93,8 @@ export type BrokerEvent =
   | 'shared:updated'
   | 'thread:created'
   | 'thread:updated'
-  | 'thread:deleted';
+  | 'thread:deleted'
+  | 'agent:status';
 
 export interface WsEvent {
   event: BrokerEvent;

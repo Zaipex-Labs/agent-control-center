@@ -1,6 +1,7 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAgents } from '../hooks/useAgents';
+import { useAgentStatuses } from '../hooks/useAgentStatuses';
 import { useThreads } from '../hooks/useThreads';
 import { useMessages } from '../hooks/useMessages';
 import { useDashboardPeer } from '../hooks/useDashboardPeer';
@@ -9,22 +10,32 @@ import Compose from '../components/Compose';
 import SharedStatePanel from '../components/SharedStatePanel';
 import AgentTerminalView from '../components/AgentTerminalView';
 import AgentDesk, { type DeskState } from '../components/AgentDesk';
+import Avatar from '../components/Avatar';
+import StartupLogView, { type StartupLogStep } from '../components/StartupLogView';
 import EmptyOffice from '../components/EmptyOffice';
 import DeskPapers from '../components/DeskPapers';
-import { projectUp, projectDown, saveResume } from '../lib/api';
+import { projectUp, projectDown as apiProjectDown, saveResume } from '../lib/api';
+
+// True only if the current page was opened via an explicit browser
+// reload (F5 / ⌘R). React Router navigations return 'navigate'.
+function isPageReload(): boolean {
+  try {
+    const entries = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[];
+    return entries[0]?.type === 'reload';
+  } catch {
+    return false;
+  }
+}
 import type { Peer, Thread, LogEntry } from '../lib/types';
 import { t } from '../../shared/i18n/browser';
 import { roleStyle } from '../lib/roles';
 import { getDefaultName } from '../../shared/names';
 
-// How recent a peer's last outbound message has to be to flip its desk
-// state from "waiting" to "working".
-const WORKING_WINDOW_MS = 45_000;
-
 export default function ProjectPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { agents } = useAgents(projectId);
+  const agentStatuses = useAgentStatuses(projectId);
   const dashboardId = useDashboardPeer(projectId);
   const { threads, activeThread, setActiveThread, createThread, deleteThread } = useThreads(projectId);
   const [deletingThread, setDeletingThread] = useState<Thread | null>(null);
@@ -56,6 +67,13 @@ export default function ProjectPage() {
     }
   }, [terminalStorageKey, terminalTabs]);
   const [powering, setPowering] = useState(false);
+  // Ticks every few seconds so derived "working" state decays without
+  // needing a new message to trigger a recompute.
+  const [, setNowTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(n => n + 1), 4000);
+    return () => clearInterval(id);
+  }, []);
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'ok' | 'err' } | null>(null);
   const [flashMessageId, setFlashMessageId] = useState<number | null>(null);
   const flashClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -107,18 +125,15 @@ export default function ProjectPage() {
 
   const activeCount = agents.length;
 
-  // Per-role "working" flag derived from recent outbound messages. A role
-  // counts as working if any agent of that role has sent something in the
-  // last WORKING_WINDOW_MS.
+  // Typing indicators are driven entirely by the live TUI status events
+  // coming from the broker's PTY parser. Derived heuristics (received-
+  // a-message-but-no-reply-yet) produced too many false positives, so
+  // they're gone — if the dashboard says an agent is typing, it's
+  // because Claude Code literally printed a `Thinking… (Xs)` status
+  // line in its terminal.
   const workingRoles = useMemo(() => {
-    const now = Date.now();
-    const set = new Set<string>();
-    for (const m of messages) {
-      if (!m.from_role || m.from_role === 'user') continue;
-      if (now - new Date(m.sent_at).getTime() < WORKING_WINDOW_MS) set.add(m.from_role);
-    }
-    return set;
-  }, [messages]);
+    return new Set<string>(Object.keys(agentStatuses));
+  }, [agentStatuses]);
 
   const deskStateFor = (peer: Peer): DeskState => {
     if (workingRoles.has(peer.role)) return 'working';
@@ -160,6 +175,100 @@ export default function ProjectPage() {
     }
   };
 
+  // Auto-reconnect flow: on mount, if after a brief grace period there
+  // are still no peers, run the same stepped boot log as the home page
+  // (but as a popup over the workspace) while projectUp respawns what's
+  // missing. projectUp is idempotent — live agents are reused.
+  const autoReconnectTriedRef = useRef(false);
+  const agentsRef = useRef(agents);
+  agentsRef.current = agents;
+  const [reconnectSteps, setReconnectSteps] = useState<StartupLogStep[] | null>(null);
+  // Timestamp of the moment the popup opened. Used by the close effect
+  // to ignore stale "already-present" agents and only close once NEW
+  // peers (registered after reconnect started) land.
+  const reconnectStartedAtRef = useRef<number>(0);
+
+  // Reconnect flow = full shutdown + fresh power-up, same as the home
+  // card's startup. Shown in the modal popup. Used on browser reload
+  // and from the manual "Reiniciar equipo" banner button.
+  const runReconnect = useCallback(async () => {
+    if (!projectId) return;
+    reconnectStartedAtRef.current = Date.now();
+    const log: StartupLogStep[] = [
+      { text: t('dash.shuttingDownTeam'), done: false },
+    ];
+    setReconnectSteps([...log]);
+    try {
+      // Phase 1: shut everything down (kills alive processes, wipes
+      // the agentProcesses map so the next up spawns fresh).
+      try {
+        await apiProjectDown(projectId);
+      } catch {
+        // If nothing was running, down may 404/noop — that's fine.
+      }
+      log[0].done = true;
+
+      // Phase 2: same sequence TeamsPage uses when powering a project.
+      log.push({ text: t('dash.registeringMcp'), done: false });
+      setReconnectSteps([...log]);
+      log[log.length - 1].done = true;
+
+      log.push({ text: t('dash.spawningAgents'), done: false });
+      setReconnectSteps([...log]);
+
+      const result = await projectUp(projectId);
+      log[log.length - 1].done = true;
+
+      const roles = result.agent_roles;
+      const names = result.agent_names;
+      if (roles && names) {
+        for (let i = 0; i < roles.length; i++) {
+          log.push({ text: t('dash.agentStarted', { name: names[i], role: roles[i] }), done: true });
+        }
+      }
+
+      log.push({ text: t('dash.waitingConnect'), done: false });
+      setReconnectSteps([...log]);
+
+      // Give MCP handshakes ~5s to finish, then mark done and close.
+      setTimeout(() => {
+        setReconnectSteps(prev => {
+          if (!prev) return prev;
+          const done = prev.map(s => ({ ...s, done: true }));
+          done.push({ text: t('dash.teamUp'), done: true });
+          return done;
+        });
+        setTimeout(() => setReconnectSteps(null), 700);
+      }, 5000);
+    } catch (e) {
+      setStatusMsg({ text: t('dash.error', { error: e instanceof Error ? e.message : String(e) }), type: 'err' });
+      setReconnectSteps(null);
+    }
+  }, [projectId]);
+
+  // Only auto-trigger on a real browser reload (F5/⌘R). Navigating from
+  // the home card goes through TeamsPage's own startup flow, which
+  // already powered the team on — re-running it here would be a dupe.
+  useEffect(() => {
+    if (!projectId) return;
+    if (!isPageReload()) return;
+    if (autoReconnectTriedRef.current) return;
+    autoReconnectTriedRef.current = true;
+    const id = setTimeout(() => { void runReconnect(); }, 200);
+    return () => clearTimeout(id);
+  }, [projectId, runReconnect]);
+
+  // (The close timer is driven directly from runReconnect — no separate
+  // effect watching agents.length, which was getting stuck when all peers
+  // were reused and no new registrations landed.)
+
+  // Reset the auto-reconnect guard whenever the user navigates to a
+  // different project so the next project also gets one shot.
+  useEffect(() => {
+    autoReconnectTriedRef.current = false;
+    setReconnectSteps(null);
+  }, [projectId]);
+
   const handleSave = async (): Promise<boolean> => {
     if (!projectId || saving) return false;
     setSaving(true);
@@ -182,7 +291,7 @@ export default function ProjectPage() {
     if (!projectId) return;
     setStatusMsg(null);
     try {
-      const result = await projectDown(projectId);
+      const result = await apiProjectDown(projectId);
       setTerminalTabs([]);
       setStatusMsg({ text: t('dash.teamPoweredOff', { killed: result.killed }), type: 'ok' });
       // Back to the home (oficinas) once shutdown completes.
@@ -354,6 +463,8 @@ export default function ProjectPage() {
                   key={peer.id}
                   peer={peer}
                   state={deskStateFor(peer)}
+                  working={workingRoles.has(peer.role)}
+                  liveStatus={agentStatuses[peer.role]}
                   selected={terminalRoles.has(peer.role)}
                   onClick={() => handleAgentClick(peer)}
                 />
@@ -423,6 +534,7 @@ export default function ProjectPage() {
                     <ThreadRow
                       key={th.id}
                       thread={th}
+                      agents={agents}
                       selected={activeThread?.id === th.id}
                       onClick={() => setActiveThread(th)}
                       onDelete={() => setDeletingThread(th)}
@@ -472,9 +584,48 @@ export default function ProjectPage() {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {activeThread ? (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                {agents.length === 0 && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '12px 20px',
+                    background: 'rgba(232,130,58,0.08)',
+                    borderBottom: '1px solid rgba(232,130,58,0.25)',
+                    flexShrink: 0,
+                  }}>
+                    <span style={{
+                      fontSize: 16, lineHeight: 1,
+                      color: '#E8823A',
+                    }}>⚠</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text)' }}>
+                        {t('dash.agentsOfflineTitle')}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--z-text-secondary)', marginTop: 2 }}>
+                        {t('dash.agentsOfflineBody')}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => { void runReconnect(); }}
+                      disabled={!!reconnectSteps}
+                      style={{
+                        background: reconnectSteps ? 'var(--z-surface)' : '#E8823A',
+                        color: reconnectSteps ? 'var(--z-text-muted)' : '#fff',
+                        border: 'none', padding: '8px 18px', borderRadius: 8,
+                        fontSize: 12, fontWeight: 600, letterSpacing: 0.3,
+                        cursor: reconnectSteps ? 'default' : 'pointer',
+                        fontFamily: 'var(--font-mono)', flexShrink: 0,
+                        transition: 'background 0.15s',
+                      }}
+                    >
+                      {reconnectSteps ? t('dash.poweringUpShort') : t('dash.restartTeam')}
+                    </button>
+                  </div>
+                )}
                 <Chat
                   messages={messages}
                   agents={agents}
+                  workingRoles={workingRoles}
+                  agentStatuses={agentStatuses}
                   loading={messagesLoading}
                   waitingFor={waitingFor}
                   sendError={sendError}
@@ -540,6 +691,40 @@ export default function ProjectPage() {
           </aside>
         )}
       </div>
+
+      {reconnectSteps && (
+        <div
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(15,24,36,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 110, padding: 24,
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          <div style={{
+            background: '#FAF7F1', borderRadius: 14,
+            padding: '24px 28px',
+            maxWidth: 460, width: '100%',
+            boxShadow: '0 18px 50px rgba(0,0,0,0.35)',
+            border: '1px solid #DDD5C8',
+          }}>
+            <div style={{
+              fontFamily: 'var(--font-serif)', fontSize: 22, color: '#1E2D40',
+              marginBottom: 4, letterSpacing: -0.2,
+            }}>
+              {t('dash.reconnectingTitle')}
+            </div>
+            <div style={{
+              fontSize: 12, color: '#5A6272',
+              marginBottom: 18,
+            }}>
+              {t('dash.reconnectingBody')}
+            </div>
+            <StartupLogView steps={reconnectSteps} />
+          </div>
+        </div>
+      )}
 
       {deletingThread && (
         <DeleteThreadModal
@@ -739,16 +924,20 @@ function SidebarSection({ title }: { title: string }) {
   );
 }
 
-function AgentRow({ peer, state, selected, onClick }: {
+function AgentRow({ peer, state, selected, working, liveStatus, onClick }: {
   peer: Peer;
   state: DeskState;
   selected: boolean;
+  working: boolean;
+  liveStatus?: string;
   onClick: () => void;
 }) {
   const displayName = peer.name || getDefaultName(peer.role);
-  // peer.summary is the "what I'm currently doing" status line the agent
-  // updates via set_summary. Fall back to role when empty.
-  const statusLine = (peer.summary && peer.summary.trim()) || peer.role;
+  // Live TUI status ("Thinking… (12s · ↓ 230 tokens)") takes priority over
+  // the agent-authored summary, which in turn falls back to the role name.
+  const statusLine = liveStatus
+    ? liveStatus
+    : (peer.summary && peer.summary.trim()) || peer.role;
   return (
     <div
       onClick={onClick}
@@ -774,19 +963,47 @@ function AgentRow({ peer, state, selected, onClick }: {
         </div>
         <div style={{
           fontFamily: 'var(--font-mono)', fontSize: 10,
-          color: 'var(--z-text-muted)',
+          color: liveStatus ? 'var(--z-orange)' : 'var(--z-text-muted)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          display: 'flex', alignItems: 'center', gap: 6,
         }}>
-          {statusLine}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{statusLine}</span>
+          {(working || liveStatus) && <TypingDots />}
         </div>
       </div>
     </div>
   );
 }
 
-function ThreadRow({ thread, selected, onClick, onDelete }: {
+function TypingDots() {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+      <span style={{ ...typingDotStyle, animationDelay: '0s' }} />
+      <span style={{ ...typingDotStyle, animationDelay: '0.15s' }} />
+      <span style={{ ...typingDotStyle, animationDelay: '0.3s' }} />
+      <style>{`
+        @keyframes acc-typing-bounce {
+          0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+          30% { transform: translateY(-2px); opacity: 1; }
+        }
+      `}</style>
+    </span>
+  );
+}
+
+const typingDotStyle: React.CSSProperties = {
+  width: 4,
+  height: 4,
+  borderRadius: '50%',
+  background: 'var(--z-orange)',
+  animation: 'acc-typing-bounce 1s infinite',
+  display: 'inline-block',
+};
+
+function ThreadRow({ thread, selected, agents, onClick, onDelete }: {
   thread: Thread;
   selected: boolean;
+  agents: Peer[];
   onClick: () => void;
   onDelete: () => void;
 }) {
@@ -794,13 +1011,14 @@ function ThreadRow({ thread, selected, onClick, onDelete }: {
   const mins = Math.floor(diff / 60000);
   const label = mins < 1 ? t('dash.now') : mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h`;
   const [hovered, setHovered] = useState(false);
+  const participantRoles = (thread.participants ?? []).slice(0, 3);
   return (
     <div
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: 'flex', alignItems: 'center', gap: 6,
+        display: 'flex', alignItems: 'center', gap: 8,
         padding: '8px 10px', borderRadius: 8,
         marginBottom: 2, cursor: 'pointer',
         background: selected || hovered ? 'rgba(74,159,232,0.12)' : 'transparent',
@@ -808,6 +1026,29 @@ function ThreadRow({ thread, selected, onClick, onDelete }: {
         transition: 'background 0.15s',
       }}
     >
+      {participantRoles.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+          {participantRoles.map((role, i) => {
+            const peer = agents.find(a => a.role === role);
+            const seed = peer?.name || getDefaultName(role);
+            const bg = roleStyle(role).avatar;
+            return (
+              <div
+                key={role}
+                title={peer?.name || role}
+                style={{
+                  marginLeft: i === 0 ? 0 : -6,
+                  border: '1.5px solid var(--z-navy-deep)',
+                  borderRadius: '50%',
+                  display: 'inline-block',
+                }}
+              >
+                <Avatar avatar={peer?.avatar ?? null} seed={seed} size={16} background={bg} />
+              </div>
+            );
+          })}
+        </div>
+      )}
       <span style={{
         fontSize: 12, color: 'var(--z-text)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',

@@ -90,6 +90,8 @@ function buildFeedItems(messages: LogEntry[], agents: Peer[]): FeedItem[] {
 interface ChatProps {
   messages: LogEntry[];
   agents: Peer[];
+  workingRoles?: Set<string>;
+  agentStatuses?: Record<string, string>;
   loading: boolean;
   waitingFor?: WaitingReply | null;
   sendError?: SendError | null;
@@ -102,16 +104,29 @@ interface ChatProps {
 // typing indicator (ms).
 const LIVE_WINDOW_MS = 20_000;
 
-export default function Chat({ messages, agents, loading, waitingFor, sendError, onRetry, onDismissError, flashMessageId }: ChatProps) {
+export default function Chat({ messages, agents, workingRoles, agentStatuses, loading, waitingFor, sendError, onRetry, onDismissError, flashMessageId }: ChatProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   // Force a re-render periodically so the "live" check against current time
   // updates and the typing indicator fades out once the block has gone quiet.
   const [, setNowTick] = useState(0);
 
+  // Scroll to the bottom whenever the message list changes, the last
+  // message changes (edits / streamed updates), or the typing indicator
+  // shows up / goes away — all of these change the total content height.
+  // The double rAF gives the browser time to finish layout of the new
+  // content so we land on the actual bottom, not on stale metrics.
+  const lastMessageId = messages[messages.length - 1]?.id ?? null;
+  const lastMessageAt = messages[messages.length - 1]?.sent_at ?? null;
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length]);
+    const raf1 = requestAnimationFrame(() => {
+      const raf2 = requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      });
+      return () => cancelAnimationFrame(raf2);
+    });
+    return () => cancelAnimationFrame(raf1);
+  }, [messages.length, lastMessageId, lastMessageAt, waitingFor?.toRole]);
 
   useEffect(() => {
     const id = setInterval(() => setNowTick(n => n + 1), 4_000);
@@ -224,10 +239,24 @@ export default function Chat({ messages, agents, loading, waitingFor, sendError,
           </div>
         );
       })}
-      {/* Typing indicator */}
-      {waitingFor && (
-        <TypingIndicator role={waitingFor.toRole} agents={agents} />
-      )}
+      {/* Typing indicators — one for each agent currently working on a
+          reply. Includes the direct reply the dashboard is waiting for
+          (waitingFor), any side coordination detected via workingRoles,
+          and any agent pushing a live TUI status line. */}
+      {(() => {
+        const shownRoles = new Set<string>();
+        if (waitingFor?.toRole) shownRoles.add(waitingFor.toRole);
+        if (workingRoles) for (const r of workingRoles) shownRoles.add(r);
+        if (agentStatuses) for (const r of Object.keys(agentStatuses)) shownRoles.add(r);
+        return Array.from(shownRoles).map(role => (
+          <TypingIndicator
+            key={role}
+            role={role}
+            agents={agents}
+            status={agentStatuses?.[role]}
+          />
+        ));
+      })()}
 
       {/* Send error toast */}
       {sendError && (

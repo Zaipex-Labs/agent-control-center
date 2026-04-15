@@ -112,8 +112,16 @@ export async function updateProject(
   });
 }
 
-export async function projectUp(projectId: string): Promise<{ ok: boolean; strategy: string; agents: number }> {
-  return apiFetch<{ ok: boolean; strategy: string; agents: number }>('project/up', {
+export async function projectUp(projectId: string): Promise<{
+  ok: boolean;
+  strategy: string;
+  agents: number;
+  spawned?: number;
+  reused?: number;
+  agent_roles?: string[];
+  agent_names?: string[];
+}> {
+  return apiFetch('project/up', {
     project_id: projectId,
   });
 }
