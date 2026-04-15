@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Security vulnerability
+    url: https://github.com/Zaipex-Labs/agent-control-center/blob/main/SECURITY.md
+    about: Please do NOT open a public issue. Follow the instructions in SECURITY.md.
+  - name: 💬 Questions & discussion
+    url: https://github.com/Zaipex-Labs/agent-control-center/discussions
+    about: For general questions, ideas, and help.

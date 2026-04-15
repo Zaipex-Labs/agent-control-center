@@ -2,13 +2,13 @@
   "name": "zaipex-acc",
   "version": "0.2.0",
   "description": "Agents Command Center — Orquestador ligero de agentes de IA para desarrollo en equipo",
-  "homepage": "https://github.com/zaipex-labs/zaipex-acc",
+  "homepage": "https://github.com/Zaipex-Labs/agent-control-center",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zaipex-labs/zaipex-acc.git"
+    "url": "https://github.com/Zaipex-Labs/agent-control-center.git"
   },
   "bugs": {
-    "url": "https://github.com/zaipex-labs/zaipex-acc/issues"
+    "url": "https://github.com/Zaipex-Labs/agent-control-center/issues"
   },
   "keywords": [
     "mcp",
@@ -24,6 +24,13 @@
   "bin": {
     "acc": "dist/cli/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/server/index.ts",
@@ -31,7 +38,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "dashboard:dev": "vite",
-    "dashboard:build": "vite build"
+    "dashboard:build": "vite build",
+    "prepublishOnly": "npm run build && npm run dashboard:build && npm test",
+    "postbuild": "node -e \"import('node:fs').then(fs => fs.chmodSync('dist/cli/index.js', 0o755))\""
   },
   "author": "Zaipex Labs team",
   "contributors": [

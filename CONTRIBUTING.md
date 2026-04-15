@@ -30,7 +30,7 @@ Es el estilo de Zaipex Labs: hacemos herramientas de IA pensadas para hispanohab
 ## Setup de desarrollo
 
 ```bash
-git clone https://github.com/zaipex-labs/zaipex-acc.git
+git clone https://github.com/Zaipex-Labs/agent-control-center.git
 cd zaipex-acc
 npm install
 npm run build            # compila servidor + CLI
@@ -97,7 +97,7 @@ Si tu PR afecta el dashboard, incluye una screenshot del antes/después.
 
 ## Preguntas
 
-¿Dudas? Abre un issue con la etiqueta `question`, o escríbenos en [discussions](https://github.com/zaipex-labs/zaipex-acc/discussions).
+¿Dudas? Abre un issue con la etiqueta `question`, o escríbenos en [discussions](https://github.com/Zaipex-Labs/agent-control-center/discussions).
 
 ---
 

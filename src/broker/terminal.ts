@@ -68,7 +68,7 @@ export function getAgentStatus(key: string): string | undefined {
 // the live metadata. We trim off "esc to interrupt" noise.
 const STATUS_LINE_RE = /\b([A-Z][a-zA-Z]+)(?:…|\.\.\.)\s*\(([^)]+)\)/g;
 
-function extractStatusLine(raw: string): string | null {
+export function extractStatusLine(raw: string): string | null {
   // Strip ANSI control codes so regex actually matches
   const text = raw
     .replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, '')

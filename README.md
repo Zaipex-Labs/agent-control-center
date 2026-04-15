@@ -13,7 +13,7 @@
 └─────────────────────────────────────────────────────────┘
 ```
 
-[![CI](https://github.com/zaipex-labs/zaipex-acc/actions/workflows/ci.yml/badge.svg)](https://github.com/zaipex-labs/zaipex-acc/actions/workflows/ci.yml)
+[![CI](https://github.com/Zaipex-Labs/agent-control-center/actions/workflows/ci.yml/badge.svg)](https://github.com/Zaipex-Labs/agent-control-center/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](https://www.typescriptlang.org)
@@ -66,7 +66,7 @@ A local HTTP broker orchestrates communication. Each agent connects as an MCP se
 
 ```bash
 # 1. Clonar e instalar / Clone and install
-git clone https://github.com/zaipex-labs/zaipex-acc.git
+git clone https://github.com/Zaipex-Labs/agent-control-center.git
 cd zaipex-acc
 npm install
 npm run build               # compila el servidor y CLI
@@ -104,12 +104,16 @@ acc history my-app
 **Recomendados**
 - **tmux** (Linux/macOS) — si prefieres lanzar agentes desde el CLI (`acc up`) en vez del dashboard, se abren cada uno en un split pane de tmux.
 
+**Plataformas soportadas / Supported platforms**
+- ✅ **Linux** y **macOS** — soporte de primera clase.
+- 🚧 **Windows** — en el roadmap (v1.0). Por ahora recomendamos WSL2.
+
 > 💡 Zaipex ACC corre **100% en localhost**. No necesitas cuentas, API keys, servidores externos, ni abrir puertos al internet. Todo se guarda en `~/.zaipex-acc/`.
 
 ### Desde el código fuente / From source
 
 ```bash
-git clone https://github.com/zaipex-labs/zaipex-acc.git
+git clone https://github.com/Zaipex-Labs/agent-control-center.git
 cd zaipex-acc
 npm install
 npm run build            # compila TypeScript (servidor + CLI)
@@ -435,7 +439,7 @@ Si encuentras una vulnerabilidad, por favor **no abras un issue público**. Escr
 | **v0.2** ✅ | Dashboard web en tiempo real, tech lead permanente, avatares generativos, status line en vivo, reconexión automática |
 | **v0.3** | Webhooks para integraciones externas, soporte para más agent runtimes (Gemini CLI, Codex), sistema de plugins |
 | **v0.4** | Task management integrado, métricas y observabilidad |
-| **v1.0** | Publicación en npm, API estable, documentación completa, soporte para Windows Terminal |
+| **v1.0** | Publicación en npm, API estable, documentación completa, **soporte nativo para Windows** |
 
 <details>
 <summary>🇬🇧 English</summary>
@@ -445,7 +449,7 @@ Si encuentras una vulnerabilidad, por favor **no abras un issue público**. Escr
 | **v0.2** ✅ | Real-time web dashboard, permanent tech lead, generative avatars, live status line, auto-reconnect |
 | **v0.3** | Webhooks for external integrations, support for more agent runtimes (Gemini CLI, Codex), plugin system |
 | **v0.4** | Integrated task management, metrics and observability |
-| **v1.0** | npm publish, stable API, complete documentation, Windows Terminal support |
+| **v1.0** | npm publish, stable API, complete documentation, **native Windows support** |
 
 </details>
 

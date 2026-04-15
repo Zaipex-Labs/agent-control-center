@@ -6,3 +6,8 @@ dist/
 .DS_Store
 *.tsbuildinfo
 .acc-messages/
+
+# Development / Claude notes (keep out of public repo)
+CLAUDE.md
+SESSION-LOG.md
+zaipex-acc-design.md
