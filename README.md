@@ -1,17 +1,15 @@
-```
-┌─────────────────────────────────────────────────────────┐
-│                                                         │
-│              ███████╗ █████╗  ██╗██████╗ ███████╗██╗  █╗│
-│              ╚══███╔╝██╔══██╗██║██╔══██╗██╔════╝╚██╗██╔╝│
-│                ███╔╝ ███████║██║██████╔╝█████╗   ╚███╔╝ │
-│               ███╔╝  ██╔══██║██║██╔═══╝ ██╔══╝   ██╔██╗ │
-│              ███████╗██║  ██║██║██║     ███████╗██╔╝ ██╗│
-│              ╚══════╝╚═╝  ╚═╝╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝│
-│                                                         │
-│                    AGENTS COMMAND CENTER                 │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
-```
+<div align="center">
+
+<pre>
+███████╗ █████╗ ██╗██████╗ ███████╗██╗  ██╗
+╚══███╔╝██╔══██╗██║██╔══██╗██╔════╝╚██╗██╔╝
+  ███╔╝ ███████║██║██████╔╝█████╗   ╚███╔╝
+ ███╔╝  ██╔══██║██║██╔═══╝ ██╔══╝   ██╔██╗
+███████╗██║  ██║██║██║     ███████╗██╔╝ ██╗
+╚══════╝╚═╝  ╚═╝╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝
+</pre>
+
+### AGENTS COMMAND CENTER
 
 [![CI](https://github.com/Zaipex-Labs/agent-control-center/actions/workflows/ci.yml/badge.svg)](https://github.com/Zaipex-Labs/agent-control-center/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
@@ -19,10 +17,13 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](https://www.typescriptlang.org)
 [![Version](https://img.shields.io/badge/version-0.2.0-brightgreen.svg)](package.json)
 
----
+<br>
 
 **🇪🇸 Orquestador ligero de agentes de IA para desarrollo en equipo.**
+
 **🇬🇧 Lightweight AI agent orchestrator for team development.**
+
+</div>
 
 ---
 
@@ -67,7 +68,7 @@ A local HTTP broker orchestrates communication. Each agent connects as an MCP se
 ```bash
 # 1. Clonar e instalar / Clone and install
 git clone https://github.com/Zaipex-Labs/agent-control-center.git
-cd zaipex-acc
+cd agent-control-center
 npm install
 npm run build               # compila el servidor y CLI
 npm run dashboard:build     # compila el dashboard web
@@ -114,7 +115,7 @@ acc history my-app
 
 ```bash
 git clone https://github.com/Zaipex-Labs/agent-control-center.git
-cd zaipex-acc
+cd agent-control-center
 npm install
 npm run build            # compila TypeScript (servidor + CLI)
 npm run dashboard:build  # compila el dashboard React (Vite)
@@ -344,47 +345,32 @@ Herramientas disponibles para los agentes via el protocolo MCP:
 
 ## Arquitectura / Architecture
 
-```
-                          ┌──────────────────────┐
-                          │     Human (CLI)       │
-                          │    $ acc up my-app    │
-                          └──────────┬───────────┘
-                                     │
-                          ┌──────────▼───────────┐
-                          │    BROKER DAEMON      │
-                          │  127.0.0.1:7899       │
-                          │                       │
-                          │  ┌─────────────────┐  │
-                          │  │   SQLite DB      │  │
-                          │  │  ~/.zaipex-acc/  │  │
-                          │  │    acc.db        │  │
-                          │  └─────────────────┘  │
-                          │                       │
-                          │  peers | messages     │
-                          │  shared_state         │
-                          │  message_log          │
-                          └───┬───────────┬───────┘
-                              │           │
-               ┌──────────────▼──┐   ┌────▼──────────────┐
-               │  MCP Server A   │   │  MCP Server B     │
-               │  (stdio)        │   │  (stdio)          │
-               └──────────────┬──┘   └────┬──────────────┘
-                              │           │
-               ┌──────────────▼──┐   ┌────▼──────────────┐
-               │  Agent A        │   │  Agent B          │
-               │  name: Turing   │   │  name: Lovelace   │
-               │  role: backend  │   │  role: frontend   │
-               │  cwd: ~/back    │   │  cwd: ~/front     │
-               └─────────────────┘   └──────────────────-┘
+```mermaid
+flowchart TB
+    Human["👤 Human (CLI)<br/><code>$ acc up my-app</code>"]
+    Broker["🧠 BROKER DAEMON<br/>127.0.0.1:7899<br/>─────────────<br/>SQLite @ ~/.zaipex-acc/acc.db<br/>peers · messages · shared_state · message_log"]
+    MCPA["MCP Server A<br/>(stdio)"]
+    MCPB["MCP Server B<br/>(stdio)"]
+    AgentA["🤖 Agent A<br/>name: Turing<br/>role: backend<br/>cwd: ~/back"]
+    AgentB["🤖 Agent B<br/>name: Lovelace<br/>role: frontend<br/>cwd: ~/front"]
 
-  tmux session "acc-my-app"
-  ┌──────────────────┬──────────────────┐
-  │ Window 0         │ Window 1         │
-  │ Turing (backend) │ Lovelace (front) │
-  │                  │                  │
-  │ > claude         │ > claude         │
-  │                  │                  │
-  └──────────────────┴──────────────────┘
+    Human --> Broker
+    Broker --> MCPA
+    Broker --> MCPB
+    MCPA --> AgentA
+    MCPB --> AgentB
+```
+
+Cuando los agentes se lanzan vía `acc up` (en lugar del dashboard), cada uno vive en su propia ventana de una sesión de tmux llamada `acc-<project>`:
+
+```
+tmux session "acc-my-app"
+┌──────────────────┬──────────────────┐
+│ Window 0         │ Window 1         │
+│ Turing (backend) │ Lovelace (front) │
+│                  │                  │
+│ > claude         │ > claude         │
+└──────────────────┴──────────────────┘
 ```
 
 <details>
