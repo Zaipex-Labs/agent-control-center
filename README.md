@@ -504,8 +504,9 @@ gantt
     v0.1 Core broker & messaging       :done, v01, 2026-03, 2026-03
     v0.2 Dashboard & coordination      :done, v02, 2026-03, 2026-04
 
-    section In Progress
-    v0.3 Multi-runtime foundation      :active, v03, 2026-05, 2026-07
+    section Next
+    v0.2.1 Multimodal messages         :active, v021, 2026-04, 2026-05
+    v0.3 Multi-runtime foundation      :v03, 2026-05, 2026-07
 
     section Planned
     v0.4 Native runtime & multi-model  :v04, 2026-07, 2026-09
@@ -518,7 +519,8 @@ gantt
 |---|---|---|
 | ✅ **v0.1** | Broker core, CLI, MCP, shared state | Core broker, CLI, MCP, shared state |
 | ✅ **v0.2** | Dashboard, tech lead, status line en vivo, 300+ tests | Dashboard, tech lead, live status line, 300+ tests |
-| 🚧 **v0.3** | Multi-runtime — desacoplar de Claude Code; Gemini, Codex | Multi-runtime — decouple from Claude Code; Gemini, Codex |
+| 🔜 **v0.2.1** | **Mensajes multimodales** — imágenes, capturas y archivos entre agentes | **Multimodal messages** — images, screenshots and files between agents |
+| 🔜 **v0.3** | Multi-runtime — desacoplar de Claude Code; Gemini, Codex | Multi-runtime — decouple from Claude Code; Gemini, Codex |
 | 🔜 **v0.4** | Runtime nativo, multi-modelo (Anthropic, OpenAI, Gemini, Ollama) | Native runtime, multi-model (Anthropic, OpenAI, Gemini, Ollama) |
 | 🔜 **v0.5** | Windows nativo — `node-pty`, Windows Terminal | Native Windows — `node-pty`, Windows Terminal |
 | 💭 **v0.6** | Tasks integradas, métricas, webhooks | Integrated tasks, metrics, webhooks |
