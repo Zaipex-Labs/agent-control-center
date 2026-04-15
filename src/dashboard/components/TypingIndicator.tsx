@@ -1,3 +1,7 @@
+import Avatar from './Avatar';
+import type { Peer } from '../lib/types';
+import { getDefaultName } from '../../shared/names';
+
 const ROLE_COLORS: Record<string, string> = {
   backend: '#4A9FE8',
   frontend: '#E8823A',
@@ -7,22 +11,24 @@ const ROLE_COLORS: Record<string, string> = {
 
 interface TypingIndicatorProps {
   role: string;
+  agents?: Peer[];
 }
 
-export default function TypingIndicator({ role }: TypingIndicatorProps) {
+export default function TypingIndicator({ role, agents = [] }: TypingIndicatorProps) {
   const bg = ROLE_COLORS[role.toLowerCase()] ?? '#5A6272';
-  const initial = (role || '?')[0].toUpperCase();
+  const peer = agents.find(a => a.role === role);
+  const displayName = peer?.name || role || '?';
+  const seed = peer?.name || getDefaultName(role || 'agent');
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '4px 0' }}>
-      <div style={{
-        width: 32, height: 32, borderRadius: '50%',
-        background: bg, color: '#fff',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 13, fontWeight: 600,
-      }}>
-        {initial}
-      </div>
+      <Avatar
+        avatar={peer?.avatar ?? null}
+        seed={seed}
+        size={32}
+        background={bg}
+        title={displayName}
+      />
       <div style={{
         background: 'var(--z-surface)',
         border: '1px solid var(--z-border)',

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAgents } from '../hooks/useAgents';
 import { useThreads } from '../hooks/useThreads';
@@ -8,26 +8,92 @@ import Chat from '../components/Chat';
 import Compose from '../components/Compose';
 import SharedStatePanel from '../components/SharedStatePanel';
 import AgentTerminalView from '../components/AgentTerminalView';
-import { projectUp, projectDown } from '../lib/api';
+import AgentDesk, { type DeskState } from '../components/AgentDesk';
+import EmptyOffice from '../components/EmptyOffice';
+import DeskPapers from '../components/DeskPapers';
+import { projectUp, projectDown, saveResume } from '../lib/api';
 import type { Peer, Thread, LogEntry } from '../lib/types';
 import { t } from '../../shared/i18n/browser';
 import { roleStyle } from '../lib/roles';
 import { getDefaultName } from '../../shared/names';
+
+// How recent a peer's last outbound message has to be to flip its desk
+// state from "waiting" to "working".
+const WORKING_WINDOW_MS = 45_000;
 
 export default function ProjectPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { agents } = useAgents(projectId);
   const dashboardId = useDashboardPeer(projectId);
-  const { threads, activeThread, setActiveThread, createThread } = useThreads(projectId);
+  const { threads, activeThread, setActiveThread, createThread, deleteThread } = useThreads(projectId);
+  const [deletingThread, setDeletingThread] = useState<Thread | null>(null);
   const { messages, loading: messagesLoading, sendMessage, waitingFor, sendError, clearError, retrySend } = useMessages(projectId, activeThread?.id, dashboardId, activeThread?.name);
   const [creatingThread, setCreatingThread] = useState(false);
   const [newThreadName, setNewThreadName] = useState('');
   const [showSidebar, setShowSidebar] = useState(true);
   const [sharedRefresh, setSharedRefresh] = useState(0);
-  const [terminalTabs, setTerminalTabs] = useState<Array<{ role: string; name: string }>>([]);
+  // Persist open terminal tabs per project so they survive a page reload.
+  // The underlying agent processes keep running in the broker regardless —
+  // this just restores which tabs the dashboard was showing.
+  const terminalStorageKey = projectId ? `acc.terminals.${projectId}` : null;
+  const [terminalTabs, setTerminalTabs] = useState<Array<{ role: string; name: string }>>(() => {
+    if (!terminalStorageKey) return [];
+    try {
+      const stored = localStorage.getItem(terminalStorageKey);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    if (!terminalStorageKey) return;
+    try {
+      localStorage.setItem(terminalStorageKey, JSON.stringify(terminalTabs));
+    } catch {
+      // localStorage unavailable — ignore
+    }
+  }, [terminalStorageKey, terminalTabs]);
   const [powering, setPowering] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'ok' | 'err' } | null>(null);
+  const [flashMessageId, setFlashMessageId] = useState<number | null>(null);
+  const flashClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [shutdownConfirm, setShutdownConfirm] = useState(false);
+
+  // "Dirty" means there is agent activity the user hasn't explicitly saved
+  // yet. The latest message in the feed is compared against lastSavedAt.
+  // Once the user saves, dirty goes false until a new message arrives.
+  const latestMessageAt = useMemo(() => {
+    if (messages.length === 0) return 0;
+    return new Date(messages[messages.length - 1].sent_at).getTime();
+  }, [messages]);
+  const isDirty = latestMessageAt > (lastSavedAt ?? 0);
+
+  // Click a paper in the work desk → find the most recent message whose
+  // text mentions that file path and flash it in the chat feed.
+  const handleOpenPath = (path: string) => {
+    const base = path.split('/').pop() ?? path;
+    // Scan from newest to oldest so we land on the most recent mention.
+    let match: typeof messages[number] | undefined;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const text = messages[i].text;
+      if (text.includes(path) || text.includes(base)) {
+        match = messages[i];
+        break;
+      }
+    }
+    if (!match) {
+      setStatusMsg({ text: t('dash.noMentionFound', { path: base }), type: 'err' });
+      setTimeout(() => setStatusMsg(null), 3000);
+      return;
+    }
+    if (flashClearTimer.current) clearTimeout(flashClearTimer.current);
+    setFlashMessageId(match.id);
+    flashClearTimer.current = setTimeout(() => setFlashMessageId(null), 1800);
+  };
 
   const terminalRoles = new Set(terminalTabs.map(t => t.role));
 
@@ -41,8 +107,25 @@ export default function ProjectPage() {
 
   const activeCount = agents.length;
 
-  // Derive a rough "files modified" hint from contract_update messages
-  // and a simple activity timeline from the last N messages. Both feed the
+  // Per-role "working" flag derived from recent outbound messages. A role
+  // counts as working if any agent of that role has sent something in the
+  // last WORKING_WINDOW_MS.
+  const workingRoles = useMemo(() => {
+    const now = Date.now();
+    const set = new Set<string>();
+    for (const m of messages) {
+      if (!m.from_role || m.from_role === 'user') continue;
+      if (now - new Date(m.sent_at).getTime() < WORKING_WINDOW_MS) set.add(m.from_role);
+    }
+    return set;
+  }, [messages]);
+
+  const deskStateFor = (peer: Peer): DeskState => {
+    if (workingRoles.has(peer.role)) return 'working';
+    return 'waiting';
+  };
+
+  // Derive a simple activity timeline from the last N messages for the
   // right-side context panel.
   const timelineItems = useMemo<LogEntry[]>(() => messages.slice(-6).reverse(), [messages]);
   const contractCount = useMemo(
@@ -77,17 +160,55 @@ export default function ProjectPage() {
     }
   };
 
-  const handleShutdown = async () => {
+  const handleSave = async (): Promise<boolean> => {
+    if (!projectId || saving) return false;
+    setSaving(true);
+    setStatusMsg(null);
+    try {
+      await saveResume(projectId);
+      setLastSavedAt(Date.now());
+      setStatusMsg({ text: t('dash.savedToastShort'), type: 'ok' });
+      setTimeout(() => setStatusMsg(null), 2500);
+      return true;
+    } catch (e) {
+      setStatusMsg({ text: t('dash.saveFailed') + ': ' + (e instanceof Error ? e.message : String(e)), type: 'err' });
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const doShutdown = async () => {
     if (!projectId) return;
     setStatusMsg(null);
     try {
       const result = await projectDown(projectId);
       setTerminalTabs([]);
       setStatusMsg({ text: t('dash.teamPoweredOff', { killed: result.killed }), type: 'ok' });
-      setTimeout(() => setStatusMsg(null), 5000);
+      // Back to the home (oficinas) once shutdown completes.
+      setTimeout(() => navigate('/'), 600);
     } catch (e) {
       setStatusMsg({ text: t('dash.error', { error: e instanceof Error ? e.message : String(e) }), type: 'err' });
     }
+  };
+
+  const handleShutdown = () => {
+    if (isDirty) {
+      setShutdownConfirm(true);
+    } else {
+      void doShutdown();
+    }
+  };
+
+  const handleSaveAndShutdown = async () => {
+    setShutdownConfirm(false);
+    const ok = await handleSave();
+    if (ok) await doShutdown();
+  };
+
+  const handleShutdownWithoutSaving = async () => {
+    setShutdownConfirm(false);
+    await doShutdown();
   };
 
   const handleCreateThread = async () => {
@@ -146,6 +267,35 @@ export default function ProjectPage() {
           }}>
             {activeCount === 1 ? t('dash.agentsActive', { count: activeCount }) : t('dash.agentsActivePlural', { count: activeCount })}
           </span>
+          {isDirty && (
+            <span
+              title={t('dash.dirty')}
+              style={{
+                width: 7, height: 7, borderRadius: '50%',
+                background: '#E8823A',
+                boxShadow: '0 0 6px rgba(232,130,58,0.6)',
+                marginRight: 2,
+              }}
+            />
+          )}
+          <button
+            onClick={() => void handleSave()}
+            disabled={saving || !isDirty}
+            style={{
+              fontFamily: 'var(--font-mono)', fontSize: 10,
+              padding: '5px 12px', borderRadius: 6,
+              border: '1px solid rgba(61,186,122,0.4)',
+              background: isDirty ? 'rgba(61,186,122,0.12)' : 'transparent',
+              color: isDirty ? 'var(--z-green)' : 'var(--z-text-muted)',
+              cursor: saving ? 'wait' : (isDirty ? 'pointer' : 'default'),
+              opacity: !isDirty ? 0.5 : 1,
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => { if (isDirty && !saving) { e.currentTarget.style.background = 'rgba(61,186,122,0.22)'; } }}
+            onMouseLeave={e => { if (isDirty && !saving) { e.currentTarget.style.background = 'rgba(61,186,122,0.12)'; } }}
+          >
+            {saving ? '…' : t('dash.save')}
+          </button>
           <button
             onClick={() => { setShowSidebar(v => !v); setSharedRefresh(n => n + 1); }}
             style={{
@@ -203,6 +353,7 @@ export default function ProjectPage() {
                 <AgentRow
                   key={peer.id}
                   peer={peer}
+                  state={deskStateFor(peer)}
                   selected={terminalRoles.has(peer.role)}
                   onClick={() => handleAgentClick(peer)}
                 />
@@ -226,14 +377,15 @@ export default function ProjectPage() {
               <button
                 onClick={handleCreateThread}
                 style={{
-                  fontFamily: 'var(--font-mono)', fontSize: 10,
-                  background: 'none', border: '1px solid var(--z-border)',
-                  borderRadius: 6, padding: '2px 8px',
-                  color: 'var(--z-text-muted)', cursor: 'pointer',
-                  transition: 'all 0.15s',
+                  fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 500,
+                  background: 'rgba(232,130,58,0.12)',
+                  border: '1px solid rgba(232,130,58,0.4)',
+                  borderRadius: 6, padding: '4px 10px',
+                  color: '#E8823A', cursor: 'pointer',
+                  transition: 'all 0.15s', letterSpacing: 0.3,
                 }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = '#E8823A'; e.currentTarget.style.color = '#E8823A'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--z-border)'; e.currentTarget.style.color = 'var(--z-text-muted)'; }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#E8823A'; e.currentTarget.style.color = '#fff'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(232,130,58,0.12)'; e.currentTarget.style.color = '#E8823A'; }}
               >
                 + {t('dash.new').replace(/^\+\s*/, '')}
               </button>
@@ -273,6 +425,7 @@ export default function ProjectPage() {
                       thread={th}
                       selected={activeThread?.id === th.id}
                       onClick={() => setActiveThread(th)}
+                      onDelete={() => setDeletingThread(th)}
                     />
                   ))
               )}
@@ -321,11 +474,13 @@ export default function ProjectPage() {
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <Chat
                   messages={messages}
+                  agents={agents}
                   loading={messagesLoading}
                   waitingFor={waitingFor}
                   sendError={sendError}
                   onRetry={retrySend}
                   onDismissError={clearError}
+                  flashMessageId={flashMessageId}
                 />
                 <Compose agents={agents} onSend={sendMessage} />
               </div>
@@ -340,7 +495,7 @@ export default function ProjectPage() {
                 }}
               />
             ) : (
-              <EmptyState icon="💬" message={t('dash.selectConversation')} />
+              <EmptyOffice onCreate={handleCreateThread} />
             )}
 
             {/* Terminal panel */}
@@ -363,6 +518,10 @@ export default function ProjectPage() {
             display: 'flex', flexDirection: 'column',
             overflowY: 'auto',
           }}>
+            <RightPanelSection title={t('dash.workDesk')}>
+              <DeskPapers projectId={projectId} refreshKey={sharedRefresh} onOpenPath={handleOpenPath} />
+            </RightPanelSection>
+
             <RightPanelSection title={t('dash.sharedState')}>
               <SharedStatePanel projectId={projectId} refreshKey={sharedRefresh} />
             </RightPanelSection>
@@ -380,6 +539,185 @@ export default function ProjectPage() {
             </RightPanelSection>
           </aside>
         )}
+      </div>
+
+      {deletingThread && (
+        <DeleteThreadModal
+          thread={deletingThread}
+          onCancel={() => setDeletingThread(null)}
+          onConfirm={async () => {
+            const id = deletingThread.id;
+            setDeletingThread(null);
+            try {
+              await deleteThread(id);
+            } catch (e) {
+              setStatusMsg({ text: t('dash.errorDeleting', { error: e instanceof Error ? e.message : String(e) }), type: 'err' });
+            }
+          }}
+        />
+      )}
+
+      {shutdownConfirm && (
+        <UnsavedShutdownModal
+          onCancel={() => setShutdownConfirm(false)}
+          onSaveAndShutdown={handleSaveAndShutdown}
+          onShutdownAnyway={handleShutdownWithoutSaving}
+          saving={saving}
+        />
+      )}
+    </div>
+  );
+}
+
+function UnsavedShutdownModal({
+  onCancel, onSaveAndShutdown, onShutdownAnyway, saving,
+}: {
+  onCancel: () => void;
+  onSaveAndShutdown: () => void;
+  onShutdownAnyway: () => void;
+  saving: boolean;
+}) {
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15,24,36,0.55)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 100,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: 'var(--z-navy-dark)', borderRadius: 16, padding: 28,
+          width: 480, border: '1px solid var(--z-border)',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
+        }}
+      >
+        <h2 style={{
+          fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 400,
+          color: 'var(--z-text)', margin: '0 0 12px',
+        }}>
+          {t('dash.unsavedTitle')}
+        </h2>
+        <p style={{
+          color: 'var(--z-text-secondary)', fontSize: 13, lineHeight: 1.55,
+          margin: '0 0 24px',
+        }}>
+          {t('dash.unsavedBody')}
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button
+            onClick={onSaveAndShutdown}
+            disabled={saving}
+            style={{
+              fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 0.5,
+              background: '#3DBA7A', color: '#fff', border: 'none',
+              padding: '11px 18px', borderRadius: 10,
+              fontWeight: 500, cursor: saving ? 'wait' : 'pointer',
+              transition: 'background 0.15s', opacity: saving ? 0.6 : 1,
+            }}
+            onMouseEnter={e => { if (!saving) e.currentTarget.style.background = '#2EA568'; }}
+            onMouseLeave={e => { if (!saving) e.currentTarget.style.background = '#3DBA7A'; }}
+          >
+            {t('dash.saveAndShutdown')}
+          </button>
+          <button
+            onClick={onShutdownAnyway}
+            style={{
+              fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 0.5,
+              background: 'transparent', color: '#D85A30',
+              border: '1px solid rgba(216,90,48,0.45)',
+              padding: '11px 18px', borderRadius: 10,
+              cursor: 'pointer', transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(216,90,48,0.12)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            {t('dash.shutdownWithout')}
+          </button>
+          <button
+            onClick={onCancel}
+            style={{
+              fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 0.5,
+              background: 'none', border: '1px solid var(--z-border)',
+              padding: '11px 18px', borderRadius: 10,
+              color: 'var(--z-text-secondary)', cursor: 'pointer',
+              transition: 'border-color 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--z-text-secondary)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--z-border)'; }}
+          >
+            {t('dash.cancel')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeleteThreadModal({
+  thread, onCancel, onConfirm,
+}: {
+  thread: Thread;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15,24,36,0.55)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 100,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: 'var(--z-navy-dark)', borderRadius: 16, padding: 28,
+          width: 440, border: '1px solid var(--z-border)',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
+        }}
+      >
+        <h2 style={{
+          fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 400,
+          color: 'var(--z-text)', margin: '0 0 12px',
+        }}>
+          {t('dash.deleteThreadTitle', { name: thread.name })}
+        </h2>
+        <p style={{
+          color: 'var(--z-text-secondary)', fontSize: 13, lineHeight: 1.55,
+          margin: '0 0 24px',
+        }}>
+          {t('dash.deleteThreadBody')}
+        </p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            style={{
+              fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 0.5,
+              background: 'none', border: '1px solid var(--z-border)', borderRadius: 8,
+              padding: '10px 22px', color: 'var(--z-text-secondary)', cursor: 'pointer',
+            }}
+          >
+            {t('dash.cancel')}
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: 0.5,
+              background: '#D85A30', color: '#fff', border: 'none',
+              padding: '10px 24px', borderRadius: 8,
+              fontWeight: 500, cursor: 'pointer',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#B6411A'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#D85A30'; }}
+          >
+            {t('dash.deleteThreadConfirm')}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -401,67 +739,74 @@ function SidebarSection({ title }: { title: string }) {
   );
 }
 
-function AgentRow({ peer, selected, onClick }: { peer: Peer; selected: boolean; onClick: () => void }) {
-  const style = roleStyle(peer.role);
+function AgentRow({ peer, state, selected, onClick }: {
+  peer: Peer;
+  state: DeskState;
+  selected: boolean;
+  onClick: () => void;
+}) {
   const displayName = peer.name || getDefaultName(peer.role);
+  // peer.summary is the "what I'm currently doing" status line the agent
+  // updates via set_summary. Fall back to role when empty.
+  const statusLine = (peer.summary && peer.summary.trim()) || peer.role;
   return (
     <div
       onClick={onClick}
       style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '8px 12px', borderRadius: 10,
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '10px 12px', borderRadius: 10,
         marginBottom: 2, cursor: 'pointer',
         background: selected ? 'rgba(74,159,232,0.12)' : 'transparent',
         borderLeft: selected ? '3px solid #E8823A' : '3px solid transparent',
         transition: 'background 0.15s',
+        opacity: state === 'offline' ? 0.45 : 1,
       }}
-      onMouseEnter={e => { if (!selected) e.currentTarget.style.background = 'rgba(74,159,232,0.08)'; }}
+      onMouseEnter={e => { if (!selected && state !== 'offline') e.currentTarget.style.background = 'rgba(74,159,232,0.08)'; }}
       onMouseLeave={e => { if (!selected) e.currentTarget.style.background = 'transparent'; }}
     >
-      <div style={{
-        width: 30, height: 30, borderRadius: '50%',
-        background: style.avatar, color: '#fff',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 500,
-        position: 'relative', flexShrink: 0,
-      }}>
-        {displayName.slice(0, 2)}
-        <span style={{
-          position: 'absolute', bottom: 0, right: 0,
-          width: 8, height: 8, borderRadius: '50%',
-          background: '#3DBA7A',
-          border: '2px solid var(--z-navy-deep)',
-        }} />
-      </div>
+      <AgentDesk role={peer.role} state={state} size={56} />
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--z-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{
+          fontSize: 13, fontWeight: 500, color: 'var(--z-text)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
           {displayName}
         </div>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--z-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {peer.role}
+        <div style={{
+          fontFamily: 'var(--font-mono)', fontSize: 10,
+          color: 'var(--z-text-muted)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {statusLine}
         </div>
       </div>
     </div>
   );
 }
 
-function ThreadRow({ thread, selected, onClick }: { thread: Thread; selected: boolean; onClick: () => void }) {
+function ThreadRow({ thread, selected, onClick, onDelete }: {
+  thread: Thread;
+  selected: boolean;
+  onClick: () => void;
+  onDelete: () => void;
+}) {
   const diff = Date.now() - new Date(thread.updated_at).getTime();
   const mins = Math.floor(diff / 60000);
   const label = mins < 1 ? t('dash.now') : mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h`;
+  const [hovered, setHovered] = useState(false);
   return (
     <div
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '8px 12px', borderRadius: 8,
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '8px 10px', borderRadius: 8,
         marginBottom: 2, cursor: 'pointer',
-        background: selected ? 'rgba(74,159,232,0.12)' : 'transparent',
+        background: selected || hovered ? 'rgba(74,159,232,0.12)' : 'transparent',
         borderLeft: selected ? '3px solid #E8823A' : '3px solid transparent',
         transition: 'background 0.15s',
       }}
-      onMouseEnter={e => { if (!selected) e.currentTarget.style.background = 'rgba(74,159,232,0.08)'; }}
-      onMouseLeave={e => { if (!selected) e.currentTarget.style.background = 'transparent'; }}
     >
       <span style={{
         fontSize: 12, color: 'var(--z-text)',
@@ -470,12 +815,32 @@ function ThreadRow({ thread, selected, onClick }: { thread: Thread; selected: bo
       }}>
         {thread.name}
       </span>
-      <span style={{
-        fontFamily: 'var(--font-mono)', fontSize: 9,
-        color: 'var(--z-text-muted)', flexShrink: 0,
-      }}>
-        {label}
-      </span>
+      {hovered ? (
+        <button
+          onClick={e => { e.stopPropagation(); onDelete(); }}
+          title={t('dash.deleteThread')}
+          aria-label={t('dash.deleteThread')}
+          style={{
+            background: 'none', border: 'none', padding: 2,
+            color: '#D85A30', cursor: 'pointer', fontSize: 14,
+            lineHeight: 1, flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            borderRadius: 4,
+            transition: 'background 0.15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(216,90,48,0.18)'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+        >
+          ✕
+        </button>
+      ) : (
+        <span style={{
+          fontFamily: 'var(--font-mono)', fontSize: 9,
+          color: 'var(--z-text-muted)', flexShrink: 0,
+        }}>
+          {label}
+        </span>
+      )}
     </div>
   );
 }

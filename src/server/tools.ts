@@ -67,7 +67,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
 
   mcp.tool(
     'send_message',
-    'Send a message to a specific agent by ID. Use list_peers to find IDs. Optionally pass thread_id to associate the message with a conversation thread.',
+    'Send a message to a specific agent by ID. Use list_peers to find IDs. Optionally pass thread_id, or metadata with a short topic ({ topic: "sidebar logo" }) so the dashboard can label the coordination thread nicely.',
     {
       to_id: z.string(),
       text: z.string(),
@@ -76,6 +76,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
         'notification', 'task_request', 'task_complete',
       ]).optional(),
       thread_id: z.string().optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
     },
     async (args) => {
       const resp = await brokerFetch<OkResponse>('/api/send-message', {
@@ -85,6 +86,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
         type: args.type ?? 'message',
         text: args.text,
         thread_id: args.thread_id,
+        metadata: args.metadata ? JSON.stringify(args.metadata) : undefined,
       });
       return {
         content: [{ type: 'text', text: JSON.stringify(resp) }],
@@ -94,7 +96,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
 
   mcp.tool(
     'send_to_role',
-    'Broadcast a message to all agents with a given role (e.g. "backend", "frontend"). No need to know their IDs. Optionally pass thread_id to associate the message with a conversation thread.',
+    'Broadcast a message to all agents with a given role (e.g. "backend", "frontend"). No need to know their IDs. Optionally pass thread_id, or metadata with a short topic ({ topic: "sidebar logo" }) so the dashboard can label the coordination thread nicely.',
     {
       role: z.string(),
       text: z.string(),
@@ -103,6 +105,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
         'notification', 'task_request', 'task_complete',
       ]).optional(),
       thread_id: z.string().optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
     },
     async (args) => {
       const resp = await brokerFetch<SendToRoleResponse>('/api/send-to-role', {
@@ -112,6 +115,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
         type: args.type ?? 'message',
         text: args.text,
         thread_id: args.thread_id,
+        metadata: args.metadata ? JSON.stringify(args.metadata) : undefined,
       });
       return {
         content: [{ type: 'text', text: `Sent to ${resp.sent_to} agent(s)` }],

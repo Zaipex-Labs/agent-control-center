@@ -3,7 +3,7 @@ import { listSharedKeys, getSharedState } from '../lib/api';
 import type { SharedStateEntry } from '../lib/types';
 import { t } from '../../shared/i18n/browser';
 
-const KNOWN_NAMESPACES = ['contracts', 'config', 'types', 'schemas', 'env'];
+const KNOWN_NAMESPACES = ['resume', 'contracts', 'config', 'types', 'schemas', 'env', 'files'];
 
 interface NamespaceData {
   namespace: string;

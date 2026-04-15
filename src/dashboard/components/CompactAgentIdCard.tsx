@@ -18,6 +18,8 @@ interface CompactAgentIdCardProps {
   draft: CompactAgentDraft;
   onChange: (next: CompactAgentDraft) => void;
   onDelete: () => void;
+  locked?: boolean;
+  lockedHint?: string;
 }
 
 const labelStyle: CSSProperties = {
@@ -33,11 +35,17 @@ const inputStyle: CSSProperties = {
 
 const selectBgImage = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235a6272' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")";
 
-export default function CompactAgentIdCard({ draft, onChange, onDelete }: CompactAgentIdCardProps) {
+export default function CompactAgentIdCard({ draft, onChange, onDelete, locked = false, lockedHint }: CompactAgentIdCardProps) {
   const [focused, setFocused] = useState(false);
 
   const update = <K extends keyof CompactAgentDraft>(field: K, value: CompactAgentDraft[K]) =>
     onChange({ ...draft, [field]: value });
+
+  const readOnlyInputStyle: React.CSSProperties = locked ? {
+    opacity: 0.7,
+    cursor: 'not-allowed',
+    background: '#E8E3D8',
+  } : {};
 
   const style = roleStyle(draft.role);
   const displayName = (draft.name || '').trim() || getDefaultName(draft.role || 'agent');
@@ -105,9 +113,11 @@ export default function CompactAgentIdCard({ draft, onChange, onDelete }: Compac
               value={draft.role}
               onChange={e => update('role', e.target.value)}
               placeholder={t('dash.agentRolePlaceholder')}
-              style={inputStyle}
-              onFocus={e => { e.currentTarget.style.borderColor = '#4A9FE8'; e.currentTarget.style.background = '#fff'; }}
-              onBlur={e => { e.currentTarget.style.borderColor = '#DDD5C8'; e.currentTarget.style.background = '#F0ECE3'; }}
+              style={{ ...inputStyle, ...readOnlyInputStyle }}
+              disabled={locked}
+              readOnly={locked}
+              onFocus={e => { if (!locked) { e.currentTarget.style.borderColor = '#4A9FE8'; e.currentTarget.style.background = '#fff'; } }}
+              onBlur={e => { if (!locked) { e.currentTarget.style.borderColor = '#DDD5C8'; e.currentTarget.style.background = '#F0ECE3'; } }}
             />
           </div>
         </div>
@@ -136,10 +146,16 @@ export default function CompactAgentIdCard({ draft, onChange, onDelete }: Compac
         {/* Row 3: Path */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <label style={labelStyle}>{t('dash.pathLabel')}</label>
-          <FolderPicker
-            value={draft.cwd}
-            onChange={value => update('cwd', value)}
-          />
+          {locked ? (
+            <div style={{ ...inputStyle, ...readOnlyInputStyle, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {draft.cwd || '—'}
+            </div>
+          ) : (
+            <FolderPicker
+              value={draft.cwd}
+              onChange={value => update('cwd', value)}
+            />
+          )}
         </div>
 
         {/* Row 4: Instructions */}
@@ -156,21 +172,30 @@ export default function CompactAgentIdCard({ draft, onChange, onDelete }: Compac
           />
         </div>
 
-        {/* Footer: delete link only */}
+        {/* Footer: delete link or locked hint */}
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button
-            onClick={onDelete}
-            style={{
+          {locked ? (
+            <span style={{
               fontFamily: 'var(--font-mono)', fontSize: 11,
-              color: '#D85A30', background: 'none', border: 'none',
-              cursor: 'pointer', opacity: 0.65, padding: 0,
-              transition: 'opacity 0.2s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
-            onMouseLeave={e => { e.currentTarget.style.opacity = '0.65'; }}
-          >
-            ✕ {t('dash.removeAgent')}
-          </button>
+              color: '#9AA0AA', letterSpacing: 0.5,
+            }}>
+              {lockedHint || '🔒 Siempre presente'}
+            </span>
+          ) : (
+            <button
+              onClick={onDelete}
+              style={{
+                fontFamily: 'var(--font-mono)', fontSize: 11,
+                color: '#D85A30', background: 'none', border: 'none',
+                cursor: 'pointer', opacity: 0.65, padding: 0,
+                transition: 'opacity 0.2s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
+              onMouseLeave={e => { e.currentTarget.style.opacity = '0.65'; }}
+            >
+              ✕ {t('dash.removeAgent')}
+            </button>
+          )}
         </div>
       </div>
     </div>

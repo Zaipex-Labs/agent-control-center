@@ -91,6 +91,17 @@ export async function addAgent(
   });
 }
 
+export async function deleteProject(projectId: string): Promise<void> {
+  await apiFetch<{ ok: boolean }>('project/delete', { project_id: projectId });
+}
+
+export async function deleteThread(projectId: string, threadId: string): Promise<void> {
+  await apiFetch<{ ok: boolean }>('threads/delete', {
+    project_id: projectId,
+    thread_id: threadId,
+  });
+}
+
 export async function updateProject(
   projectId: string,
   description: string,
@@ -109,6 +120,12 @@ export async function projectUp(projectId: string): Promise<{ ok: boolean; strat
 
 export async function projectDown(projectId: string): Promise<{ ok: boolean; killed: number }> {
   return apiFetch<{ ok: boolean; killed: number }>('project/down', {
+    project_id: projectId,
+  });
+}
+
+export async function saveResume(projectId: string): Promise<{ ok: boolean; snapshotted: number }> {
+  return apiFetch<{ ok: boolean; snapshotted: number }>('project/save-resume', {
     project_id: projectId,
   });
 }
@@ -226,4 +243,21 @@ export async function listSharedKeys(projectId: string, namespace: string): Prom
     namespace,
   });
   return resp.keys;
+}
+
+// ── Modified files (git-polled per agent cwd) ────────────────
+
+export interface ModifiedFile {
+  path: string;
+  status: string;
+  role: string;
+  name: string;
+  cwd: string;
+}
+
+export async function listModifiedFiles(projectId: string): Promise<ModifiedFile[]> {
+  const resp = await apiFetch<{ files: ModifiedFile[] }>('project/modified-files', {
+    project_id: projectId,
+  });
+  return resp.files;
 }

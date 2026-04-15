@@ -8,7 +8,8 @@ export type BrokerEvent =
   | 'message:new'
   | 'shared:updated'
   | 'thread:created'
-  | 'thread:updated';
+  | 'thread:updated'
+  | 'thread:deleted';
 
 interface WsClient {
   ws: WebSocket;

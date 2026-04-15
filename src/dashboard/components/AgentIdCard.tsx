@@ -23,6 +23,8 @@ interface AgentIdCardProps {
   onChange: (next: AgentDraft) => void;
   onDelete: () => void;
   duplicateAvatar?: boolean;
+  locked?: boolean;
+  lockedHint?: string;
 }
 
 const labelStyle: CSSProperties = {
@@ -46,8 +48,13 @@ const sectionTitleStyle: CSSProperties = {
 export default function AgentIdCard({
   draft, status = 'offline', project,
   onChange, onDelete, duplicateAvatar,
+  locked = false, lockedHint,
 }: AgentIdCardProps) {
   const [focused, setFocused] = useState(false);
+
+  const readOnlyInputStyle: CSSProperties = locked ? {
+    opacity: 0.7, cursor: 'not-allowed', background: '#E8E3D8',
+  } : {};
 
   const update = <K extends keyof AgentDraft>(field: K, value: AgentDraft[K]) =>
     onChange({ ...draft, [field]: value });
@@ -207,9 +214,11 @@ export default function AgentIdCard({
               value={draft.role}
               onChange={e => update('role', e.target.value)}
               placeholder={t('dash.agentRolePlaceholder')}
-              style={inputStyle}
-              onFocus={e => { e.currentTarget.style.borderColor = '#4A9FE8'; e.currentTarget.style.background = '#fff'; }}
-              onBlur={e => { e.currentTarget.style.borderColor = '#DDD5C8'; e.currentTarget.style.background = '#F0ECE3'; }}
+              style={{ ...inputStyle, ...readOnlyInputStyle }}
+              disabled={locked}
+              readOnly={locked}
+              onFocus={e => { if (!locked) { e.currentTarget.style.borderColor = '#4A9FE8'; e.currentTarget.style.background = '#fff'; } }}
+              onBlur={e => { if (!locked) { e.currentTarget.style.borderColor = '#DDD5C8'; e.currentTarget.style.background = '#F0ECE3'; } }}
             />
           </div>
         </div>
@@ -254,10 +263,16 @@ export default function AgentIdCard({
         {/* Row 4: Path */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <label style={labelStyle}>{t('dash.pathLabel')}</label>
-          <FolderPicker
-            value={draft.cwd}
-            onChange={value => update('cwd', value)}
-          />
+          {locked ? (
+            <div style={{ ...inputStyle, ...readOnlyInputStyle, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {draft.cwd || '—'}
+            </div>
+          ) : (
+            <FolderPicker
+              value={draft.cwd}
+              onChange={value => update('cwd', value)}
+            />
+          )}
         </div>
 
         {/* Row 5: Instructions */}
@@ -281,19 +296,28 @@ export default function AgentIdCard({
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           paddingTop: 12, borderTop: '1px solid #EEE8DD', marginTop: 'auto',
         }}>
-          <button
-            onClick={onDelete}
-            style={{
+          {locked ? (
+            <span style={{
               fontFamily: 'var(--font-mono)', fontSize: 11,
-              color: '#D85A30', background: 'none', border: 'none',
-              cursor: 'pointer', opacity: 0.65, padding: 0,
-              transition: 'opacity 0.2s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
-            onMouseLeave={e => { e.currentTarget.style.opacity = '0.65'; }}
-          >
-            ✕ {t('dash.removeAgent')}
-          </button>
+              color: '#9AA0AA', letterSpacing: 0.5,
+            }}>
+              {lockedHint || '🔒 Siempre presente — coordinador del equipo'}
+            </span>
+          ) : (
+            <button
+              onClick={onDelete}
+              style={{
+                fontFamily: 'var(--font-mono)', fontSize: 11,
+                color: '#D85A30', background: 'none', border: 'none',
+                cursor: 'pointer', opacity: 0.65, padding: 0,
+                transition: 'opacity 0.2s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
+              onMouseLeave={e => { e.currentTarget.style.opacity = '0.65'; }}
+            >
+              ✕ {t('dash.removeAgent')}
+            </button>
+          )}
         </div>
       </div>
     </div>

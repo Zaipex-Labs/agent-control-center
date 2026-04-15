@@ -364,6 +364,47 @@ export function updateThread(
   return result.changes > 0;
 }
 
+// Wipes every row in every table that belongs to a project. Used when
+// the user deletes a team — without this, messages/threads/shared_state
+// accumulate as orphans keyed by a project_id that no longer exists.
+// Returns every distinct project_id currently referenced by any row in
+// peers / messages / message_log / shared_state / threads. Used by the
+// startup migration to find orphan data from deleted projects.
+export function listProjectIdsInDb(): string[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT project_id FROM peers
+    UNION SELECT project_id FROM messages
+    UNION SELECT project_id FROM message_log
+    UNION SELECT project_id FROM shared_state
+    UNION SELECT project_id FROM threads
+  `).all() as Array<{ project_id: string }>;
+  return rows.map(r => r.project_id).filter(Boolean);
+}
+
+export function deleteProjectData(projectId: string): void {
+  const db = getDb();
+  const tables = ['peers', 'messages', 'message_log', 'shared_state', 'threads'];
+  const tx = db.transaction((pid: string) => {
+    for (const table of tables) {
+      db.prepare(`DELETE FROM ${table} WHERE project_id = ?`).run(pid);
+    }
+  });
+  tx(projectId);
+}
+
+export function deleteThread(projectId: string, threadId: string): boolean {
+  const db = getDb();
+  // Null out thread_id references in logs + pending messages so we don't
+  // leave dangling foreign keys. We keep the log entries themselves — they
+  // are still part of the project history, just no longer grouped under
+  // this thread.
+  db.prepare('UPDATE message_log SET thread_id = NULL WHERE thread_id = ? AND project_id = ?').run(threadId, projectId);
+  db.prepare('UPDATE messages SET thread_id = NULL WHERE thread_id = ? AND project_id = ?').run(threadId, projectId);
+  const result = db.prepare('DELETE FROM threads WHERE id = ? AND project_id = ?').run(threadId, projectId);
+  return result.changes > 0;
+}
+
 export function searchThreads(projectId: string, query: string, limit: number = 20): Thread[] {
   const pattern = `%${query}%`;
   return getDb().prepare(`

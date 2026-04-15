@@ -37,6 +37,12 @@ export function useMessages(
   const waitingTimeout = useRef<ReturnType<typeof setTimeout>>();
   const { lastEvent } = useWebSocket(projectId);
 
+  // Keep senderId in a ref so doSend can wait for it to be ready after a
+  // page reload — the dashboard peer takes a few hundred ms to register,
+  // and a synchronous senderId check would drop the message silently.
+  const senderIdRef = useRef(senderId);
+  senderIdRef.current = senderId;
+
   // Initial fetch
   useEffect(() => {
     if (!projectId) {
@@ -62,6 +68,7 @@ export function useMessages(
       to_role: string;
       text: string;
       type: MessageType;
+      metadata?: string | null;
     };
 
     // Skip if this is our own message (already shown via optimistic update)
@@ -85,7 +92,7 @@ export function useMessages(
       to_role: data.to_role || 'user',
       type: data.type,
       text: data.text,
-      metadata: null,
+      metadata: data.metadata ?? null,
       thread_id: data.thread_id,
       sent_at: new Date().toISOString(),
       session_id: '',
@@ -96,7 +103,21 @@ export function useMessages(
 
   const doSend = useCallback(
     async (toRole: string, text: string, type: MessageType = 'message', optimistic = true) => {
-      if (!projectId || !senderId) return;
+      if (!projectId) return;
+
+      // Wait briefly for the dashboard peer to finish registering after a
+      // reload. Without this the first message sent right after reload
+      // gets silently dropped because senderId is still undefined.
+      let waited = 0;
+      while (!senderIdRef.current && waited < 3_000) {
+        await new Promise(r => setTimeout(r, 150));
+        waited += 150;
+      }
+      const id = senderIdRef.current;
+      if (!id) {
+        setSendError({ text, toRole });
+        return;
+      }
 
       setSendError(null);
       setLastSend({ toRole, text, type });
@@ -126,7 +147,7 @@ export function useMessages(
       }
 
       try {
-        await sendToRole(projectId, senderId, toRole, fullText, threadId, type);
+        await sendToRole(projectId, id, toRole, fullText, threadId, type);
         // Show typing indicator
         setWaitingFor({ toRole, since: Date.now() });
         clearTimeout(waitingTimeout.current);
@@ -136,7 +157,7 @@ export function useMessages(
       } catch {
         // Retry once — re-register might be needed
         try {
-          await sendToRole(projectId, senderId, toRole, fullText, threadId, type);
+          await sendToRole(projectId, id, toRole, fullText, threadId, type);
           setWaitingFor({ toRole, since: Date.now() });
           clearTimeout(waitingTimeout.current);
           waitingTimeout.current = setTimeout(() => {

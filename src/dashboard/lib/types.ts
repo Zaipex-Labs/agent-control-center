@@ -90,7 +90,8 @@ export type BrokerEvent =
   | 'message:new'
   | 'shared:updated'
   | 'thread:created'
-  | 'thread:updated';
+  | 'thread:updated'
+  | 'thread:deleted';
 
 export interface WsEvent {
   event: BrokerEvent;

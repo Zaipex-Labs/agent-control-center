@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Thread } from '../lib/types';
-import { listThreads as fetchThreads, createThread as apiCreateThread } from '../lib/api';
+import { listThreads as fetchThreads, createThread as apiCreateThread, deleteThread as apiDeleteThread } from '../lib/api';
 import { useWebSocket, isEvent } from './useWebSocket';
 
 interface UseThreadsReturn {
@@ -8,6 +8,7 @@ interface UseThreadsReturn {
   activeThread: Thread | null;
   setActiveThread: (thread: Thread | null) => void;
   createThread: (name: string) => Promise<void>;
+  deleteThread: (threadId: string) => Promise<void>;
   loading: boolean;
 }
 
@@ -58,6 +59,12 @@ export function useThreads(projectId: string | undefined): UseThreadsReturn {
         }),
       );
     }
+
+    if (isEvent(lastEvent, 'thread:deleted')) {
+      const data = lastEvent.data as { id: string };
+      setThreads((prev) => prev.filter((t) => t.id !== data.id));
+      setActiveThread((cur) => (cur?.id === data.id ? null : cur));
+    }
   }, [lastEvent]);
 
   const createThread = useCallback(
@@ -80,5 +87,15 @@ export function useThreads(projectId: string | undefined): UseThreadsReturn {
     [projectId],
   );
 
-  return { threads, activeThread, setActiveThread, createThread, loading };
+  const deleteThread = useCallback(
+    async (threadId: string) => {
+      if (!projectId) return;
+      await apiDeleteThread(projectId, threadId);
+      setThreads((prev) => prev.filter((t) => t.id !== threadId));
+      setActiveThread((cur) => (cur?.id === threadId ? null : cur));
+    },
+    [projectId],
+  );
+
+  return { threads, activeThread, setActiveThread, createThread, deleteThread, loading };
 }

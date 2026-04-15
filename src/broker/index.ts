@@ -38,11 +38,16 @@ import {
   handleCreateProject,
   handleAddAgent,
   handleUpdateProject,
+  handleDeleteProject,
+  handleDeleteThread,
   handleProjectUp,
   handleProjectDown,
+  handleSaveResume,
+  handleListModifiedFiles,
+  migrateLegacyProjects,
 } from './handlers.js';
 
-type PostHandler = (body: unknown, res: ServerResponse) => void;
+type PostHandler = (body: unknown, res: ServerResponse) => void | Promise<void>;
 
 const POST_ROUTES: Record<string, PostHandler> = {
   '/api/register': handleRegister,
@@ -68,8 +73,12 @@ const POST_ROUTES: Record<string, PostHandler> = {
   '/api/project/create': handleCreateProject,
   '/api/project/add-agent': handleAddAgent,
   '/api/project/update': handleUpdateProject,
+  '/api/project/delete': handleDeleteProject,
   '/api/project/up': handleProjectUp,
   '/api/project/down': handleProjectDown,
+  '/api/project/save-resume': handleSaveResume,
+  '/api/project/modified-files': handleListModifiedFiles,
+  '/api/threads/delete': handleDeleteThread,
 };
 
 const MIME_TYPES: Record<string, string> = {
@@ -92,6 +101,10 @@ const DASHBOARD_DIR = join(PROJECT_ROOT, 'dist', 'dashboard');
 export function createBrokerServer(): Server {
   initDatabase();
   console.error(`[broker] dashboard dir: ${DASHBOARD_DIR}`);
+
+  // Migrate legacy projects: inject the tech lead into old configs and
+  // wipe any DB rows whose project was deleted without the new cleanup.
+  migrateLegacyProjects();
 
   // Clean dead peers on startup
   const removed = cleanStalePeers();
@@ -136,7 +149,8 @@ export function createBrokerServer(): Server {
       if (handler) {
         try {
           const body = await parseBody(req);
-          return handler(body, res);
+          await handler(body, res);
+          return;
         } catch {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'Invalid JSON body' }));

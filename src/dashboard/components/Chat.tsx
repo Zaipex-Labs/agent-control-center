@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import type { LogEntry } from '../lib/types';
+import type { LogEntry, Peer } from '../lib/types';
 import type { WaitingReply, SendError } from '../hooks/useMessages';
 import MessageBubble from './MessageBubble';
-import CoordinationBlock from './CoordinationBlock';
+import MeetingBlock, { buildMeetingTree, type MeetingNode } from './Meeting';
 import TypingIndicator from './TypingIndicator';
 import { t, getLang } from '../../shared/i18n/browser';
 
@@ -26,10 +26,11 @@ function dayKey(dateStr: string): string {
   return new Date(dateStr).toDateString();
 }
 
-// A chat item is either a single message (user or agent-to-user) or a coordination block
-type ChatItem =
+// A feed item is either a user-facing message bubble or a group of
+// coordination messages rendered as a (possibly nested) meeting tree.
+type FeedItem =
   | { kind: 'message'; message: LogEntry }
-  | { kind: 'coordination'; messages: LogEntry[] };
+  | { kind: 'meetings'; nodes: MeetingNode[]; lastMessage: LogEntry };
 
 function isUserMessage(m: LogEntry): boolean {
   return m.from_role === 'user' || m.from_id === 'user' || m.from_id === 'cli';
@@ -39,49 +40,71 @@ function isToUser(m: LogEntry): boolean {
   return m.to_role === 'user';
 }
 
-function buildChatItems(messages: LogEntry[]): ChatItem[] {
-  const items: ChatItem[] = [];
-  let i = 0;
+// "Filler" agent → user messages like "preguntando a front, espera" should
+// be hidden from the feed because they split what is really a single
+// meeting into two separate coordination blocks. A message counts as
+// filler when it's:
+//   - from an agent to the user
+//   - short (<= 140 chars after stripping markdown)
+//   - contains one of these stalling verbs
+// The prompt already forbids them (U4b), but we also drop them visually
+// in case an agent slips up.
+const FILLER_RE = /\b(preguntando|consultando|verificando|esperando|espera|coordin(ando|aré|aré)|checking|asking|voy a (pregunt|consult|verific)|let me (ask|check))\b/i;
 
-  while (i < messages.length) {
-    const m = messages[i];
+function isFiller(m: LogEntry): boolean {
+  if (!isToUser(m)) return false;
+  if (isUserMessage(m)) return false;
+  const text = m.text.trim();
+  if (text.length === 0 || text.length > 160) return false;
+  return FILLER_RE.test(text);
+}
 
-    // User messages and agent-to-user messages show as full bubbles
-    if (isUserMessage(m) || isToUser(m)) {
+function buildFeedItems(messages: LogEntry[], agents: Peer[]): FeedItem[] {
+  // Drop filler "voy a preguntar a X" messages — they split meetings.
+  const filtered = messages.filter(m => !isFiller(m));
+
+  const items: FeedItem[] = [];
+  let buffer: LogEntry[] = [];
+
+  const flushBuffer = () => {
+    if (buffer.length === 0) return;
+    const nodes = buildMeetingTree(buffer, agents);
+    items.push({ kind: 'meetings', nodes, lastMessage: buffer[buffer.length - 1] });
+    buffer = [];
+  };
+
+  for (const m of filtered) {
+    const isCoord = !isUserMessage(m) && !isToUser(m);
+    if (isCoord) {
+      buffer.push(m);
+    } else {
+      flushBuffer();
       items.push({ kind: 'message', message: m });
-      i++;
-      continue;
     }
-
-    // Agent-to-agent: collect consecutive coordination messages
-    const block: LogEntry[] = [m];
-    let j = i + 1;
-    while (j < messages.length && !isUserMessage(messages[j]) && !isToUser(messages[j])) {
-      block.push(messages[j]);
-      j++;
-    }
-    items.push({ kind: 'coordination', messages: block });
-    i = j;
   }
+  flushBuffer();
 
   return items;
 }
 
 interface ChatProps {
   messages: LogEntry[];
+  agents: Peer[];
   loading: boolean;
   waitingFor?: WaitingReply | null;
   sendError?: SendError | null;
   onRetry?: () => void;
   onDismissError?: () => void;
+  flashMessageId?: number | null;
 }
 
 // How fresh a coordination block has to be to still show the live
 // typing indicator (ms).
 const LIVE_WINDOW_MS = 20_000;
 
-export default function Chat({ messages, loading, waitingFor, sendError, onRetry, onDismissError }: ChatProps) {
+export default function Chat({ messages, agents, loading, waitingFor, sendError, onRetry, onDismissError, flashMessageId }: ChatProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const messageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   // Force a re-render periodically so the "live" check against current time
   // updates and the typing indicator fades out once the block has gone quiet.
   const [, setNowTick] = useState(0);
@@ -94,6 +117,16 @@ export default function Chat({ messages, loading, waitingFor, sendError, onRetry
     const id = setInterval(() => setNowTick(n => n + 1), 4_000);
     return () => clearInterval(id);
   }, []);
+
+  // When the parent asks us to flash a specific message (e.g. the user
+  // clicked a file paper in the work desk), scroll to it and kick off the
+  // temporary yellow highlight animation.
+  useEffect(() => {
+    if (flashMessageId == null) return;
+    const el = messageRefs.current.get(flashMessageId);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [flashMessageId]);
 
   if (loading) {
     return (
@@ -119,17 +152,17 @@ export default function Chat({ messages, loading, waitingFor, sendError, onRetry
     );
   }
 
-  const items = buildChatItems(messages);
+  const items = buildFeedItems(messages, agents);
   let lastDay = '';
 
-  // A coordination block is "live" if it's the last item in the chat AND its
-  // most recent message arrived within LIVE_WINDOW_MS.
+  // The last meetings block in the feed is "live" if its most recent
+  // message arrived within LIVE_WINDOW_MS — that drives the typing dots.
   const lastIdx = items.length - 1;
   const lastItem = items[lastIdx];
   const now = Date.now();
-  const isLastCoordLive =
-    lastItem && lastItem.kind === 'coordination' &&
-    (now - new Date(lastItem.messages[lastItem.messages.length - 1].sent_at).getTime()) < LIVE_WINDOW_MS;
+  const isLastMeetingLive =
+    lastItem && lastItem.kind === 'meetings' &&
+    (now - new Date(lastItem.lastMessage.sent_at).getTime()) < LIVE_WINDOW_MS;
 
   return (
     <div style={{
@@ -137,11 +170,16 @@ export default function Chat({ messages, loading, waitingFor, sendError, onRetry
       display: 'flex', flexDirection: 'column', gap: 16,
     }}>
       {items.map((item, idx) => {
-        const sentAt = item.kind === 'message' ? item.message.sent_at : item.messages[0].sent_at;
+        const sentAt = item.kind === 'message'
+          ? item.message.sent_at
+          : item.nodes[0]?.messages[0]?.sent_at ?? item.lastMessage.sent_at;
         const currentDay = dayKey(sentAt);
         const showSeparator = currentDay !== lastDay;
         lastDay = currentDay;
-        const itemKey = item.kind === 'message' ? item.message.id : `coord-${item.messages[0].id}`;
+        const itemKey = item.kind === 'message'
+          ? `m-${item.message.id}`
+          : `t-${item.nodes[0]?.firstMessageId ?? idx}`;
+        const isLiveHere = idx === lastIdx && !!isLastMeetingLive;
 
         return (
           <div key={itemKey}>
@@ -161,16 +199,34 @@ export default function Chat({ messages, loading, waitingFor, sendError, onRetry
               </div>
             )}
             {item.kind === 'message' ? (
-              <MessageBubble message={item.message} />
+              <MessageBubble
+                key={`${item.message.id}-${flashMessageId === item.message.id ? 'flash' : 'normal'}`}
+                message={item.message}
+                agents={agents}
+                flash={flashMessageId === item.message.id}
+                ref={el => {
+                  if (el) messageRefs.current.set(item.message.id, el);
+                  else messageRefs.current.delete(item.message.id);
+                }}
+              />
             ) : (
-              <CoordinationBlock messages={item.messages} live={idx === lastIdx && isLastCoordLive} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {item.nodes.map((n, ni) => (
+                  <MeetingBlock
+                    key={n.firstMessageId}
+                    node={n}
+                    agents={agents}
+                    live={isLiveHere && ni === item.nodes.length - 1}
+                  />
+                ))}
+              </div>
             )}
           </div>
         );
       })}
       {/* Typing indicator */}
       {waitingFor && (
-        <TypingIndicator role={waitingFor.toRole} />
+        <TypingIndicator role={waitingFor.toRole} agents={agents} />
       )}
 
       {/* Send error toast */}

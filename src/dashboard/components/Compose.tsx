@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import type { Peer, MessageType } from '../lib/types';
 import { t } from '../../shared/i18n/browser';
+import { ARCHITECT_ROLE } from '../../shared/names';
 
 interface ComposeProps {
   agents: Peer[];
@@ -15,7 +16,10 @@ export default function Compose({ agents, onSend }: ComposeProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const roles = Array.from(new Set(agents.map(a => a.role))).filter(Boolean);
-  const displayTarget = targetRole ?? (roles[0] || t('dash.all'));
+  // Default every new conversation to the architect so they route the work.
+  // The user can still override via the dropdown.
+  const defaultRole = roles.includes(ARCHITECT_ROLE) ? ARCHITECT_ROLE : (roles[0] || t('dash.all'));
+  const displayTarget = targetRole ?? defaultRole;
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();

@@ -1,6 +1,9 @@
+import { forwardRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import type { LogEntry } from '../lib/types';
+import Avatar from './Avatar';
+import type { LogEntry, Peer } from '../lib/types';
 import { t, getLang } from '../../shared/i18n/browser';
+import { getDefaultName } from '../../shared/names';
 
 const ROLE_COLORS: Record<string, string> = {
   backend: '#4A9FE8',
@@ -49,14 +52,24 @@ function stripThreadPrefix(text: string): string {
 interface MessageBubbleProps {
   message: LogEntry;
   compact?: boolean;
+  flash?: boolean;
+  agents?: Peer[];
 }
 
-export default function MessageBubble({ message, compact = false }: MessageBubbleProps) {
+const MessageBubble = forwardRef<HTMLDivElement, MessageBubbleProps>(function MessageBubble(
+  { message, compact = false, flash = false, agents = [] },
+  ref,
+) {
   const isUser = message.from_id === 'user' || message.from_id === 'cli' || message.from_role === 'user';
   const avatarSize = compact ? 22 : 32;
-  const initial = isUser
-    ? 'JM'
-    : (message.from_role || '?')[0].toUpperCase();
+  // Look up the peer that sent this message so we can show their real
+  // generative avatar instead of just a colored initial. Match by id
+  // first (most specific), then by role.
+  const senderPeer = !isUser
+    ? agents.find(a => a.id === message.from_id) ?? agents.find(a => a.role === message.from_role)
+    : undefined;
+  const senderName = senderPeer?.name || message.from_role || message.from_id || '?';
+  const seed = senderPeer?.name || getDefaultName(message.from_role || 'agent');
   const avatarBg = isUser ? '#3DBA7A' : roleColor(message.from_role);
   const tag = TYPE_TAGS[message.type] ?? TYPE_TAGS.message;
   const tagLabel = t(tag.key);
@@ -64,30 +77,45 @@ export default function MessageBubble({ message, compact = false }: MessageBubbl
   const jsonContent = isJson(cleanText);
 
   return (
-    <div style={{
-      display: 'flex', gap: compact ? 8 : 12,
-      flexDirection: isUser ? 'row-reverse' : 'row',
-      alignItems: 'flex-start',
-      ...(compact && {
-        marginLeft: isUser ? 0 : 44,
-        marginRight: isUser ? 44 : 0,
-        borderLeft: isUser ? 'none' : '2px solid rgba(232,130,58,0.2)',
-        paddingLeft: isUser ? 0 : 12,
-        background: isUser ? 'transparent' : 'rgba(232,130,58,0.05)',
-        borderRadius: compact ? 10 : 0,
-        padding: compact ? '8px 12px' : undefined,
-      }),
-    }}>
+    <div
+      ref={ref}
+      className={flash ? 'acc-flash' : undefined}
+      style={{
+        display: 'flex', gap: compact ? 8 : 12,
+        flexDirection: isUser ? 'row-reverse' : 'row',
+        alignItems: 'flex-start',
+        padding: flash ? '6px 8px' : undefined,
+        ...(compact && {
+          marginLeft: isUser ? 0 : 44,
+          marginRight: isUser ? 44 : 0,
+          borderLeft: isUser ? 'none' : '2px solid rgba(232,130,58,0.2)',
+          paddingLeft: isUser ? 0 : 12,
+          background: isUser ? 'transparent' : 'rgba(232,130,58,0.05)',
+          borderRadius: compact ? 10 : 0,
+          padding: compact ? '8px 12px' : undefined,
+        }),
+      }}
+    >
       {/* Avatar */}
-      <div style={{
-        width: avatarSize, height: avatarSize, borderRadius: '50%',
-        background: avatarBg, color: '#fff',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: compact ? 9 : 13, fontWeight: 600,
-        flexShrink: 0, fontFamily: 'var(--font-sans)',
-      }}>
-        {initial}
-      </div>
+      {isUser ? (
+        <div style={{
+          width: avatarSize, height: avatarSize, borderRadius: '50%',
+          background: avatarBg, color: '#fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: compact ? 9 : 13, fontWeight: 600,
+          flexShrink: 0, fontFamily: 'var(--font-sans)',
+        }}>
+          JM
+        </div>
+      ) : (
+        <Avatar
+          avatar={senderPeer?.avatar ?? null}
+          seed={seed}
+          size={avatarSize}
+          background={avatarBg}
+          title={senderName}
+        />
+      )}
 
       <div style={{ minWidth: 0, maxWidth: '75%' }}>
         {/* Header */}
@@ -97,8 +125,13 @@ export default function MessageBubble({ message, compact = false }: MessageBubbl
             marginBottom: 4, flexWrap: 'wrap',
           }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text)' }}>
-              {isUser ? t('dash.you') : (message.from_role || message.from_id)}
+              {isUser ? t('dash.you') : senderName}
             </span>
+            {!isUser && message.from_role && senderPeer?.name && senderPeer.name !== message.from_role && (
+              <span style={{ fontSize: 11, color: 'var(--z-text-muted)' }}>
+                ({message.from_role})
+              </span>
+            )}
             {message.to_role && (
               <span style={{ fontSize: 12, color: 'var(--z-text-muted)' }}>
                 &rarr; {message.to_role}
@@ -153,4 +186,6 @@ export default function MessageBubble({ message, compact = false }: MessageBubbl
       </div>
     </div>
   );
-}
+});
+
+export default MessageBubble;

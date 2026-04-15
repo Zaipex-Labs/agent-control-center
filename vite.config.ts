@@ -8,6 +8,16 @@ export default defineConfig({
   build: {
     outDir: '../../dist/dashboard',
     emptyOutDir: true,
+    chunkSizeWarningLimit: 700,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          xterm: ['@xterm/xterm', '@xterm/addon-fit'],
+          dicebear: ['@dicebear/core', '@dicebear/collection'],
+        },
+      },
+    },
   },
   server: {
     proxy: {

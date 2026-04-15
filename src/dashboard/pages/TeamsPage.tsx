@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listProjects, projectUp, projectDown, createProject, updateProject } from '../lib/api';
+import { listProjects, projectUp, projectDown, createProject, updateProject, deleteProject } from '../lib/api';
 import type { Project, AgentConfig } from '../lib/types';
 import Avatar from '../components/Avatar';
 import AgentIdCard, { type AgentDraft } from '../components/AgentIdCard';
 import CompactAgentIdCard, { type CompactAgentDraft } from '../components/CompactAgentIdCard';
 import { t } from '../../shared/i18n/browser';
-import { getDefaultName } from '../../shared/names';
+import { getDefaultName, ARCHITECT_ROLE, ARCHITECT_DEFAULT_INSTRUCTIONS } from '../../shared/names';
 import { officeIndex, renderOffice } from '../lib/offices';
 
 const ROLE_COLORS: Record<string, string> = {
@@ -46,7 +46,7 @@ function AgentBadge({ name, role, avatar }: { name: string; role: string; avatar
 
 const AGENTS_PREVIEW = 3;
 
-function ProjectCard({ project, onClick, onPowerUp, onShutdown, onEdit, starting, stopping, startLog }: { project: Project; onClick: () => void; onPowerUp: () => void; onShutdown: () => void; onEdit: () => void; starting: boolean; stopping: boolean; startLog: Array<{ text: string; done: boolean }> }) {
+function ProjectCard({ project, onClick, onPowerUp, onShutdown, onEdit, onDelete, starting, stopping, startLog }: { project: Project; onClick: () => void; onPowerUp: () => void; onShutdown: () => void; onEdit: () => void; onDelete: () => void; starting: boolean; stopping: boolean; startLog: Array<{ text: string; done: boolean }> }) {
   const isActive = project.active_peers > 0 || project.tmux_running === true;
   const showingBootPanel = starting && startLog.length > 0;
   const bootFinished = showingBootPanel && startLog.every(s => s.done);
@@ -130,6 +130,22 @@ function ProjectCard({ project, onClick, onPowerUp, onShutdown, onEdit, starting
               onMouseLeave={e => { e.currentTarget.style.borderColor = '#D0C9BE'; e.currentTarget.style.color = '#5A6272'; }}
             >
               ✎
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              title={t('dash.deleteTeam')}
+              aria-label={t('dash.deleteTeam')}
+              style={{
+                background: 'none', border: '1px solid #E8C0B0',
+                borderRadius: 10, padding: '6px 12px', cursor: 'pointer',
+                color: '#D85A30', fontSize: 16, fontFamily: 'var(--font-sans)',
+                transition: 'background 0.15s, border-color 0.15s',
+                flexShrink: 0, lineHeight: 1,
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#D85A30'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = '#D85A30'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#D85A30'; e.currentTarget.style.borderColor = '#E8C0B0'; }}
+            >
+              ✕
             </button>
           </div>
 
@@ -404,6 +420,7 @@ export default function TeamsPage() {
   const [switchConfirm, setSwitchConfirm] = useState<{ current: string; next: string } | null>(null);
   const [editing, setEditing] = useState<Project | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const navigate = useNavigate();
 
@@ -575,6 +592,26 @@ export default function TeamsPage() {
     }
   };
 
+  const handleRequestDelete = (project: Project) => {
+    if (isProjectActive(project)) {
+      setError(t('dash.cannotEditActive'));
+      return;
+    }
+    setDeletingProject(project);
+  };
+
+  const confirmDelete = async () => {
+    if (!deletingProject) return;
+    const name = deletingProject.name;
+    setDeletingProject(null);
+    try {
+      await deleteProject(name);
+      await reload();
+    } catch (e) {
+      setError(t('dash.errorDeleting', { error: e instanceof Error ? e.message : String(e) }));
+    }
+  };
+
   const handleShutdown = async (name: string) => {
     setStopping(name);
     setError(null);
@@ -719,6 +756,7 @@ export default function TeamsPage() {
                 onPowerUp={() => handlePowerUp(project.name)}
                 onShutdown={() => handleShutdown(project.name)}
                 onEdit={() => handleEdit(project)}
+                onDelete={() => handleRequestDelete(project)}
                 starting={starting === project.name}
                 stopping={stopping === project.name}
                 startLog={starting === project.name ? startLog : []}
@@ -758,6 +796,18 @@ export default function TeamsPage() {
           onCancel={() => setSwitchConfirm(null)}
         />
       )}
+
+      {deletingProject && (
+        <ConfirmModal
+          title={t('dash.deleteTeamTitle', { name: deletingProject.name })}
+          body={t('dash.deleteTeamBody')}
+          confirmLabel={t('dash.deleteTeamConfirm')}
+          cancelLabel={t('dash.cancel')}
+          onConfirm={confirmDelete}
+          onCancel={() => setDeletingProject(null)}
+          danger
+        />
+      )}
     </div>
   );
 }
@@ -769,28 +819,45 @@ function EditProjectModal({ project, onClose, onSubmit, saving }: {
   saving: boolean;
 }) {
   const [description, setDescription] = useState(project.description ?? '');
-  const [agents, setAgents] = useState<AgentDraft[]>(
-    (project.agents ?? []).map((a: AgentConfig) => ({
+  const [agents, setAgents] = useState<AgentDraft[]>(() => {
+    const mapped = (project.agents ?? []).map((a: AgentConfig) => ({
       role: a.role,
       cwd: a.cwd,
       name: a.name ?? '',
       instructions: a.instructions ?? '',
       avatar: a.avatar ?? '',
       model: a.model ?? '',
-    })),
-  );
+    }));
+    if (!mapped.some(a => a.role === ARCHITECT_ROLE)) {
+      mapped.unshift({
+        role: ARCHITECT_ROLE,
+        cwd: '(auto)',
+        name: 'Da Vinci',
+        instructions: ARCHITECT_DEFAULT_INSTRUCTIONS,
+        avatar: '',
+        model: '',
+      });
+    }
+    return mapped;
+  });
 
   const addCard = () => setAgents(prev => [
     ...prev,
     { role: '', cwd: '', name: '', instructions: '', avatar: '', model: '' },
   ]);
-  const removeCard = (i: number) => setAgents(prev => prev.filter((_, idx) => idx !== i));
+  const removeCard = (i: number) => {
+    if (agents[i]?.role === ARCHITECT_ROLE) return;
+    setAgents(prev => prev.filter((_, idx) => idx !== i));
+  };
   const replaceCard = (i: number, next: AgentDraft) =>
     setAgents(prev => prev.map((a, idx) => idx === i ? next : a));
 
   const roles = agents.map(a => a.role.trim());
   const hasDuplicate = roles.some((r, i) => r && roles.indexOf(r) !== i);
-  const allValid = agents.length > 0 && agents.every(a => a.role.trim() && a.cwd.trim()) && !hasDuplicate;
+  const allValid =
+    agents.length > 0 &&
+    agents.every(a => a.role.trim() && (a.role === ARCHITECT_ROLE || a.cwd.trim())) &&
+    !hasDuplicate;
   const canSubmit = allValid && !saving;
 
   return (
@@ -862,6 +929,8 @@ function EditProjectModal({ project, onClose, onSubmit, saving }: {
                 duplicateAvatar={isDup}
                 onChange={next => replaceCard(i, next)}
                 onDelete={() => removeCard(i)}
+                locked={agent.role === ARCHITECT_ROLE}
+                lockedHint={agent.role === ARCHITECT_ROLE ? '🔒 Tech Lead permanente — coordinador del equipo' : undefined}
               />
             );
           })}
@@ -933,7 +1002,7 @@ function EditProjectModal({ project, onClose, onSubmit, saving }: {
 }
 
 function ConfirmModal({
-  title, body, confirmLabel, cancelLabel, onConfirm, onCancel,
+  title, body, confirmLabel, cancelLabel, onConfirm, onCancel, danger = false,
 }: {
   title: string;
   body: string;
@@ -941,7 +1010,10 @@ function ConfirmModal({
   cancelLabel: string;
   onConfirm: () => void;
   onCancel: () => void;
+  danger?: boolean;
 }) {
+  const confirmBg = danger ? '#D85A30' : '#E8823A';
+  const confirmHover = danger ? '#B6411A' : '#D4732E';
   return (
     <div
       onClick={onCancel}
@@ -984,13 +1056,13 @@ function ConfirmModal({
           <button
             onClick={onConfirm}
             style={{
-              background: '#E8823A', color: '#fff', border: 'none',
+              background: confirmBg, color: '#fff', border: 'none',
               padding: '10px 20px', borderRadius: 10, fontSize: 14,
               fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)',
               transition: 'background 0.15s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#D4732E'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = '#E8823A'; }}
+            onMouseEnter={e => { e.currentTarget.style.background = confirmHover; }}
+            onMouseLeave={e => { e.currentTarget.style.background = confirmBg; }}
           >
             {confirmLabel}
           </button>
@@ -1008,14 +1080,17 @@ function CreateProjectModal({ onClose, onSubmit, creating }: {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [agents, setAgents] = useState<CompactAgentDraft[]>([
+    { role: ARCHITECT_ROLE, name: 'Da Vinci', cwd: '(auto)', instructions: ARCHITECT_DEFAULT_INSTRUCTIONS, model: '' },
     { role: 'backend',  name: '', cwd: '', instructions: '', model: '' },
     { role: 'frontend', name: '', cwd: '', instructions: '', model: '' },
   ]);
 
   const addAgentRow = () =>
     setAgents(prev => [...prev, { role: '', name: '', cwd: '', instructions: '', model: '' }]);
-  const removeAgentRow = (i: number) =>
+  const removeAgentRow = (i: number) => {
+    if (agents[i]?.role === ARCHITECT_ROLE) return;
     setAgents(prev => prev.filter((_, idx) => idx !== i));
+  };
   const replaceRow = (i: number, next: CompactAgentDraft) =>
     setAgents(prev => prev.map((a, idx) => idx === i ? next : a));
 
@@ -1024,7 +1099,7 @@ function CreateProjectModal({ onClose, onSubmit, creating }: {
   const canSubmit =
     !!name.trim() &&
     agents.length > 0 &&
-    agents.every(a => a.role.trim() && a.cwd.trim()) &&
+    agents.every(a => a.role.trim() && (a.role === ARCHITECT_ROLE || a.cwd.trim())) &&
     !hasDuplicate &&
     !creating;
 
@@ -1123,6 +1198,8 @@ function CreateProjectModal({ onClose, onSubmit, creating }: {
               draft={agent}
               onChange={next => replaceRow(i, next)}
               onDelete={() => removeAgentRow(i)}
+              locked={agent.role === ARCHITECT_ROLE}
+              lockedHint={agent.role === ARCHITECT_ROLE ? '🔒 Tech Lead permanente' : undefined}
             />
           ))}
 

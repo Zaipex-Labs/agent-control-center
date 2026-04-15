@@ -161,3 +161,13 @@ code, pre {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
   30% { transform: translateY(-4px); opacity: 1; }
 }
+
+@keyframes acc-flash {
+  0% { background-color: rgba(232,130,58,0.55); }
+  100% { background-color: transparent; }
+}
+
+.acc-flash {
+  animation: acc-flash 1.5s ease-out forwards;
+  border-radius: 10px;
+}
