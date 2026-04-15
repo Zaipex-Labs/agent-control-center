@@ -70,6 +70,12 @@ describe('i18n - t()', () => {
 
   it('detects Spanish from system LANG env var', () => {
     delete process.env['ACC_LANG'];
+    // LC_ALL and LC_MESSAGES take priority over LANG in detectLang();
+    // CI runners (macOS/Linux) often set LC_ALL=en_US.UTF-8 which would
+    // mask the LANG setting we're trying to exercise.
+    delete process.env['LC_ALL'];
+    delete process.env['LC_MESSAGES'];
+    delete process.env['LANGUAGE'];
     process.env['ACC_DISABLE_OS_LOCALE'] = '1';
     process.env['LANG'] = 'es_MX.UTF-8';
     resetLangCache();
@@ -78,6 +84,9 @@ describe('i18n - t()', () => {
 
   it('defaults to English when LANG has no Spanish indicator', () => {
     delete process.env['ACC_LANG'];
+    delete process.env['LC_ALL'];
+    delete process.env['LC_MESSAGES'];
+    delete process.env['LANGUAGE'];
     process.env['ACC_DISABLE_OS_LOCALE'] = '1';
     process.env['LANG'] = 'en_US.UTF-8';
     resetLangCache();

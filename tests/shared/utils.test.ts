@@ -21,9 +21,13 @@ describe('generateId', () => {
 describe('getGitRoot', () => {
   it('returns a path inside a git repo', () => {
     const root = getGitRoot(process.cwd());
-    // This test runs inside the zaipex-acc repo
+    // This test runs inside the project's own repo; the folder name may
+    // differ between local checkouts and CI runners, so we only assert
+    // that the root is a non-empty string that the cwd sits within.
+    expect(typeof root === 'string' || root === null).toBe(true);
     if (root) {
-      expect(root).toContain('zaipex-acc');
+      expect(root.length).toBeGreaterThan(0);
+      expect(process.cwd().startsWith(root)).toBe(true);
     }
   });
 
