@@ -1,3 +1,7 @@
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 // Five pixel-ish office illustrations rendered as inline SVG strings.
 // Each builder takes the "on" state and the list of agents (just needs a
 // color per agent to tint chairs) and returns an SVG string meant to be

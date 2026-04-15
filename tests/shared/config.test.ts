@@ -1,3 +1,7 @@
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 import { describe, it, expect } from 'vitest';
 import { ACC_HOST, ACC_PORT, ACC_HOME, ACC_DB, PROJECTS_DIR, BROKER_URL, STALE_PEER_SECONDS, CLEANUP_INTERVAL_MS } from '../../src/shared/config.js';
 

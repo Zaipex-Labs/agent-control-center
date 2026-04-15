@@ -37,7 +37,7 @@
   "contributors": [
     "Zaipex Labs team <hello@zaipex.ai>"
   ],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "dependencies": {
     "@dicebear/collection": "^9.4.2",
     "@dicebear/core": "^9.4.2",

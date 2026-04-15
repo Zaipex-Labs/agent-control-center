@@ -1,3 +1,7 @@
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import TeamsPage from './pages/TeamsPage';
 import ProjectPage from './pages/ProjectPage';

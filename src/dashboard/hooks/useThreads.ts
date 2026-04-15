@@ -1,3 +1,7 @@
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 import { useState, useEffect, useCallback } from 'react';
 import type { Thread } from '../lib/types';
 import { listThreads as fetchThreads, createThread as apiCreateThread, deleteThread as apiDeleteThread } from '../lib/api';

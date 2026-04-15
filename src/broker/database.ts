@@ -1,3 +1,7 @@
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 import Database from 'better-sqlite3';
 import { ACC_DB, ensureDirectories } from '../shared/config.js';
 import { generateId } from '../shared/utils.js';

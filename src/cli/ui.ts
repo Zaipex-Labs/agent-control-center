@@ -1,3 +1,7 @@
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 import chalk from 'chalk';
 import { t } from '../shared/i18n/index.js';
 import type { ProjectConfig } from '../shared/types.js';

@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 import { Command, Help } from 'commander';
 import { registerProjectCommand, registerProjectsCommand } from './commands/project.js';
 import { registerStatusCommand } from './commands/status.js';

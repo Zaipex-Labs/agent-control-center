@@ -1,3 +1,7 @@
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 import { Command } from 'commander';
 import { brokerFetch, isBrokerAlive } from '../../server/broker-client.js';
 import type { RegisterResponse, SendToRoleResponse } from '../../shared/types.js';

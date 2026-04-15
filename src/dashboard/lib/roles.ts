@@ -1,3 +1,7 @@
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 // Role colors used by the agent ID cards and team cards.
 // Each role has an avatar background color, a badge background, and
 // a badge foreground. Unknown roles fall back to a neutral gray scheme.

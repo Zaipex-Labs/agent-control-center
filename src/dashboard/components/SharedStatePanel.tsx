@@ -1,3 +1,7 @@
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 import { useState, useEffect, useCallback } from 'react';
 import { listSharedKeys, getSharedState } from '../lib/api';
 import type { SharedStateEntry } from '../lib/types';

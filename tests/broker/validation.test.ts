@@ -1,3 +1,7 @@
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 import { describe, it, expect, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import type { ServerResponse } from 'node:http';

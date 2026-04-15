@@ -1,3 +1,7 @@
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 // Hardcoded model catalog — placeholder until the broker exposes
 // GET /api/v1/models. The Agent editor picks from this list and the
 // provider dot in the ID badge is driven by the provider field.

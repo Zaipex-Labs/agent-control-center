@@ -1,3 +1,7 @@
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 export const en: Record<string, string> = {
   // ── ui.ts ───────────────────────────────────────────────────
   'ui.noProjects': 'No projects found. Create one with: acc project create <name>',

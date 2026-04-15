@@ -1,3 +1,7 @@
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 import { roleStyle } from '../lib/roles';
 
 // A 56×48 pixel-style mini-desk SVG. Replaces the plain circular avatar

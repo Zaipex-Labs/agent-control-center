@@ -1,3 +1,7 @@
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 // Shared startup/boot log — the same stepped view shown when powering
 // a team up from the home cards. Used inline on the home page and as
 // the body of the reconnect popup on the project page.

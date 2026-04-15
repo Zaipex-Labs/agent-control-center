@@ -1,3 +1,7 @@
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 import { useEffect, useRef, useState } from 'react';
 import { listModifiedFiles, listSharedKeys, getSharedState, type ModifiedFile } from '../lib/api';
 import { t } from '../../shared/i18n/browser';

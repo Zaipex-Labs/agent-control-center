@@ -1,3 +1,7 @@
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir, platform } from 'node:os';

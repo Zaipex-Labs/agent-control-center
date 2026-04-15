@@ -14,7 +14,7 @@
 ```
 
 [![CI](https://github.com/zaipex-labs/zaipex-acc/actions/workflows/ci.yml/badge.svg)](https://github.com/zaipex-labs/zaipex-acc/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](https://www.typescriptlang.org)
 [![Version](https://img.shields.io/badge/version-0.2.0-brightgreen.svg)](package.json)
@@ -481,7 +481,7 @@ Si encuentras una vulnerabilidad, por favor **no abras un issue público**. Escr
 
 ## License
 
-[MIT](LICENSE) — © 2026 Zaipex Labs
+Licensed under the Apache License 2.0 — see [LICENSE](LICENSE). Built by **[Zaipex Labs](https://zaipex.ai)**.
 
 ---
 

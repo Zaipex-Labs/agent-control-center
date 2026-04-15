@@ -1,3 +1,7 @@
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 import { type CSSProperties, useState } from 'react';
 import Avatar from './Avatar';
 import FolderPicker from './FolderPicker';

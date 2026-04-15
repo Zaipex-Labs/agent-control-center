@@ -1,3 +1,7 @@
+// Copyright 2025-2026 Zaipex Labs (zaipex.ai)
+// Licensed under the Apache License, Version 2.0
+// See LICENSE file for details.
+
 // Default agent name lookup, browser- and Node-safe.
 // The idea is that every role maps to a memorable scientist-style name so
 // agents feel like team members instead of "backend #2".
