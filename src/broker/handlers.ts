@@ -379,6 +379,15 @@ export function handleCreateProject(body: unknown, res: ServerResponse): void {
   const b = body as { name?: string; description?: string };
   if (!b.name) return error(res, 'Missing required field: name');
 
+  // [C-1] — name flows into a filesystem path (PROJECTS_DIR/<name>.json),
+  // into the tech-lead dir (TECHLEAD/<name>/), and later into tmux session
+  // names (acc-<name>). Validate before touching any of those sinks.
+  try {
+    assertSafeIdentifier('name', b.name);
+  } catch (e) {
+    return error(res, e instanceof Error ? e.message : String(e), 400);
+  }
+
   ensureDirectories();
   const configPath = join(PROJECTS_DIR, `${b.name}.json`);
   if (existsSync(configPath)) return error(res, `Project already exists: ${b.name}`);
