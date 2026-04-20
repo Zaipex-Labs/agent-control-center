@@ -10,7 +10,9 @@ import type {
   HealthResponse,
   SharedStateEntry,
   MessageType,
+  Attachment,
 } from './types';
+export type { Attachment };
 
 async function apiFetch<T>(path: string, body?: unknown): Promise<T> {
   const resp = await fetch(`/api/${path}`, {
@@ -31,6 +33,33 @@ async function apiGet<T>(path: string): Promise<T> {
     throw new Error(`GET ${path} failed: ${resp.status}`);
   }
   return resp.json() as Promise<T>;
+}
+
+// ── Blob attachments ──────────────────────────────────────────
+
+export function attachmentUrl(hash: string): string {
+  return `/api/blobs/${hash}`;
+}
+
+// Upload a File from the browser. Returns the stored blob descriptor
+// (hash + mime + name + size) ready to attach to a send-message call.
+export async function uploadBlob(file: File): Promise<Attachment> {
+  const resp = await fetch('/api/blobs/upload', {
+    method: 'POST',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      // HTTP header values must be US-ASCII. Filenames with spaces or
+      // accents (e.g. "diagrama arquitectura v2.png") break raw headers,
+      // so we encode and let the broker decodeURIComponent on arrival.
+      'X-Filename': encodeURIComponent(file.name),
+    },
+    body: file,
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ error: resp.statusText }));
+    throw new Error((err as { error?: string }).error ?? `Upload failed ${resp.status}`);
+  }
+  return resp.json() as Promise<Attachment>;
 }
 
 // ── Health ────────────────────────────────────────────────────

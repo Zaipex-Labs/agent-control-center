@@ -2,6 +2,8 @@
 // Licensed under the Apache License, Version 2.0
 // See LICENSE file for details.
 
+export type { Attachment } from '../../shared/attachments';
+
 export type MessageType =
   | 'message'
   | 'question'
