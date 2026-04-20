@@ -991,6 +991,20 @@ export async function handleSendMessage(body: unknown, res: ServerResponse): Pro
   const fromPeer = selectPeerById(b.from_id);
   if (!fromPeer) return error(res, `Peer not found: ${b.from_id}`, 404);
 
+  // [H-1] — both peers must belong to the body's project_id. Without this,
+  // a local attacker who knows a peer_id in project B could send messages
+  // (with attachments) to that peer while claiming to be in project A.
+  // SECURITY.md lists cross-project bypasses as a vulnerability.
+  if (fromPeer.project_id !== b.project_id || toPeer.project_id !== b.project_id) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: false,
+      error: 'Peer does not belong to the requested project',
+      code: 'PROJECT_MISMATCH',
+    }));
+    return;
+  }
+
   const type: MessageType = b.type ?? 'message';
   const now = new Date().toISOString();
 
@@ -1114,6 +1128,20 @@ export async function handleSendToRole(body: unknown, res: ServerResponse): Prom
 
   const fromPeer = selectPeerById(b.from_id);
   if (!fromPeer) return error(res, `Peer not found: ${b.from_id}`, 404);
+
+  // [H-1] — sender must be in the same project it claims. selectPeersByRole
+  // already filters by project_id, so broadcast targets are safe; this
+  // check just stops impersonation of a project by a peer that doesn't
+  // belong to it.
+  if (fromPeer.project_id !== b.project_id) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: false,
+      error: 'Peer does not belong to the requested project',
+      code: 'PROJECT_MISMATCH',
+    }));
+    return;
+  }
 
   const targets = selectPeersByRole(b.project_id, b.role);
   const type: MessageType = b.type ?? 'message';
