@@ -13,6 +13,7 @@ export const ACC_HOST = '127.0.0.1';
 export const ACC_DB = join(ACC_HOME, 'acc.db');
 export const PROJECTS_DIR = join(ACC_HOME, 'projects');
 export const TECHLEAD_DIR = join(ACC_HOME, 'techlead');
+export const BLOBS_DIR = join(ACC_HOME, 'blobs');
 
 export function techLeadCwd(projectName: string): string {
   return join(TECHLEAD_DIR, projectName);
@@ -27,4 +28,5 @@ export function ensureDirectories(): void {
   mkdirSync(ACC_HOME, { recursive: true });
   mkdirSync(PROJECTS_DIR, { recursive: true });
   mkdirSync(TECHLEAD_DIR, { recursive: true });
+  mkdirSync(BLOBS_DIR, { recursive: true });
 }
