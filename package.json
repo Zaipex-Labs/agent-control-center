@@ -1,6 +1,6 @@
 {
   "name": "zaipex-acc",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Agents Command Center — Orquestador ligero de agentes de IA para desarrollo en equipo",
   "homepage": "https://github.com/Zaipex-Labs/agent-control-center",
   "repository": {
