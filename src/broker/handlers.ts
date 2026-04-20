@@ -955,7 +955,7 @@ export function handleListPeers(body: unknown, res: ServerResponse): void {
 
 // ── Messages ───────────────────────────────────────────────────
 
-export function handleSendMessage(body: unknown, res: ServerResponse): void {
+export async function handleSendMessage(body: unknown, res: ServerResponse): Promise<void> {
   const b = body as SendMessageRequest;
   if (!b.project_id || !b.from_id || !b.to_id || !b.text) {
     return error(res, 'Missing required fields: project_id, from_id, to_id, text');
@@ -973,7 +973,41 @@ export function handleSendMessage(body: unknown, res: ServerResponse): void {
 
   const type: MessageType = b.type ?? 'message';
   const now = new Date().toISOString();
-  const metadata = b.metadata ?? null;
+
+  // Attachments: validate every referenced blob is on disk before writing
+  // the message. If any is missing, return a structured 404 so the
+  // dashboard can decide to re-upload. The blob_refs rows are inserted
+  // AFTER insertMessage so we have a real message_id.
+  const incoming = (b as SendMessageRequest & { attachments?: import('../shared/attachments.js').Attachment[] }).attachments ?? [];
+  if (incoming.length > 0) {
+    const { getBlob } = await import('./blobs.js');
+    for (const att of incoming) {
+      if (!getBlob(att.hash)) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: false,
+          error: 'Attachment blob not found on server',
+          code: 'BLOB_NOT_FOUND',
+          hash: att.hash,
+        }));
+        return;
+      }
+    }
+  }
+
+  // Merge incoming attachments into metadata so `topic` (and any other
+  // future metadata key) survives alongside them.
+  let metadata: string | null;
+  if (incoming.length > 0) {
+    let existingObj: Record<string, unknown> = {};
+    if (b.metadata) {
+      try { existingObj = JSON.parse(b.metadata) as Record<string, unknown>; } catch { /* ignore */ }
+    }
+    const { serializeAttachments } = await import('../shared/attachments.js');
+    metadata = serializeAttachments(incoming, existingObj);
+  } else {
+    metadata = b.metadata ?? null;
+  }
 
   let threadId = b.thread_id ?? null;
 
@@ -1007,11 +1041,20 @@ export function handleSendMessage(body: unknown, res: ServerResponse): void {
 
   console.error(`[broker:send-message] from=${b.from_id} (${fromPeer.role}) to=${b.to_id} (${toPeer.role}) thread=${threadId}`);
 
-  insertMessage(b.project_id, b.from_id, b.to_id, type, b.text, metadata, now, threadId);
+  const messageId = insertMessage(b.project_id, b.from_id, b.to_id, type, b.text, metadata, now, threadId);
   insertLogEntry(
     b.project_id, b.from_id, fromPeer.role, b.to_id, toPeer.role,
     type, b.text, metadata, now, fromPeer.id, threadId,
   );
+
+  // Register one blob_ref per attachment so cleanup (project delete / GC)
+  // knows the blob is referenced by this specific message.
+  if (incoming.length > 0) {
+    const { addBlobRef } = await import('./blob-refs.js');
+    for (const att of incoming) {
+      addBlobRef(att.hash, b.project_id, messageId);
+    }
+  }
 
   if (threadId) {
     touchThread(b.project_id, threadId);
@@ -1044,7 +1087,7 @@ export function handleSendMessage(body: unknown, res: ServerResponse): void {
   json(res, { ok: true });
 }
 
-export function handleSendToRole(body: unknown, res: ServerResponse): void {
+export async function handleSendToRole(body: unknown, res: ServerResponse): Promise<void> {
   const b = body as SendToRoleRequest;
   if (!b.project_id || !b.from_id || !b.role || !b.text) {
     return error(res, 'Missing required fields: project_id, from_id, role, text');
@@ -1062,7 +1105,36 @@ export function handleSendToRole(body: unknown, res: ServerResponse): void {
   const targets = selectPeersByRole(b.project_id, b.role);
   const type: MessageType = b.type ?? 'message';
   const now = new Date().toISOString();
-  const metadata = b.metadata ?? null;
+
+  // Same attachments handling as handleSendMessage (see there for rationale).
+  const incoming = (b as SendToRoleRequest & { attachments?: import('../shared/attachments.js').Attachment[] }).attachments ?? [];
+  if (incoming.length > 0) {
+    const { getBlob } = await import('./blobs.js');
+    for (const att of incoming) {
+      if (!getBlob(att.hash)) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: false,
+          error: 'Attachment blob not found on server',
+          code: 'BLOB_NOT_FOUND',
+          hash: att.hash,
+        }));
+        return;
+      }
+    }
+  }
+
+  let metadata: string | null;
+  if (incoming.length > 0) {
+    let existingObj: Record<string, unknown> = {};
+    if (b.metadata) {
+      try { existingObj = JSON.parse(b.metadata) as Record<string, unknown>; } catch { /* ignore */ }
+    }
+    const { serializeAttachments } = await import('../shared/attachments.js');
+    metadata = serializeAttachments(incoming, existingObj);
+  } else {
+    metadata = b.metadata ?? null;
+  }
   let threadId = b.thread_id ?? null;
 
   // Auto-inherit thread_id: first try user's original message, then any recent message
@@ -1111,13 +1183,20 @@ export function handleSendToRole(body: unknown, res: ServerResponse): void {
   // Track roles we've already injected into (avoid duplicate send-keys for same role)
   const injectedRoles = new Set<string>();
 
+  const addBlobRef = incoming.length > 0
+    ? (await import('./blob-refs.js')).addBlobRef
+    : null;
+
   for (const target of targets) {
     console.error(`[broker:send-to-role] inserting message: from=${b.from_id} to=${target.id} (${target.role})`);
-    insertMessage(b.project_id, b.from_id, target.id, type, b.text, metadata, now, threadId);
+    const messageId = insertMessage(b.project_id, b.from_id, target.id, type, b.text, metadata, now, threadId);
     insertLogEntry(
       b.project_id, b.from_id, fromPeer.role, target.id, target.role,
       type, b.text, metadata, now, fromPeer.id, threadId,
     );
+    if (addBlobRef) {
+      for (const att of incoming) addBlobRef(att.hash, b.project_id, messageId);
+    }
 
     // Best-effort tmux notification (once per role/window)
     if (target.role && !injectedRoles.has(target.role)) {
