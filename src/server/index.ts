@@ -235,7 +235,7 @@ export async function main(): Promise<void> {
         // Tier 2: interrupt file
         if (!delivered) {
           try {
-            writeInterruptFile(identity.cwd, fromRole, msg.type, msg.text, msg.sent_at);
+            writeInterruptFile(identity.cwd, fromRole, msg.type, msg.text, msg.sent_at, msg.metadata);
             log(t('server.interruptWritten', { role: fromRole }));
           } catch {
             log(t('server.deliveryFailed', { role: fromRole }));
