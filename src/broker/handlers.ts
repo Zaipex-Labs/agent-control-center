@@ -15,6 +15,9 @@ import { spawnWebAgent, killAllWebAgents, getWebAgent } from './terminal.js';
 import { gitModifiedFiles } from './files.js';
 import { tmuxNotify, tmuxInjectWithContext } from './tmux.js';
 import { broadcast } from './websocket.js';
+import { storeBlob, getBlob, deleteBlobFile, MAX_BLOB_SIZE } from './blobs.js';
+import { addBlobRef } from './blob-refs.js';
+import { serializeAttachments, type Attachment } from '../shared/attachments.js';
 import type {
   RegisterRequest,
   HeartbeatRequest,
@@ -978,20 +981,17 @@ export async function handleSendMessage(body: unknown, res: ServerResponse): Pro
   // the message. If any is missing, return a structured 404 so the
   // dashboard can decide to re-upload. The blob_refs rows are inserted
   // AFTER insertMessage so we have a real message_id.
-  const incoming = (b as SendMessageRequest & { attachments?: import('../shared/attachments.js').Attachment[] }).attachments ?? [];
-  if (incoming.length > 0) {
-    const { getBlob } = await import('./blobs.js');
-    for (const att of incoming) {
-      if (!getBlob(att.hash)) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          ok: false,
-          error: 'Attachment blob not found on server',
-          code: 'BLOB_NOT_FOUND',
-          hash: att.hash,
-        }));
-        return;
-      }
+  const incoming = (b as SendMessageRequest & { attachments?: Attachment[] }).attachments ?? [];
+  for (const att of incoming) {
+    if (!getBlob(att.hash)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        ok: false,
+        error: 'Attachment blob not found on server',
+        code: 'BLOB_NOT_FOUND',
+        hash: att.hash,
+      }));
+      return;
     }
   }
 
@@ -1003,7 +1003,6 @@ export async function handleSendMessage(body: unknown, res: ServerResponse): Pro
     if (b.metadata) {
       try { existingObj = JSON.parse(b.metadata) as Record<string, unknown>; } catch { /* ignore */ }
     }
-    const { serializeAttachments } = await import('../shared/attachments.js');
     metadata = serializeAttachments(incoming, existingObj);
   } else {
     metadata = b.metadata ?? null;
@@ -1049,11 +1048,8 @@ export async function handleSendMessage(body: unknown, res: ServerResponse): Pro
 
   // Register one blob_ref per attachment so cleanup (project delete / GC)
   // knows the blob is referenced by this specific message.
-  if (incoming.length > 0) {
-    const { addBlobRef } = await import('./blob-refs.js');
-    for (const att of incoming) {
-      addBlobRef(att.hash, b.project_id, messageId);
-    }
+  for (const att of incoming) {
+    addBlobRef(att.hash, b.project_id, messageId);
   }
 
   if (threadId) {
@@ -1107,20 +1103,17 @@ export async function handleSendToRole(body: unknown, res: ServerResponse): Prom
   const now = new Date().toISOString();
 
   // Same attachments handling as handleSendMessage (see there for rationale).
-  const incoming = (b as SendToRoleRequest & { attachments?: import('../shared/attachments.js').Attachment[] }).attachments ?? [];
-  if (incoming.length > 0) {
-    const { getBlob } = await import('./blobs.js');
-    for (const att of incoming) {
-      if (!getBlob(att.hash)) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          ok: false,
-          error: 'Attachment blob not found on server',
-          code: 'BLOB_NOT_FOUND',
-          hash: att.hash,
-        }));
-        return;
-      }
+  const incoming = (b as SendToRoleRequest & { attachments?: Attachment[] }).attachments ?? [];
+  for (const att of incoming) {
+    if (!getBlob(att.hash)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        ok: false,
+        error: 'Attachment blob not found on server',
+        code: 'BLOB_NOT_FOUND',
+        hash: att.hash,
+      }));
+      return;
     }
   }
 
@@ -1130,7 +1123,6 @@ export async function handleSendToRole(body: unknown, res: ServerResponse): Prom
     if (b.metadata) {
       try { existingObj = JSON.parse(b.metadata) as Record<string, unknown>; } catch { /* ignore */ }
     }
-    const { serializeAttachments } = await import('../shared/attachments.js');
     metadata = serializeAttachments(incoming, existingObj);
   } else {
     metadata = b.metadata ?? null;
@@ -1183,10 +1175,6 @@ export async function handleSendToRole(body: unknown, res: ServerResponse): Prom
   // Track roles we've already injected into (avoid duplicate send-keys for same role)
   const injectedRoles = new Set<string>();
 
-  const addBlobRef = incoming.length > 0
-    ? (await import('./blob-refs.js')).addBlobRef
-    : null;
-
   for (const target of targets) {
     console.error(`[broker:send-to-role] inserting message: from=${b.from_id} to=${target.id} (${target.role})`);
     const messageId = insertMessage(b.project_id, b.from_id, target.id, type, b.text, metadata, now, threadId);
@@ -1194,9 +1182,7 @@ export async function handleSendToRole(body: unknown, res: ServerResponse): Prom
       b.project_id, b.from_id, fromPeer.role, target.id, target.role,
       type, b.text, metadata, now, fromPeer.id, threadId,
     );
-    if (addBlobRef) {
-      for (const att of incoming) addBlobRef(att.hash, b.project_id, messageId);
-    }
+    for (const att of incoming) addBlobRef(att.hash, b.project_id, messageId);
 
     // Best-effort tmux notification (once per role/window)
     if (target.role && !injectedRoles.has(target.role)) {
@@ -1500,7 +1486,6 @@ export function handleThreadSummary(body: unknown, res: ServerResponse): void {
 // ── Blobs (multimodal attachments) ─────────────────────────────
 
 export async function handleUploadBlob(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const { storeBlob, MAX_BLOB_SIZE } = await import('./blobs.js');
   const mime = (req.headers['content-type'] ?? '').split(';')[0].trim();
   // Filenames can contain UTF-8 (accents, spaces). HTTP header values
   // must be US-ASCII, so the client sends encodeURIComponent(name).
@@ -1528,9 +1513,8 @@ export async function handleUploadBlob(req: IncomingMessage, res: ServerResponse
   }
 }
 
-export async function handleDownloadBlob(hash: string, res: ServerResponse): Promise<void> {
+export function handleDownloadBlob(hash: string, res: ServerResponse): void {
   if (!/^[a-f0-9]{64}$/.test(hash)) return error(res, 'Invalid hash', 400);
-  const { getBlob } = await import('./blobs.js');
   const got = getBlob(hash);
   if (!got) {
     res.writeHead(404, { 'Content-Type': 'application/json' });
