@@ -169,7 +169,7 @@ export function createBrokerServer(): Server {
     }
     const blobMatch = url.match(/^\/api\/blobs\/([a-f0-9]{64})$/);
     if (method === 'GET' && blobMatch) {
-      return handleDownloadBlob(blobMatch[1], res);
+      return handleDownloadBlob(req, blobMatch[1], res);
     }
 
     if (method === 'POST') {

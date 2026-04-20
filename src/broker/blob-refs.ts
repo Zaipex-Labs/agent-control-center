@@ -61,6 +61,18 @@ export function releaseBlobRefsForMessage(messageId: number): string[] {
   return orphans;
 }
 
+/**
+ * [H-2] — returns true iff at least one row in blob_refs links the blob
+ * to the project. Used by the download ACL so a peer can only fetch
+ * blobs that live inside its project.
+ */
+export function blobBelongsToProject(blobHash: string, projectId: string): boolean {
+  const row = getDb().prepare(
+    'SELECT 1 FROM blob_refs WHERE blob_hash = ? AND project_id = ? LIMIT 1',
+  ).get(blobHash, projectId);
+  return !!row;
+}
+
 export function listBlobHashesForProject(projectId: string): string[] {
   const rows = getDb().prepare(
     'SELECT DISTINCT blob_hash FROM blob_refs WHERE project_id = ?',

@@ -2,8 +2,18 @@
 // Licensed under the Apache License, Version 2.0
 // See LICENSE file for details.
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react';
 import { registerDashboard } from '../lib/api';
+
+// Context for the dashboard's peer_id. ProjectPage wraps its render
+// tree in a Provider so deeply-nested components (AttachmentsRow,
+// AttachmentChip, Lightbox) can read the id without prop drilling.
+// Needed because the blob endpoint is now peer-scoped [H-2].
+export const DashboardPeerContext = createContext<string | undefined>(undefined);
+
+export function useCurrentPeerId(): string | undefined {
+  return useContext(DashboardPeerContext);
+}
 
 export function useDashboardPeer(projectId: string | undefined): string | undefined {
   const [peerId, setPeerId] = useState<string>();
