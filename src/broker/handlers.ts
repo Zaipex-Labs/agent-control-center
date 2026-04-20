@@ -18,6 +18,7 @@ import { broadcast } from './websocket.js';
 import { storeBlob, getBlob, deleteBlobFile, listBlobFilesOnDisk, MAX_BLOB_SIZE } from './blobs.js';
 import { addBlobRef, releaseBlobRefsForProject, getAllBlobRefCounts } from './blob-refs.js';
 import { serializeAttachments, type Attachment } from '../shared/attachments.js';
+import { assertSafeIdentifier } from '../shared/validate.js';
 import type {
   RegisterRequest,
   HeartbeatRequest,
@@ -147,17 +148,24 @@ export function parseRawBody(req: IncomingMessage, maxSize: number): Promise<Buf
 
 // ── Input validation ──────────────────────────────────────────
 
-const SAFE_ID_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 const MAX_TEXT_LENGTH = 100_000; // 100KB per message text
 
-function isSafeIdentifier(value: string): boolean {
-  return SAFE_ID_REGEX.test(value) && value.length <= 128;
-}
-
-function validateIdentifiers(res: ServerResponse, ...values: Array<{ name: string; value: unknown }>): boolean {
+// Back-compat wrapper around assertSafeIdentifier (src/shared/validate.ts).
+// Preserves the res-based callsite API so handlers can stay
+// `if (!validateIdentifiers(res, …)) return;`. Underlying rules
+// (path traversal, shell metachars, null bytes, 64-char cap) live in
+// the shared helper so CLI / tests / future runtimes use the same check.
+// Empty / missing values are skipped here — callers enforce presence.
+function validateIdentifiers(
+  res: ServerResponse,
+  ...values: Array<{ name: string; value: unknown }>
+): boolean {
   for (const { name, value } of values) {
-    if (typeof value === 'string' && value.length > 0 && !isSafeIdentifier(value)) {
-      error(res, `Invalid ${name}: only alphanumeric, dash, underscore, and dot allowed`);
+    if (typeof value !== 'string' || value.length === 0) continue;
+    try {
+      assertSafeIdentifier(name, value);
+    } catch (e) {
+      error(res, e instanceof Error ? e.message : String(e));
       return false;
     }
   }
