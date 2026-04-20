@@ -406,6 +406,18 @@ export function handleAddAgent(body: unknown, res: ServerResponse): void {
   const b = body as { project_id?: string; role?: string; cwd?: string; name?: string; instructions?: string };
   if (!b.project_id || !b.role || !b.cwd) return error(res, 'Missing required fields: project_id, role, cwd');
 
+  // [H-3] — role/name flow into tmux window names and session targets.
+  // Without validation a role like `$(touch /tmp/pwn)` would run a shell
+  // command at "Power up". cwd is a filesystem path, not an identifier,
+  // so it's left to existsSync + null-byte filtering downstream.
+  try {
+    assertSafeIdentifier('project_id', b.project_id);
+    assertSafeIdentifier('role', b.role);
+    if (b.name) assertSafeIdentifier('name', b.name);
+  } catch (e) {
+    return error(res, e instanceof Error ? e.message : String(e), 400);
+  }
+
   const configPath = join(PROJECTS_DIR, `${b.project_id}.json`);
   if (!existsSync(configPath)) return error(res, `Project not found: ${b.project_id}`, 404);
 
@@ -448,7 +460,10 @@ export function handleUpdateProject(body: unknown, res: ServerResponse): void {
     return error(res, 'Cannot edit an active team. Shut it down first.');
   }
 
-  // Validate agents (architect cwd is broker-managed, so skip that check)
+  // Validate agents (architect cwd is broker-managed, so skip that check).
+  // [H-3] — role and name flow into tmux commands; reject shell metachars,
+  // path separators, null bytes, and length overflow before the config hits
+  // disk. Done alongside the existing presence/duplicate checks.
   const seen = new Set<string>();
   for (const a of b.agents) {
     if (!a.role || !a.role.trim()) return error(res, 'Every agent must have a role');
@@ -457,6 +472,12 @@ export function handleUpdateProject(body: unknown, res: ServerResponse): void {
     }
     if (seen.has(a.role)) return error(res, `Duplicate role: ${a.role}`);
     seen.add(a.role);
+    try {
+      assertSafeIdentifier('role', a.role);
+      if (a.name) assertSafeIdentifier('name', a.name);
+    } catch (e) {
+      return error(res, e instanceof Error ? e.message : String(e), 400);
+    }
   }
 
   const existing = JSON.parse(readFileSync(configPath, 'utf-8'));
