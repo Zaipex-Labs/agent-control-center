@@ -123,17 +123,22 @@ export function parseRawBody(req: IncomingMessage, maxSize: number): Promise<Buf
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let total = 0;
+    let settled = false;
     req.on('data', (c: Buffer) => {
+      if (settled) return;
       total += c.length;
       if (total > maxSize) {
-        req.destroy();
+        settled = true;
+        // Don't destroy the socket — the caller still needs to write a
+        // 413 response. Stop buffering chunks and reject; the handler
+        // will close the connection cleanly.
         reject(new Error(`Request body too large (> ${maxSize} bytes)`));
         return;
       }
       chunks.push(c);
     });
-    req.on('end', () => resolve(Buffer.concat(chunks)));
-    req.on('error', reject);
+    req.on('end', () => { if (!settled) { settled = true; resolve(Buffer.concat(chunks)); } });
+    req.on('error', err => { if (!settled) { settled = true; reject(err); } });
   });
 }
 
@@ -1411,4 +1416,59 @@ export function handleThreadSummary(body: unknown, res: ServerResponse): void {
   }
 
   json(res, { summary });
+}
+
+// ── Blobs (multimodal attachments) ─────────────────────────────
+
+export async function handleUploadBlob(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const { storeBlob, MAX_BLOB_SIZE } = await import('./blobs.js');
+  const mime = (req.headers['content-type'] ?? '').split(';')[0].trim();
+  // Filenames can contain UTF-8 (accents, spaces). HTTP header values
+  // must be US-ASCII, so the client sends encodeURIComponent(name).
+  const rawName = String(req.headers['x-filename'] ?? '');
+  let name: string;
+  try {
+    name = decodeURIComponent(rawName).slice(0, 255);
+  } catch {
+    return error(res, 'Malformed X-Filename header', 400);
+  }
+  if (!mime) return error(res, 'Missing Content-Type header');
+  if (!name) return error(res, 'Missing X-Filename header');
+  try {
+    const buf = await parseRawBody(req, MAX_BLOB_SIZE);
+    const stored = storeBlob(buf, mime, name);
+    json(res, stored);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/too large/i.test(msg)) {
+      res.writeHead(413, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: msg, code: 'BLOB_TOO_LARGE' }));
+      return;
+    }
+    error(res, msg, 400);
+  }
+}
+
+export async function handleDownloadBlob(hash: string, res: ServerResponse): Promise<void> {
+  if (!/^[a-f0-9]{64}$/.test(hash)) return error(res, 'Invalid hash', 400);
+  const { getBlob } = await import('./blobs.js');
+  const got = getBlob(hash);
+  if (!got) {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: false,
+      error: 'Blob not found',
+      code: 'BLOB_NOT_FOUND',
+      hash,
+    }));
+    return;
+  }
+  // Observability: terse log so stale hashes correlate with UI misses.
+  console.error('[broker] blob:download hash=%s size=%d mime=%s', hash, got.buffer.length, got.mime);
+  res.writeHead(200, {
+    'Content-Type': got.mime,
+    'Content-Length': String(got.buffer.length),
+    'Cache-Control': 'public, max-age=31536000, immutable',
+  });
+  res.end(got.buffer);
 }

@@ -49,6 +49,8 @@ import {
   handleSaveResume,
   handleListModifiedFiles,
   migrateLegacyProjects,
+  handleUploadBlob,
+  handleDownloadBlob,
 } from './handlers.js';
 
 type PostHandler = (body: unknown, res: ServerResponse) => void | Promise<void>;
@@ -146,6 +148,16 @@ export function createBrokerServer(): Server {
     if (method === 'GET' && url.startsWith('/api/browse')) {
       const query = url.includes('?') ? url.split('?')[1] : '';
       return handleBrowse(query, res);
+    }
+
+    // Blob upload/download — must be handled BEFORE the JSON POST router
+    // because the upload body is binary (octet-stream), not JSON.
+    if (method === 'POST' && url === '/api/blobs/upload') {
+      return handleUploadBlob(req, res);
+    }
+    const blobMatch = url.match(/^\/api\/blobs\/([a-f0-9]{64})$/);
+    if (method === 'GET' && blobMatch) {
+      return handleDownloadBlob(blobMatch[1], res);
     }
 
     if (method === 'POST') {
