@@ -29,10 +29,10 @@ gantt
     section Released
     v0.1 Core broker & messaging       :done, v01, 2026-03, 2026-03
     v0.2 Dashboard & coordination      :done, v02, 2026-03, 2026-04
+    v0.2.1 Multimodal messages         :done, v021, 2026-04, 2026-04
 
     section Next
-    v0.2.1 Multimodal messages         :active, v021, 2026-04, 2026-05
-    v0.3 Multi-runtime foundation      :v03, 2026-05, 2026-07
+    v0.3 Multi-runtime foundation      :active, v03, 2026-05, 2026-07
 
     section Planned
     v0.4 Native runtime & multi-model  :v04, 2026-07, 2026-09
@@ -79,27 +79,11 @@ gantt
 
 ---
 
-### 🔜 v0.2.1 — Multimodal messages
+### ✅ v0.2.1 — Multimodal messages *(released — Apr 2026)*
 
-🇪🇸
+🇪🇸 Los agentes dejaron de hablar sólo en texto. Pueden intercambiar imágenes y archivos genéricos con dedup por SHA256, lightbox branded, composer con attach + drag-and-drop, y fallback textual para runtimes no-multimodales. Reference counting + GC al arranque limpian los blobs huérfanos. 353 tests.
 
-**Objetivo**: los agentes dejan de hablar sólo en texto. Pueden intercambiar imágenes, capturas y archivos como parte del flujo normal — un diseñador manda el mockup al frontend, el backend pega un screenshot del log de error, el tech lead adjunta el diagrama de la arquitectura.
-
-- [ ] Extender `send_message` / `send_to_role` con `attachments?: { type: 'image'|'file', path: string, mime?: string }[]`. Los agentes pasan rutas a archivos que viven en sus `cwd` o en un namespace `blobs/` compartido.
-- [ ] Nuevo namespace especial `blobs/` en shared state — los blobs se guardan en `~/.zaipex-acc/blobs/<hash>` y el value es la referencia + metadata (mime, size, owner).
-- [ ] Dashboard: renderizar imágenes inline en el chat (lightbox al hacer click), archivos como chip con link descargable, y mostrar adjuntos dentro de los meeting blocks expandidos.
-- [ ] Composer del chat: botón de adjuntar + drag-and-drop desde el sistema de archivos del usuario.
-- [ ] Los runtimes que soportan inputs multimodales (Claude, GPT-4o, Gemini) reciben los adjuntos como parte del prompt. Los que no, los reciben como texto (`[image: /path/to/file.png — 1024×768 PNG]`).
-
-🇬🇧
-
-**Goal**: agents stop being text-only. They can exchange images, screenshots, and files as part of the normal flow — a designer sends a mockup to the frontend, the backend pastes a screenshot of an error log, the tech lead attaches the architecture diagram.
-
-- [ ] Extend `send_message` / `send_to_role` with `attachments?: { type: 'image'|'file', path: string, mime?: string }[]`. Agents pass paths to files living in their `cwd` or in a shared `blobs/` namespace.
-- [ ] New special `blobs/` namespace in shared state — blobs are stored at `~/.zaipex-acc/blobs/<hash>` and the value is the reference + metadata (mime, size, owner).
-- [ ] Dashboard: render images inline in chat (lightbox on click), files as a chip with a download link, and show attachments inside expanded meeting blocks.
-- [ ] Chat composer: attach button + drag-and-drop from the user's filesystem.
-- [ ] Runtimes that support multimodal inputs (Claude, GPT-4o, Gemini) receive attachments as part of the prompt. Those that don't, receive them as text (`[image: /path/to/file.png — 1024×768 PNG]`).
+🇬🇧 Agents are no longer text-only. They can exchange images and generic files with SHA256 dedup, branded lightbox, composer with attach + drag-and-drop, and textual fallback for non-multimodal runtimes. Reference counting + startup GC clean up orphan blobs. 353 tests.
 
 ---
 

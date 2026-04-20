@@ -69,9 +69,19 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
 
   // ── Messaging ──────────────────────────────────────────────
 
+  // Reusable zod schema for an attachment reference. The file must
+  // already be uploaded to the broker (via POST /api/blobs/upload) —
+  // here we only carry the descriptor.
+  const attachmentSchema = z.object({
+    hash: z.string(),
+    mime: z.string(),
+    name: z.string(),
+    size: z.number(),
+  });
+
   mcp.tool(
     'send_message',
-    'Send a message to a specific agent by ID. Use list_peers to find IDs. Optionally pass thread_id, or metadata with a short topic ({ topic: "sidebar logo" }) so the dashboard can label the coordination thread nicely.',
+    'Send a message to a specific agent by ID. Use list_peers to find IDs. Optionally pass thread_id, metadata with a short topic, or attachments (previously uploaded blobs identified by hash + mime + name + size) for images or files.',
     {
       to_id: z.string(),
       text: z.string(),
@@ -81,6 +91,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
       ]).optional(),
       thread_id: z.string().optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
+      attachments: z.array(attachmentSchema).optional(),
     },
     async (args) => {
       const resp = await brokerFetch<OkResponse>('/api/send-message', {
@@ -91,6 +102,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
         text: args.text,
         thread_id: args.thread_id,
         metadata: args.metadata ? JSON.stringify(args.metadata) : undefined,
+        attachments: args.attachments,
       });
       return {
         content: [{ type: 'text', text: JSON.stringify(resp) }],
@@ -100,7 +112,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
 
   mcp.tool(
     'send_to_role',
-    'Broadcast a message to all agents with a given role (e.g. "backend", "frontend"). No need to know their IDs. Optionally pass thread_id, or metadata with a short topic ({ topic: "sidebar logo" }) so the dashboard can label the coordination thread nicely.',
+    'Broadcast a message to all agents with a given role (e.g. "backend", "frontend"). No need to know their IDs. Optionally pass thread_id, metadata with a short topic, or attachments (previously uploaded blobs).',
     {
       role: z.string(),
       text: z.string(),
@@ -110,6 +122,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
       ]).optional(),
       thread_id: z.string().optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
+      attachments: z.array(attachmentSchema).optional(),
     },
     async (args) => {
       const resp = await brokerFetch<SendToRoleResponse>('/api/send-to-role', {
@@ -120,6 +133,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
         text: args.text,
         thread_id: args.thread_id,
         metadata: args.metadata ? JSON.stringify(args.metadata) : undefined,
+        attachments: args.attachments,
       });
       return {
         content: [{ type: 'text', text: `Sent to ${resp.sent_to} agent(s)` }],

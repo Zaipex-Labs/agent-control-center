@@ -337,6 +337,12 @@ export const es: Record<string, string> = {
   'dash.all': 'Todos',
   'dash.messagePlaceholder': 'Escribe un mensaje para tu equipo...',
   'dash.send': 'Enviar',
+  'dash.attach.button': 'Adjuntar archivo',
+  'dash.attach.dropHere': 'Suelta para adjuntar',
+  'dash.attach.uploading': 'Subiendo adjuntos…',
+  'dash.attach.error': 'Error al subir',
+  'dash.attach.tooLarge': 'Archivo demasiado grande',
+  'dash.attach.download': 'Descargar',
 
   // SharedStatePanel
   'dash.sharedState': 'Estado compartido',

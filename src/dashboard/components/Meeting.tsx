@@ -4,9 +4,11 @@
 
 import { useState } from 'react';
 import Avatar from './Avatar';
+import AttachmentsRow from './AttachmentsRow';
 import type { LogEntry, Peer } from '../lib/types';
 import { t, getLang } from '../../shared/i18n/browser';
 import { roleStyle } from '../lib/roles';
+import { parseAttachmentsFromMetadata } from '../../shared/attachments';
 import { getDefaultName } from '../../shared/names';
 
 // ── Types ────────────────────────────────────────────────────
@@ -297,6 +299,7 @@ function CoordMessage({ entry, agents }: { entry: LogEntry; agents: Peer[] }) {
         }}>
           {entry.text}
         </div>
+        <AttachmentsRow attachments={parseAttachmentsFromMetadata(entry.metadata)} />
       </div>
     </div>
   );

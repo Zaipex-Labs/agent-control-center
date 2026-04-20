@@ -5,9 +5,11 @@
 import { forwardRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import Avatar from './Avatar';
+import AttachmentsRow from './AttachmentsRow';
 import type { LogEntry, Peer } from '../lib/types';
 import { t, getLang } from '../../shared/i18n/browser';
 import { getDefaultName } from '../../shared/names';
+import { parseAttachmentsFromMetadata } from '../../shared/attachments';
 
 const ROLE_COLORS: Record<string, string> = {
   backend: '#4A9FE8',
@@ -177,6 +179,9 @@ const MessageBubble = forwardRef<HTMLDivElement, MessageBubbleProps>(function Me
             <ReactMarkdown>{cleanText}</ReactMarkdown>
           )}
         </div>
+
+        {/* Attachments (images inline with lightbox, files as chips) */}
+        <AttachmentsRow attachments={parseAttachmentsFromMetadata(message.metadata)} />
 
         {/* Compact time */}
         {compact && (

@@ -15,6 +15,9 @@ import { spawnWebAgent, killAllWebAgents, getWebAgent } from './terminal.js';
 import { gitModifiedFiles } from './files.js';
 import { tmuxNotify, tmuxInjectWithContext } from './tmux.js';
 import { broadcast } from './websocket.js';
+import { storeBlob, getBlob, deleteBlobFile, listBlobFilesOnDisk, MAX_BLOB_SIZE } from './blobs.js';
+import { addBlobRef, releaseBlobRefsForProject, getAllBlobRefCounts } from './blob-refs.js';
+import { serializeAttachments, type Attachment } from '../shared/attachments.js';
 import type {
   RegisterRequest,
   HeartbeatRequest,
@@ -112,6 +115,33 @@ export function parseBody(req: IncomingMessage): Promise<unknown> {
       }
     });
     req.on('error', reject);
+  });
+}
+
+// Raw-body helper for binary uploads (image/* blobs, files). Unlike
+// parseBody it does NOT assume JSON — returns the concatenated Buffer
+// so callers can compute a hash, persist, decode, etc. Caller is
+// responsible for honouring their own max-size cap.
+export function parseRawBody(req: IncomingMessage, maxSize: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    let settled = false;
+    req.on('data', (c: Buffer) => {
+      if (settled) return;
+      total += c.length;
+      if (total > maxSize) {
+        settled = true;
+        // Don't destroy the socket — the caller still needs to write a
+        // 413 response. Stop buffering chunks and reject; the handler
+        // will close the connection cleanly.
+        reject(new Error(`Request body too large (> ${maxSize} bytes)`));
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => { if (!settled) { settled = true; resolve(Buffer.concat(chunks)); } });
+    req.on('error', err => { if (!settled) { settled = true; reject(err); } });
   });
 }
 
@@ -928,7 +958,7 @@ export function handleListPeers(body: unknown, res: ServerResponse): void {
 
 // ── Messages ───────────────────────────────────────────────────
 
-export function handleSendMessage(body: unknown, res: ServerResponse): void {
+export async function handleSendMessage(body: unknown, res: ServerResponse): Promise<void> {
   const b = body as SendMessageRequest;
   if (!b.project_id || !b.from_id || !b.to_id || !b.text) {
     return error(res, 'Missing required fields: project_id, from_id, to_id, text');
@@ -946,7 +976,37 @@ export function handleSendMessage(body: unknown, res: ServerResponse): void {
 
   const type: MessageType = b.type ?? 'message';
   const now = new Date().toISOString();
-  const metadata = b.metadata ?? null;
+
+  // Attachments: validate every referenced blob is on disk before writing
+  // the message. If any is missing, return a structured 404 so the
+  // dashboard can decide to re-upload. The blob_refs rows are inserted
+  // AFTER insertMessage so we have a real message_id.
+  const incoming = (b as SendMessageRequest & { attachments?: Attachment[] }).attachments ?? [];
+  for (const att of incoming) {
+    if (!getBlob(att.hash)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        ok: false,
+        error: 'Attachment blob not found on server',
+        code: 'BLOB_NOT_FOUND',
+        hash: att.hash,
+      }));
+      return;
+    }
+  }
+
+  // Merge incoming attachments into metadata so `topic` (and any other
+  // future metadata key) survives alongside them.
+  let metadata: string | null;
+  if (incoming.length > 0) {
+    let existingObj: Record<string, unknown> = {};
+    if (b.metadata) {
+      try { existingObj = JSON.parse(b.metadata) as Record<string, unknown>; } catch { /* ignore */ }
+    }
+    metadata = serializeAttachments(incoming, existingObj);
+  } else {
+    metadata = b.metadata ?? null;
+  }
 
   let threadId = b.thread_id ?? null;
 
@@ -980,11 +1040,17 @@ export function handleSendMessage(body: unknown, res: ServerResponse): void {
 
   console.error(`[broker:send-message] from=${b.from_id} (${fromPeer.role}) to=${b.to_id} (${toPeer.role}) thread=${threadId}`);
 
-  insertMessage(b.project_id, b.from_id, b.to_id, type, b.text, metadata, now, threadId);
+  const messageId = insertMessage(b.project_id, b.from_id, b.to_id, type, b.text, metadata, now, threadId);
   insertLogEntry(
     b.project_id, b.from_id, fromPeer.role, b.to_id, toPeer.role,
     type, b.text, metadata, now, fromPeer.id, threadId,
   );
+
+  // Register one blob_ref per attachment so cleanup (project delete / GC)
+  // knows the blob is referenced by this specific message.
+  for (const att of incoming) {
+    addBlobRef(att.hash, b.project_id, messageId);
+  }
 
   if (threadId) {
     touchThread(b.project_id, threadId);
@@ -1017,7 +1083,7 @@ export function handleSendMessage(body: unknown, res: ServerResponse): void {
   json(res, { ok: true });
 }
 
-export function handleSendToRole(body: unknown, res: ServerResponse): void {
+export async function handleSendToRole(body: unknown, res: ServerResponse): Promise<void> {
   const b = body as SendToRoleRequest;
   if (!b.project_id || !b.from_id || !b.role || !b.text) {
     return error(res, 'Missing required fields: project_id, from_id, role, text');
@@ -1035,7 +1101,32 @@ export function handleSendToRole(body: unknown, res: ServerResponse): void {
   const targets = selectPeersByRole(b.project_id, b.role);
   const type: MessageType = b.type ?? 'message';
   const now = new Date().toISOString();
-  const metadata = b.metadata ?? null;
+
+  // Same attachments handling as handleSendMessage (see there for rationale).
+  const incoming = (b as SendToRoleRequest & { attachments?: Attachment[] }).attachments ?? [];
+  for (const att of incoming) {
+    if (!getBlob(att.hash)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        ok: false,
+        error: 'Attachment blob not found on server',
+        code: 'BLOB_NOT_FOUND',
+        hash: att.hash,
+      }));
+      return;
+    }
+  }
+
+  let metadata: string | null;
+  if (incoming.length > 0) {
+    let existingObj: Record<string, unknown> = {};
+    if (b.metadata) {
+      try { existingObj = JSON.parse(b.metadata) as Record<string, unknown>; } catch { /* ignore */ }
+    }
+    metadata = serializeAttachments(incoming, existingObj);
+  } else {
+    metadata = b.metadata ?? null;
+  }
   let threadId = b.thread_id ?? null;
 
   // Auto-inherit thread_id: first try user's original message, then any recent message
@@ -1086,11 +1177,12 @@ export function handleSendToRole(body: unknown, res: ServerResponse): void {
 
   for (const target of targets) {
     console.error(`[broker:send-to-role] inserting message: from=${b.from_id} to=${target.id} (${target.role})`);
-    insertMessage(b.project_id, b.from_id, target.id, type, b.text, metadata, now, threadId);
+    const messageId = insertMessage(b.project_id, b.from_id, target.id, type, b.text, metadata, now, threadId);
     insertLogEntry(
       b.project_id, b.from_id, fromPeer.role, target.id, target.role,
       type, b.text, metadata, now, fromPeer.id, threadId,
     );
+    for (const att of incoming) addBlobRef(att.hash, b.project_id, messageId);
 
     // Best-effort tmux notification (once per role/window)
     if (target.role && !injectedRoles.has(target.role)) {
@@ -1333,6 +1425,20 @@ export function handleDeleteProject(body: unknown, res: ServerResponse): void {
     return error(res, `Failed to delete project file: ${e instanceof Error ? e.message : String(e)}`);
   }
 
+  // Release blob refs BEFORE wiping other project data. Any hash whose
+  // only remaining reference was this project becomes orphan and its
+  // on-disk file gets unlinked. Blobs shared with other live projects
+  // are kept because their ref count stays > 0.
+  try {
+    const orphans = releaseBlobRefsForProject(b.project_id);
+    for (const h of orphans) deleteBlobFile(h);
+    if (orphans.length > 0) {
+      console.error(`[broker] released ${orphans.length} orphan blobs for ${b.project_id}`);
+    }
+  } catch (e) {
+    console.error(`[broker] blob cleanup failed for ${b.project_id}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
   // Wipe all rows this project owns in the DB — peers, messages, threads,
   // message_log, shared_state. Without this, the SQLite file grows with
   // orphan rows keyed by a project_id that no longer exists.
@@ -1389,4 +1495,71 @@ export function handleThreadSummary(body: unknown, res: ServerResponse): void {
   }
 
   json(res, { summary });
+}
+
+// ── Blobs (multimodal attachments) ─────────────────────────────
+
+export async function handleUploadBlob(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const mime = (req.headers['content-type'] ?? '').split(';')[0].trim();
+  // Filenames can contain UTF-8 (accents, spaces). HTTP header values
+  // must be US-ASCII, so the client sends encodeURIComponent(name).
+  const rawName = String(req.headers['x-filename'] ?? '');
+  let name: string;
+  try {
+    name = decodeURIComponent(rawName).slice(0, 255);
+  } catch {
+    return error(res, 'Malformed X-Filename header', 400);
+  }
+  if (!mime) return error(res, 'Missing Content-Type header');
+  if (!name) return error(res, 'Missing X-Filename header');
+  try {
+    const buf = await parseRawBody(req, MAX_BLOB_SIZE);
+    const stored = storeBlob(buf, mime, name);
+    json(res, stored);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/too large/i.test(msg)) {
+      res.writeHead(413, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: msg, code: 'BLOB_TOO_LARGE' }));
+      return;
+    }
+    error(res, msg, 400);
+  }
+}
+
+export function handleDownloadBlob(hash: string, res: ServerResponse): void {
+  if (!/^[a-f0-9]{64}$/.test(hash)) return error(res, 'Invalid hash', 400);
+  const got = getBlob(hash);
+  if (!got) {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: false,
+      error: 'Blob not found',
+      code: 'BLOB_NOT_FOUND',
+      hash,
+    }));
+    return;
+  }
+  // Observability: terse log so stale hashes correlate with UI misses.
+  console.error('[broker] blob:download hash=%s size=%d mime=%s', hash, got.buffer.length, got.mime);
+  res.writeHead(200, {
+    'Content-Type': got.mime,
+    'Content-Length': String(got.buffer.length),
+    'Cache-Control': 'public, max-age=31536000, immutable',
+  });
+  res.end(got.buffer);
+}
+
+// Dev-only stats endpoint for observability. Gated by NODE_ENV so it's
+// not exposed in production packaged runs. Returns total blob count,
+// total bytes, and how many are orphan (zero refs in blob_refs).
+export function handleBlobStats(res: ServerResponse): void {
+  if (process.env['NODE_ENV'] === 'production') {
+    return error(res, 'Not available in production', 404);
+  }
+  const files = listBlobFilesOnDisk();
+  const refs = getAllBlobRefCounts();
+  const total_bytes = files.reduce((s, f) => s + f.sizeBytes, 0);
+  const orphan_count = files.filter(f => (refs.get(f.hash) ?? 0) === 0).length;
+  json(res, { total_blobs: files.length, total_bytes, orphan_count });
 }

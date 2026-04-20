@@ -3,7 +3,7 @@
 // See LICENSE file for details.
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { LogEntry, MessageType } from '../lib/types';
+import type { LogEntry, MessageType, Attachment } from '../lib/types';
 import { getHistory, sendToRole } from '../lib/api';
 import { useWebSocket, isEvent } from './useWebSocket';
 
@@ -23,7 +23,7 @@ interface UseMessagesReturn {
   waitingFor: WaitingReply | null;
   sendError: SendError | null;
   clearError: () => void;
-  sendMessage: (toRole: string, text: string, type?: MessageType) => Promise<void>;
+  sendMessage: (toRole: string, text: string, type?: MessageType, attachments?: Attachment[]) => Promise<void>;
   retrySend: () => Promise<void>;
 }
 
@@ -106,7 +106,7 @@ export function useMessages(
   }, [lastEvent, threadId, projectId]);
 
   const doSend = useCallback(
-    async (toRole: string, text: string, type: MessageType = 'message', optimistic = true) => {
+    async (toRole: string, text: string, type: MessageType = 'message', optimistic = true, attachments?: Attachment[]) => {
       if (!projectId) return;
 
       // Wait briefly for the dashboard peer to finish registering after a
@@ -142,7 +142,9 @@ export function useMessages(
           to_role: toRole,
           type,
           text,
-          metadata: null,
+          metadata: attachments && attachments.length > 0
+            ? JSON.stringify({ attachments })
+            : null,
           thread_id: threadId ?? null,
           sent_at: new Date().toISOString(),
           session_id: '',
@@ -151,7 +153,7 @@ export function useMessages(
       }
 
       try {
-        await sendToRole(projectId, id, toRole, fullText, threadId, type);
+        await sendToRole(projectId, id, toRole, fullText, threadId, type, attachments);
         // Show typing indicator
         setWaitingFor({ toRole, since: Date.now() });
         clearTimeout(waitingTimeout.current);
@@ -161,7 +163,7 @@ export function useMessages(
       } catch {
         // Retry once — re-register might be needed
         try {
-          await sendToRole(projectId, id, toRole, fullText, threadId, type);
+          await sendToRole(projectId, id, toRole, fullText, threadId, type, attachments);
           setWaitingFor({ toRole, since: Date.now() });
           clearTimeout(waitingTimeout.current);
           waitingTimeout.current = setTimeout(() => {
@@ -179,7 +181,8 @@ export function useMessages(
   );
 
   const sendMessage = useCallback(
-    (toRole: string, text: string, type?: MessageType) => doSend(toRole, text, type ?? 'message', true),
+    (toRole: string, text: string, type?: MessageType, attachments?: Attachment[]) =>
+      doSend(toRole, text, type ?? 'message', true, attachments),
     [doSend],
   );
 

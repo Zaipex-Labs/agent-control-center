@@ -173,9 +173,32 @@ describe('send_message', () => {
     expect((brokerCalls[0]!.body as any).type).toBe('task_complete');
     expect((brokerCalls[0]!.body as any).thread_id).toBe('thr-1');
   });
+
+  it('forwards attachments array through to the broker', async () => {
+    const tools = setup();
+    const att = { hash: 'abc', mime: 'image/png', name: 's.png', size: 10 };
+    await tools.get('send_message')!.handler({
+      to_id: 'agent-2',
+      text: 'mira',
+      attachments: [att],
+    });
+    expect((brokerCalls[0]!.body as any).attachments).toEqual([att]);
+  });
 });
 
 describe('send_to_role', () => {
+  it('forwards attachments array to the broker', async () => {
+    nextResponse = { ok: true, sent_to: 2 };
+    const tools = setup();
+    const att = { hash: 'abc', mime: 'image/png', name: 's.png', size: 10 };
+    await tools.get('send_to_role')!.handler({
+      role: 'frontend',
+      text: 'hi all',
+      attachments: [att],
+    });
+    expect((brokerCalls[0]!.body as any).attachments).toEqual([att]);
+  });
+
   it('forwards to /api/send-to-role and returns "Sent to N agent(s)"', async () => {
     nextResponse = { ok: true, sent_to: 3 };
     const tools = setup();

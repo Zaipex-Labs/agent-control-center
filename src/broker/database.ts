@@ -88,6 +88,23 @@ export function initDatabase(dbPath?: string): Database.Database {
     );
     CREATE INDEX IF NOT EXISTS idx_log_project ON message_log(project_id);
     CREATE INDEX IF NOT EXISTS idx_log_session ON message_log(session_id);
+
+    -- Reference counting for blob attachments. One row per
+    -- (blob, project, message). Storing project_id AND message_id
+    -- lets us release refs on either axis (delete project cascades
+    -- all rows for that project; future handleDeleteMessage can
+    -- release by message_id alone). When a blob's ref count drops
+    -- to zero the broker deletes the file from ~/.zaipex-acc/blobs/.
+    CREATE TABLE IF NOT EXISTS blob_refs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      blob_hash TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      message_id INTEGER,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_blob_refs_hash ON blob_refs(blob_hash);
+    CREATE INDEX IF NOT EXISTS idx_blob_refs_project ON blob_refs(project_id);
+    CREATE INDEX IF NOT EXISTS idx_blob_refs_message ON blob_refs(message_id);
   `);
 
   // Migrations for existing databases

@@ -15,7 +15,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](https://www.typescriptlang.org)
-[![Version](https://img.shields.io/badge/version-0.2.0-brightgreen.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.2.1-brightgreen.svg)](package.json)
 
 <br>
 
@@ -504,9 +504,10 @@ gantt
     v0.1 Core broker & messaging       :done, v01, 2026-03, 2026-03
     v0.2 Dashboard & coordination      :done, v02, 2026-03, 2026-04
 
+    v0.2.1 Multimodal messages         :done, v021, 2026-04, 2026-04
+
     section Next
-    v0.2.1 Multimodal messages         :active, v021, 2026-04, 2026-05
-    v0.3 Multi-runtime foundation      :v03, 2026-05, 2026-07
+    v0.3 Multi-runtime foundation      :active, v03, 2026-05, 2026-07
 
     section Planned
     v0.4 Native runtime & multi-model  :v04, 2026-07, 2026-09
@@ -519,7 +520,7 @@ gantt
 |---|---|---|
 | ✅ **v0.1** | Broker core, CLI, MCP, shared state | Core broker, CLI, MCP, shared state |
 | ✅ **v0.2** | Dashboard, tech lead, status line en vivo, 300+ tests | Dashboard, tech lead, live status line, 300+ tests |
-| 🔜 **v0.2.1** | **Mensajes multimodales** — imágenes, capturas y archivos entre agentes | **Multimodal messages** — images, screenshots and files between agents |
+| ✅ **v0.2.1** | **Mensajes multimodales** — imágenes, capturas y archivos entre agentes | **Multimodal messages** — images, screenshots and files between agents |
 | 🔜 **v0.3** | Multi-runtime — desacoplar de Claude Code; Gemini, Codex | Multi-runtime — decouple from Claude Code; Gemini, Codex |
 | 🔜 **v0.4** | Runtime nativo, multi-modelo (Anthropic, OpenAI, Gemini, Ollama) | Native runtime, multi-model (Anthropic, OpenAI, Gemini, Ollama) |
 | 🔜 **v0.5** | Windows nativo — `node-pty`, Windows Terminal | Native Windows — `node-pty`, Windows Terminal |
