@@ -115,6 +115,28 @@ export function parseBody(req: IncomingMessage): Promise<unknown> {
   });
 }
 
+// Raw-body helper for binary uploads (image/* blobs, files). Unlike
+// parseBody it does NOT assume JSON — returns the concatenated Buffer
+// so callers can compute a hash, persist, decode, etc. Caller is
+// responsible for honouring their own max-size cap.
+export function parseRawBody(req: IncomingMessage, maxSize: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    req.on('data', (c: Buffer) => {
+      total += c.length;
+      if (total > maxSize) {
+        req.destroy();
+        reject(new Error(`Request body too large (> ${maxSize} bytes)`));
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
 // ── Input validation ──────────────────────────────────────────
 
 const SAFE_ID_REGEX = /^[a-zA-Z0-9_.\-]+$/;
