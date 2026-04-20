@@ -337,6 +337,12 @@ export const en: Record<string, string> = {
   'dash.all': 'All',
   'dash.messagePlaceholder': 'Write a message to your team...',
   'dash.send': 'Send',
+  'dash.attach.button': 'Attach file',
+  'dash.attach.dropHere': 'Drop to attach',
+  'dash.attach.uploading': 'Uploading attachments…',
+  'dash.attach.error': 'Upload error',
+  'dash.attach.tooLarge': 'File too large',
+  'dash.attach.download': 'Download',
 
   // SharedStatePanel
   'dash.sharedState': 'Shared state',

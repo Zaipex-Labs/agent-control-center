@@ -234,6 +234,7 @@ export async function sendMessage(
   text: string,
   threadId?: string,
   type: MessageType = 'message',
+  attachments?: Attachment[],
 ): Promise<void> {
   await apiFetch<{ ok: boolean }>('send-message', {
     project_id: projectId,
@@ -242,6 +243,7 @@ export async function sendMessage(
     text,
     thread_id: threadId,
     type,
+    attachments,
   });
 }
 
@@ -252,6 +254,7 @@ export async function sendToRole(
   text: string,
   threadId?: string,
   type: MessageType = 'message',
+  attachments?: Attachment[],
 ): Promise<number> {
   const resp = await apiFetch<{ ok: boolean; sent_to: number }>('send-to-role', {
     project_id: projectId,
@@ -260,6 +263,7 @@ export async function sendToRole(
     text,
     thread_id: threadId,
     type,
+    attachments,
   });
   return resp.sent_to;
 }
