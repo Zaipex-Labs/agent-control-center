@@ -8,7 +8,7 @@ import { useAgents } from '../hooks/useAgents';
 import { useAgentStatuses } from '../hooks/useAgentStatuses';
 import { useThreads } from '../hooks/useThreads';
 import { useMessages } from '../hooks/useMessages';
-import { useDashboardPeer } from '../hooks/useDashboardPeer';
+import { useDashboardPeer, DashboardPeerContext } from '../hooks/useDashboardPeer';
 import Chat from '../components/Chat';
 import Compose from '../components/Compose';
 import SharedStatePanel from '../components/SharedStatePanel';
@@ -337,6 +337,7 @@ export default function ProjectPage() {
   };
 
   return (
+    <DashboardPeerContext.Provider value={dashboardId}>
     <div style={{
       height: '100vh', background: 'var(--z-navy-dark)',
       display: 'flex', flexDirection: 'column',
@@ -755,6 +756,7 @@ export default function ProjectPage() {
         />
       )}
     </div>
+    </DashboardPeerContext.Provider>
   );
 }
 
