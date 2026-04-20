@@ -16,7 +16,7 @@ import { gitModifiedFiles } from './files.js';
 import { tmuxNotify, tmuxInjectWithContext } from './tmux.js';
 import { broadcast } from './websocket.js';
 import { storeBlob, getBlob, deleteBlobFile, listBlobFilesOnDisk, MAX_BLOB_SIZE } from './blobs.js';
-import { addBlobRef, releaseBlobRefsForProject, getAllBlobRefCounts } from './blob-refs.js';
+import { addBlobRef, releaseBlobRefsForProject, getAllBlobRefCounts, blobBelongsToProject } from './blob-refs.js';
 import { serializeAttachments, type Attachment } from '../shared/attachments.js';
 import { assertSafeIdentifier } from '../shared/validate.js';
 import type {
@@ -1572,10 +1572,53 @@ export async function handleUploadBlob(req: IncomingMessage, res: ServerResponse
   }
 }
 
-export function handleDownloadBlob(hash: string, res: ServerResponse): void {
+export function handleDownloadBlob(req: IncomingMessage, hash: string, res: ServerResponse): void {
   if (!/^[a-f0-9]{64}$/.test(hash)) return error(res, 'Invalid hash', 400);
+
+  // [H-2] — peer-scoped ACL. Before this, the route was fully anonymous:
+  // anyone who knew a sha256 could download the blob. Now we require an
+  // X-Peer-Id header, resolve the peer, and only serve the blob if some
+  // message in the peer's project references it (blob_refs row).
+  const peerId = String(req.headers['x-peer-id'] ?? '').trim();
+  if (!peerId) {
+    res.writeHead(401, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: false,
+      error: 'Missing X-Peer-Id header',
+      code: 'MISSING_PEER_ID',
+    }));
+    return;
+  }
+
+  const peer = selectPeerById(peerId);
+  if (!peer) {
+    res.writeHead(401, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: false,
+      error: 'Unknown peer',
+      code: 'UNKNOWN_PEER',
+    }));
+    return;
+  }
+
+  // ACL runs before getBlob so unknown hashes return 403 (same as
+  // "hash exists but not yours") — prevents enumeration of the blob
+  // store by brute-forcing sha256 values.
+  if (!blobBelongsToProject(hash, peer.project_id)) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: false,
+      error: 'Blob not accessible to this peer\'s project',
+      code: 'BLOB_ACCESS_DENIED',
+    }));
+    return;
+  }
+
   const got = getBlob(hash);
   if (!got) {
+    // Edge case: blob_refs row survived but the on-disk file is gone
+    // (GC race, manual unlink, etc.). Return 404 so the dashboard can
+    // retry — this is a bug state, not an ACL failure.
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       ok: false,
@@ -1585,12 +1628,14 @@ export function handleDownloadBlob(hash: string, res: ServerResponse): void {
     }));
     return;
   }
-  // Observability: terse log so stale hashes correlate with UI misses.
-  console.error('[broker] blob:download hash=%s size=%d mime=%s', hash, got.buffer.length, got.mime);
+
+  console.error('[broker] blob:download hash=%s peer=%s project=%s size=%d',
+    hash, peerId, peer.project_id, got.buffer.length);
   res.writeHead(200, {
     'Content-Type': got.mime,
     'Content-Length': String(got.buffer.length),
-    'Cache-Control': 'public, max-age=31536000, immutable',
+    // private: peer-scoped resources must not be cached by intermediaries.
+    'Cache-Control': 'private, max-age=31536000, immutable',
   });
   res.end(got.buffer);
 }
