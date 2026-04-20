@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { ACC_HOST, ACC_PORT, CLEANUP_INTERVAL_MS } from '../shared/config.js';
 import { t, getLang } from '../shared/i18n/index.js';
 import { initDatabase } from './database.js';
+import { gcOrphanBlobs } from './blob-gc.js';
 import { cleanStalePeers } from './cleanup.js';
 import { URL } from 'node:url';
 import { handleEventsUpgrade } from './websocket.js';
@@ -51,6 +52,7 @@ import {
   migrateLegacyProjects,
   handleUploadBlob,
   handleDownloadBlob,
+  handleBlobStats,
 } from './handlers.js';
 
 type PostHandler = (body: unknown, res: ServerResponse) => void | Promise<void>;
@@ -118,6 +120,13 @@ export function createBrokerServer(): Server {
     console.error(`[broker] ${t('broker.cleanedStartup', { count: String(removed) })}`);
   }
 
+  // GC blob files whose only refs were in now-deleted projects. Respects
+  // a 1h grace period so a blob uploaded right before a crash survives.
+  const orphanBlobs = gcOrphanBlobs();
+  if (orphanBlobs > 0) {
+    console.error(`[broker] GC removed ${orphanBlobs} orphan blobs`);
+  }
+
   // Periodic cleanup
   const cleanupInterval = setInterval(() => {
     const n = cleanStalePeers();
@@ -154,6 +163,9 @@ export function createBrokerServer(): Server {
     // because the upload body is binary (octet-stream), not JSON.
     if (method === 'POST' && url === '/api/blobs/upload') {
       return handleUploadBlob(req, res);
+    }
+    if (method === 'GET' && url === '/api/blobs/_stats') {
+      return handleBlobStats(res);
     }
     const blobMatch = url.match(/^\/api\/blobs\/([a-f0-9]{64})$/);
     if (method === 'GET' && blobMatch) {

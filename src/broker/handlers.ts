@@ -15,8 +15,8 @@ import { spawnWebAgent, killAllWebAgents, getWebAgent } from './terminal.js';
 import { gitModifiedFiles } from './files.js';
 import { tmuxNotify, tmuxInjectWithContext } from './tmux.js';
 import { broadcast } from './websocket.js';
-import { storeBlob, getBlob, deleteBlobFile, MAX_BLOB_SIZE } from './blobs.js';
-import { addBlobRef } from './blob-refs.js';
+import { storeBlob, getBlob, deleteBlobFile, listBlobFilesOnDisk, MAX_BLOB_SIZE } from './blobs.js';
+import { addBlobRef, releaseBlobRefsForProject, getAllBlobRefCounts } from './blob-refs.js';
 import { serializeAttachments, type Attachment } from '../shared/attachments.js';
 import type {
   RegisterRequest,
@@ -1425,6 +1425,20 @@ export function handleDeleteProject(body: unknown, res: ServerResponse): void {
     return error(res, `Failed to delete project file: ${e instanceof Error ? e.message : String(e)}`);
   }
 
+  // Release blob refs BEFORE wiping other project data. Any hash whose
+  // only remaining reference was this project becomes orphan and its
+  // on-disk file gets unlinked. Blobs shared with other live projects
+  // are kept because their ref count stays > 0.
+  try {
+    const orphans = releaseBlobRefsForProject(b.project_id);
+    for (const h of orphans) deleteBlobFile(h);
+    if (orphans.length > 0) {
+      console.error(`[broker] released ${orphans.length} orphan blobs for ${b.project_id}`);
+    }
+  } catch (e) {
+    console.error(`[broker] blob cleanup failed for ${b.project_id}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
   // Wipe all rows this project owns in the DB — peers, messages, threads,
   // message_log, shared_state. Without this, the SQLite file grows with
   // orphan rows keyed by a project_id that no longer exists.
@@ -1534,4 +1548,18 @@ export function handleDownloadBlob(hash: string, res: ServerResponse): void {
     'Cache-Control': 'public, max-age=31536000, immutable',
   });
   res.end(got.buffer);
+}
+
+// Dev-only stats endpoint for observability. Gated by NODE_ENV so it's
+// not exposed in production packaged runs. Returns total blob count,
+// total bytes, and how many are orphan (zero refs in blob_refs).
+export function handleBlobStats(res: ServerResponse): void {
+  if (process.env['NODE_ENV'] === 'production') {
+    return error(res, 'Not available in production', 404);
+  }
+  const files = listBlobFilesOnDisk();
+  const refs = getAllBlobRefCounts();
+  const total_bytes = files.reduce((s, f) => s + f.sizeBytes, 0);
+  const orphan_count = files.filter(f => (refs.get(f.hash) ?? 0) === 0).length;
+  json(res, { total_blobs: files.length, total_bytes, orphan_count });
 }
