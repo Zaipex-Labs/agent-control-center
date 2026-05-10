@@ -24,7 +24,9 @@ describe('channel attachment footer', () => {
       );
       const files = readdirSync(join(dir, '.acc-messages'));
       const body = readFileSync(join(dir, '.acc-messages', files[0]), 'utf-8');
-      expect(body).toContain('[image: ~/.zaipex-acc/blobs/abc.png · image/png · 1.0 KB]');
+      // [M-6] Compact footer — short hash, no internal path, no MIME.
+      expect(body).toContain('[image: abc.png · 1.0 KB]');
+      expect(body).not.toContain('~/.zaipex-acc/blobs/');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -67,6 +69,8 @@ describe('channel attachment footer', () => {
     await pushMessage(fakeServer, msg, { from_id: 'a', from_role: 'frontend', from_cwd: '/tmp' });
     expect(sent).toHaveLength(1);
     expect(sent[0].params.content).toContain('mockup de login');
-    expect(sent[0].params.content).toContain('[image: ~/.zaipex-acc/blobs/deadbeef.png');
+    // [M-6] Compact footer
+    expect(sent[0].params.content).toContain('[image: deadbeef.png · 2.0 KB]');
+    expect(sent[0].params.content).not.toContain('~/.zaipex-acc/blobs/');
   });
 });

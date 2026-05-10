@@ -200,7 +200,9 @@ describe('send_to_role', () => {
     expect((brokerCalls[0]!.body as any).attachments).toEqual([att]);
   });
 
-  it('forwards to /api/send-to-role and returns "Sent to N agent(s)"', async () => {
+  // [M-7] Returns the broker's raw JSON response so agents chaining
+  // calls don't have to parse "Sent to 3 agent(s)" with regex.
+  it('forwards to /api/send-to-role and returns the broker JSON response', async () => {
     nextResponse = { ok: true, sent_to: 3 };
     const tools = setup();
     const result = await tools.get('send_to_role')!.handler({
@@ -209,7 +211,8 @@ describe('send_to_role', () => {
     });
     expect(brokerCalls[0]!.path).toBe('/api/send-to-role');
     expect((brokerCalls[0]!.body as any).role).toBe('frontend');
-    expect(result.content[0].text).toBe('Sent to 3 agent(s)');
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed).toEqual({ ok: true, sent_to: 3 });
   });
 });
 

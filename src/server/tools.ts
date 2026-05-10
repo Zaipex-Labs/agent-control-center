@@ -135,8 +135,13 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
         metadata: args.metadata ? JSON.stringify(args.metadata) : undefined,
         attachments: args.attachments,
       });
+      // [M-7] Return consistent JSON shape with the rest of the MCP
+      // tools (every other write tool returns the broker's raw OK
+      // response). Previously this returned a free-form string
+      // ("Sent to 2 agent(s)") which forced agents to parse out the
+      // count when chaining calls.
       return {
-        content: [{ type: 'text', text: `Sent to ${resp.sent_to} agent(s)` }],
+        content: [{ type: 'text', text: JSON.stringify(resp) }],
       };
     },
   );
