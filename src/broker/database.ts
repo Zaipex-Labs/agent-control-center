@@ -133,6 +133,19 @@ export function getDb(): Database.Database {
   return db;
 }
 
+// Close the SQLite handle and run a final WAL checkpoint so on-disk
+// state is consistent. Safe to call multiple times. Wired into the
+// broker shutdown path (QW-5).
+export function closeDatabase(): void {
+  if (!db) return;
+  try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch { /* ignore */ }
+  try { db.close(); } catch { /* ignore */ }
+  // @ts-expect-error — leaving the var dangling is fine; subsequent
+  // getDb() calls will throw, which is the desired behaviour after
+  // shutdown.
+  db = undefined;
+}
+
 // ── Peers ──────────────────────────────────────────────────────
 
 export function insertPeer(peer: Peer): void {

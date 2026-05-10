@@ -9,12 +9,12 @@ import { join, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ACC_HOST, ACC_PORT, CLEANUP_INTERVAL_MS } from '../shared/config.js';
 import { t, getLang } from '../shared/i18n/index.js';
-import { initDatabase } from './database.js';
+import { initDatabase, closeDatabase } from './database.js';
 import { gcOrphanBlobs } from './blob-gc.js';
 import { cleanStalePeers } from './cleanup.js';
 import { URL } from 'node:url';
-import { handleEventsUpgrade } from './websocket.js';
-import { handleTerminalUpgrade } from './terminal.js';
+import { handleEventsUpgrade, closeAllEventsClients } from './websocket.js';
+import { handleTerminalUpgrade, killAllWebAgentsEverywhere } from './terminal.js';
 import { isAllowedHost, isAllowedOrigin, isJsonContentType } from './origin.js';
 import {
   parseBody,
@@ -282,6 +282,53 @@ export function createBrokerServer(): Server {
   return server;
 }
 
+// Graceful shutdown for the broker process [QW-5]. Without these
+// handlers a SIGTERM (launchd reload, `pkill node`, container stop)
+// or any throw in an async handler crashes the broker, leaving the
+// PTY children of spawnWebAgent orphaned, the WAL un-checkpointed,
+// and dashboard WS clients with a dangling TCP connection.
+let shutdownRunning = false;
+export function shutdownBroker(server: Server, label: string): Promise<void> {
+  if (shutdownRunning) return Promise.resolve();
+  shutdownRunning = true;
+  console.error(`[broker:lifecycle] ${label} — closing WS clients, killing agents, closing DB`);
+  return new Promise<void>((resolve) => {
+    try { closeAllEventsClients(); } catch (e) { console.error('[broker:lifecycle] closeAllEventsClients', e); }
+    try {
+      const killed = killAllWebAgentsEverywhere();
+      if (killed > 0) console.error(`[broker:lifecycle] killed ${killed} web agent(s)`);
+    } catch (e) { console.error('[broker:lifecycle] killAllWebAgentsEverywhere', e); }
+    server.close(() => {
+      try { closeDatabase(); } catch (e) { console.error('[broker:lifecycle] closeDatabase', e); }
+      console.error('[broker:lifecycle] shutdown complete');
+      resolve();
+    });
+    // Hard cap: if server.close hangs (lingering keep-alive sockets,
+    // half-open WS) force-resolve after 5s so the parent (launchd /
+    // shell) gets the exit and doesn't sit in "stopping" forever.
+    setTimeout(() => {
+      try { closeDatabase(); } catch { /* ignore */ }
+      resolve();
+    }, 5000).unref();
+  });
+}
+
+export function installLifecycleHandlers(server: Server): void {
+  const onSignal = (sig: NodeJS.Signals): void => {
+    void shutdownBroker(server, `received ${sig}`).then(() => process.exit(0));
+  };
+  process.on('SIGTERM', onSignal);
+  process.on('SIGINT', onSignal);
+  process.on('uncaughtException', (err) => {
+    console.error('[broker:lifecycle] uncaughtException', err);
+    void shutdownBroker(server, 'uncaughtException').then(() => process.exit(1));
+  });
+  process.on('unhandledRejection', (reason) => {
+    console.error('[broker:lifecycle] unhandledRejection', reason);
+    void shutdownBroker(server, 'unhandledRejection').then(() => process.exit(1));
+  });
+}
+
 export function main(): void {
   const server = createBrokerServer();
 
@@ -296,6 +343,8 @@ export function main(): void {
     }
     throw err;
   });
+
+  installLifecycleHandlers(server);
 }
 
 // Run directly

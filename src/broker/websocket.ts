@@ -46,6 +46,15 @@ export function handleEventsUpgrade(req: IncomingMessage, socket: Duplex, head: 
   });
 }
 
+// Close every connected dashboard client. Called from the broker
+// shutdown path so browsers see a clean 1001 instead of a TCP RST.
+export function closeAllEventsClients(): void {
+  for (const client of clients) {
+    try { client.ws.close(1001, 'Broker shutting down'); } catch { /* ignore */ }
+  }
+  clients.clear();
+}
+
 export function broadcast(event: BrokerEvent, data: unknown, projectId?: string): void {
   const payload = JSON.stringify({ event, data });
 

@@ -460,6 +460,19 @@ export function killAllWebAgents(projectId: string): number {
   return killed;
 }
 
+// Kill EVERY web agent across all projects. Called from the broker
+// shutdown path (QW-5) so we don't leave PTY children orphaned when
+// the broker exits.
+export function killAllWebAgentsEverywhere(): number {
+  let killed = 0;
+  for (const [key, proc] of agentProcesses) {
+    try { proc.kill(); } catch { /* ignore */ }
+    agentProcesses.delete(key);
+    killed++;
+  }
+  return killed;
+}
+
 export function getWebAgent(projectId: string, role: string): ChildProcess | undefined {
   return agentProcesses.get(processKey(projectId, role));
 }
