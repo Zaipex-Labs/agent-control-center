@@ -8,7 +8,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PROJECTS_DIR } from '../shared/config.js';
 import { t } from '../shared/i18n/index.js';
-import { getGitRoot, getGitBranch, getTty, getDefaultName } from '../shared/utils.js';
+import { getGitRoot, getGitBranch, getTty } from '../shared/utils.js';
 import { ensureBroker, brokerFetch } from './broker-client.js';
 import { pushMessage, writeInterruptFile } from './channel.js';
 import { registerTools, type AgentIdentity } from './tools.js';

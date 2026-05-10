@@ -102,7 +102,7 @@ export default function SkillsModal({ projectId, peerId, onClose }: SkillsModalP
   async function commitDelete(filename: string) {
     // Use a plain confirm dialog — KISS. The CLAUDE-in-Chrome warning
     // about modals doesn't apply to the user's browser.
-    // eslint-disable-next-line no-alert
+     
     if (!confirm(t('dash.skillsDeleteConfirm', { filename }))) return;
     try {
       await deleteSkill(projectId, peerId, filename);

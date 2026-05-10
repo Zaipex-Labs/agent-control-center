@@ -7,7 +7,6 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { brokerFetch } from './broker-client.js';
 import type {
   Peer,
-  MessageType,
   OkResponse,
   SendToRoleResponse,
   PollMessagesResponse,

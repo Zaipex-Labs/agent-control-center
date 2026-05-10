@@ -35,6 +35,14 @@ jobs:
       - name: Type check (dashboard)
         run: npm run typecheck:dashboard
 
+      - name: Lint (allow-fail)
+        # FASE E-2 (v0.3.0): minimal eslint baseline. Allow-fail
+        # initially so a fresh warning never blocks a deploy. Promote
+        # to required once the legacy unused-imports backlog is
+        # cleaned up — see docs/audits/v0.3.0-team-memory/followups.md.
+        run: npm run lint || true
+        continue-on-error: true
+
       - name: Build server + CLI
         run: npm run build
 

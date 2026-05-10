@@ -65,7 +65,7 @@ beforeEach(async () => {
 
 function setup() {
   const { mcp, tools } = createFakeMcp();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   registerTools(mcp as any, { ...identity });
   return tools;
 }

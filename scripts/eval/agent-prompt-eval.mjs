@@ -52,7 +52,6 @@ import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 
 import { spawn, spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { tmpdir } from 'node:os';
 import { performance } from 'node:perf_hooks';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -105,7 +104,7 @@ function parseScenario(filePath) {
   try {
     json = JSON.parse(m[1]);
   } catch (e) {
-    throw new Error(`Invalid JSON frontmatter in ${filePath}: ${e.message}`);
+    throw new Error(`Invalid JSON frontmatter in ${filePath}: ${e.message}`, { cause: e });
   }
   if (!json.name || !json.trigger || !json.expect) {
     throw new Error(`Missing name/trigger/expect in ${filePath}`);
