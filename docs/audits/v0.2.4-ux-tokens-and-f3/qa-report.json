@@ -1,0 +1,94 @@
+{
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "metrics": {
+    "teams": {
+      "ms": 988,
+      "url": "http://127.0.0.1:7929/"
+    },
+    "project-demo-team": {
+      "ms": 1081,
+      "url": "http://127.0.0.1:7929/demo-team"
+    },
+    "project-empty-team": {
+      "ms": 966,
+      "url": "http://127.0.0.1:7929/empty-team"
+    },
+    "history": {
+      "ms": 1152,
+      "url": "http://127.0.0.1:7929/demo-team/history"
+    },
+    "mobile-teams": {
+      "ms": 956,
+      "url": "http://127.0.0.1:7929/"
+    },
+    "mobile-project": {
+      "ms": 602,
+      "url": "http://127.0.0.1:7929/demo-team"
+    },
+    "a11yQuick": {
+      "buttons": 5,
+      "links": 0,
+      "inputs": 0,
+      "images": 0,
+      "imagesWithoutAlt": 0,
+      "buttonsWithoutLabel": 0,
+      "headingsH1": 0,
+      "langAttr": "en",
+      "title": "Zaipex ACC — Agents Command Center",
+      "meta": {}
+    },
+    "externalResources": [],
+    "bundle": {
+      "jsCount": 1,
+      "jsBytes": 0,
+      "jsDecoded": 484495,
+      "cssCount": 1,
+      "cssBytes": 0,
+      "total": 23
+    }
+  },
+  "notes": [
+    "projects discovered: [\"demo-team\",\"empty-team\"]",
+    "composer candidates on project page: 0",
+    "broker host check: connecting via http://127.0.0.1:7929 succeeded; verify 0.0.0.0 with separate socket test if needed"
+  ],
+  "fuzz": [
+    {
+      "path": "/api/projects",
+      "status": 200,
+      "body": "{\"projects\":[{\"name\":\"demo-team\",\"description\":\"QA test project with backend + frontend agents\",\"created_at\":\"2026-05-10"
+    },
+    {
+      "path": "/api/blobs/0000000000000000000000000000000000000000000000000000000000000000",
+      "status": 401,
+      "body": "{\"ok\":false,\"error\":\"Missing X-Peer-Id header\",\"code\":\"MISSING_PEER_ID\"}"
+    },
+    {
+      "path": "/api/blobs/notahash",
+      "status": 404,
+      "body": "{\"ok\":false,\"error\":\"Not found\",\"code\":\"NOT_FOUND\"}"
+    },
+    {
+      "path": "/api/project/create",
+      "status": 400,
+      "body": "{\"ok\":false,\"error\":\"Invalid name: contains \\\"..\\\"\"}"
+    },
+    {
+      "path": "/api/project/create",
+      "status": 400,
+      "body": "{\"ok\":false,\"error\":\"Invalid name: only [a-zA-Z0-9_.-] allowed (1-64 chars)\"}"
+    },
+    {
+      "path": "/api/project/create",
+      "status": 400,
+      "body": "{\"ok\":false,\"error\":\"Invalid JSON body\"}"
+    },
+    {
+      "path": "/api/project/create",
+      "status": 400,
+      "body": "{\"ok\":false,\"error\":\"Invalid name: too long (1000 > 64)\"}"
+    }
+  ]
+}

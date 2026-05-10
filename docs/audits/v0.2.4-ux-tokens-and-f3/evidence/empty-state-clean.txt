@@ -1,0 +1,28 @@
+[UX-5] Triple-CTA empty state collapsed to single central CTA.
+
+Verified live in Chrome on /demo-team (0 active agents):
+
+  Sidebar (left):
+    AGENTES
+    —                                ← neutral em-dash, no message,
+                                       no CTA
+
+  Center column:
+    [▶ icon]
+    No hay agentes activos en este proyecto
+    [Encender equipo]                ← only CTA on the page
+
+  Header (right):
+    [0 agentes activos]              ← gray badge, neutral
+    [Guardar] disabled               ← gray, tooltip "No hay
+                                       cambios por guardar"
+    [Panel]                          ← toggle, tooltip
+                                       "Mostrar/Ocultar panel
+                                       lateral"
+    Apagar equipo:                   ← HIDDEN (activeCount === 0,
+                                       UX-6)
+
+Screenshot evidence: screenshots/project-empty-desktop.png +
+screenshots/project-with-agents-desktop.png (same template at
+demo-team which also currently has 0 live agents — both teams
+display the same empty pattern).

@@ -91,7 +91,7 @@ and proposed fix.
 
 - [x] F-1 — fix audit-qa.mjs route paths · **fixed in `cefbb62`**
 - [ ] F-2 — re-run QA inside Claude-in-Chrome extension
-- [ ] F-3 — per-connection WS token + dashboard subprotocol carry
+- [x] F-3 — per-connection WS token + dashboard subprotocol carry · **closed in v0.2.4** (`docs/audits/v0.2.4-ux-tokens-and-f3/`)
 - [ ] F-4 — make installLifecycleHandlers idempotent
 - [ ] F-5 — log wal_checkpoint failures in closeDatabase
 - [ ] F-6 — UX-2 mobile reflow (subsumed by v0.2.4)
@@ -145,7 +145,7 @@ flip from `- [ ]` to `- [x]` with this PR. Marked in
 - [x] **QW-3** `assertSafeIdentifier` + reject `ARCHITECT_ROLE` en `handleSetRole` · **fixed in `197120b` (v0.2.3)**
 - [x] **QW-5** SIGTERM/SIGINT/uncaughtException/unhandledRejection · **fixed in `1099bc9` (v0.2.3)**
 - [x] **S-NEW-1** CSRF + DNS-rebinding contra el broker HTTP · **fixed in `71cdb80` (v0.2.3)** (mismo que QW-1)
-- [x] **S-NEW-2** WebSocket-hijacking → RCE · **fixed in `f9e949a` (v0.2.3)** (mismo que QW-2). Caveat: F-3 (same-machine cross-port still possible without per-connection token).
+- [x] **S-NEW-2** WebSocket-hijacking → RCE · **fixed in `f9e949a` (v0.2.3)** (mismo que QW-2). **F-3 caveat closed in v0.2.4** (`40bc1db` + `ae0deb9` + `3f4cb54`) — token + Origin gate (AND).
 - [x] **S-NEW-4** `handleSetRole` acepta cualquier string · **fixed in `197120b` (v0.2.3)**
 - [x] **P-12** Sin handlers SIGTERM/SIGINT/uncaughtException · **fixed in `1099bc9` (v0.2.3)**
 - [x] **M-5 v0.2.1** `set_role` sin whitelist · **fixed in `197120b` (v0.2.3)** (HTTP layer; MCP/CLI same handler)

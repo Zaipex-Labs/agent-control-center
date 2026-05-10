@@ -1,0 +1,30 @@
+F-3 endpoint behaviour, exercised live from the browser via the same
+fetch the dashboard uses (claude-in-chrome javascript_tool against
+http://127.0.0.1:7929/api/csrf/issue):
+
+- registerDashboard(project='demo-team') → 200 OK
+  peer_id=920d5b2f...
+
+- POST /api/csrf/issue {peer_id, project_id:'demo-team', role:'backend'}
+  → 404 {"ok":false,"error":"No agent found for role"}
+  (agent role exists in config but no live process — defense-in-depth)
+
+- POST /api/csrf/issue {peer_id, project_id:'empty-team', role:'backend'}
+  → 403 {"ok":false,"error":"Forbidden"}
+  (caller's peer is registered in 'demo-team', not 'empty-team' →
+   cross-project rejected as expected)
+
+- POST /api/csrf/issue {peer_id:'ghost', project_id:'demo-team', role:'backend'}
+  → 403 {"ok":false,"error":"Forbidden"}
+  (peer_id not in DB → membership check fails)
+
+This is the closure for S-NEW-2 caveat F-3: a cross-port attacker
+on http://127.0.0.1:<other-port> cannot read the dashboard's
+localStorage (different origin), therefore has no peer_id, therefore
+cannot trade for a token, therefore cannot pass the token gate at
+/ws/terminal/<role>.
+
+Cross-port WS rejection itself is unit-tested in
+tests/security/ws-cross-port-blocked.test.ts (7 cases: no token,
+wrong role, wrong project, expired, replay, valid+no-agent, malformed
+subprotocol).

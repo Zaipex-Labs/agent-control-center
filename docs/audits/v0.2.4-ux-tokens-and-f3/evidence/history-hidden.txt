@@ -1,0 +1,11 @@
+[UX-1] Direct visit to /demo-team/history redirects to /
+
+claude-in-chrome navigation:
+  1. navigate('http://127.0.0.1:7929/demo-team/history')
+  2. wait 1s
+  3. tab_context shows: url = "http://127.0.0.1:7929/"
+                         title = "Zaipex ACC — Agents Command Center"
+
+The Teams page renders in place — confirmed by inline screenshot
+above. No <h1>History</h1> placeholder, no 404 for the user; just
+the catch-all <Route path="*" /> sending them home.
