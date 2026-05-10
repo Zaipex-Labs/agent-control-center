@@ -75,8 +75,15 @@ export const sendToRoleSchema = z.object({
   session_id: z.string().optional(),
 });
 
+// FU-A (v0.3.1): `peek` opt-in. Without it the handler consumes
+// (atomic SELECT + UPDATE delivered=1). With `peek: true` the
+// handler just reads — manual_catch_up uses this so an agent can
+// see undelivered messages without yanking them out from under the
+// server's channel-push path. Default false keeps every existing
+// caller backwards-compatible.
 export const pollMessagesSchema = z.object({
   id: z.string().min(1),
+  peek: z.boolean().optional(),
 });
 
 export const getHistorySchema = z.object({

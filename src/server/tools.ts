@@ -164,8 +164,16 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
     'manual_catch_up',
     'Force-poll for messages addressed to this agent. Normally not needed — the broker pushes new messages automatically via the MCP channel. Use only when explicitly told (e.g. a tmux fallback notification said to call it) or when you suspect channel delivery is broken.',
     async () => {
+      // FU-A (v0.3.1): peek (read without consume) so calling
+      // manual_catch_up doesn't race the server's polling loop on
+      // markDelivered. The consume path (default) belongs to the
+      // 1-second pollInterval that fans out to channel push / interrupt
+      // file. manual_catch_up is meant as a fallback view, not a
+      // consumer — agents calling it back-to-back will see the same
+      // queue until the consume path drains it.
       const resp = await brokerFetch<PollMessagesResponse>('/api/poll-messages', {
         id: identity.id,
+        peek: true,
       });
       return {
         content: [{ type: 'text', text: JSON.stringify(resp.messages, null, 2) }],
