@@ -13,6 +13,7 @@ import { existsSync } from 'node:fs';
 import { resolveEntryPoint } from '../shared/utils.js';
 import { selectPeersByProject, getSharedState, deleteSharedState } from './database.js';
 import { broadcast } from './websocket.js';
+import { isAllowedOrigin, rejectUpgrade } from './origin.js';
 
 // Locate a usable python3 binary. When the broker is launched via nohup /
 // launchd the PATH can lose /usr/local/bin or /opt/homebrew/bin, and
@@ -44,6 +45,11 @@ const wss = new WebSocketServer({ noServer: true });
 const agentProcesses = new Map<string, ChildProcess>();
 // Buffer output so WS clients connecting later see the full history
 const outputBuffers = new Map<string, Buffer[]>();
+// Track every live /ws/terminal/* WebSocket so the lifecycle path
+// (QW-5 shutdownBroker) can close them BEFORE we kill the underlying
+// agent process. Without this Set the WS-close happens indirectly via
+// the proc 'exit' handler, which is racy on shutdown.
+const terminalClients = new Set<WebSocket>();
 const MAX_BUFFER = 100000; // ~100KB per agent
 // Last-seen live status line per agent ("Nesting… (1m 11s · ↓ 1.0k tokens)")
 // so we only broadcast when it actually changes, and new WS clients can
@@ -459,23 +465,63 @@ export function killAllWebAgents(projectId: string): number {
   return killed;
 }
 
+// Kill EVERY web agent across all projects. Called from the broker
+// shutdown path (QW-5) so we don't leave PTY children orphaned when
+// the broker exits.
+export function killAllWebAgentsEverywhere(): number {
+  let killed = 0;
+  for (const [key, proc] of agentProcesses) {
+    try { proc.kill(); } catch { /* ignore */ }
+    agentProcesses.delete(key);
+    killed++;
+  }
+  return killed;
+}
+
+// Close every live /ws/terminal/* WebSocket. Sent BEFORE the agent
+// processes are killed so dashboard terminal viewers see a clean
+// 1001 close (and stop sending stdin) before the PTY tears down.
+// Order matters in shutdownBroker (QW-5 follow-up).
+export function closeAllTerminalClients(): number {
+  let n = 0;
+  for (const ws of terminalClients) {
+    try { ws.close(1001, 'Broker shutting down'); n++; } catch { /* ignore */ }
+  }
+  terminalClients.clear();
+  return n;
+}
+
 export function getWebAgent(projectId: string, role: string): ChildProcess | undefined {
   return agentProcesses.get(processKey(projectId, role));
 }
 
 export function handleTerminalUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, role: string, projectId: string): void {
+  // Origin check before the handshake. WebSockets are not subject to
+  // CORS preflight, so a webpage on an external origin can otherwise
+  // open a hijacking WS to ws://127.0.0.1/ws/terminal/<role> and pipe
+  // bytes into the agent's stdin (S-NEW-2 / WS-hijack RCE).
+  if (!isAllowedOrigin(req)) {
+    log(`reject /ws/terminal upgrade: origin=${JSON.stringify(req.headers.origin)} remote=${req.socket.remoteAddress}`);
+    rejectUpgrade(socket, 403, 'Forbidden');
+    return;
+  }
+
+  // Defense-in-depth: also refuse the handshake when no agent is alive
+  // for this (project, role). The previous code accepted the WS first
+  // and then closed with 1011, which still exposed handshake success
+  // to a probing attacker.
+  const key = processKey(projectId, role);
+  const proc = agentProcesses.get(key);
+  if (!proc || proc.killed) {
+    log(`reject /ws/terminal upgrade: no active process for ${key}`);
+    rejectUpgrade(socket, 503, 'Agent not running');
+    return;
+  }
+
   wss.handleUpgrade(req, socket, head, (ws) => {
-    const key = processKey(projectId, role);
     log(`ws connect for ${key}`);
-
-    const proc = agentProcesses.get(key);
-    if (!proc || proc.killed) {
-      log(`no active process for ${key}`);
-      ws.close(1011, 'Agent not running');
-      return;
-    }
-
     log(`piping ws to process ${key} pid=${proc.pid}`);
+    terminalClients.add(ws);
 
     // Send buffered output first
     const buf = outputBuffers.get(key);
@@ -518,12 +564,14 @@ export function handleTerminalUpgrade(req: IncomingMessage, socket: Duplex, head
     // Cleanup on WebSocket close
     ws.on('close', () => {
       log(`ws closed for ${key}`);
+      terminalClients.delete(ws);
       proc.stdout?.off('data', onStdout);
       proc.stderr?.off('data', onStderr);
       proc.off('exit', onExit);
     });
 
     ws.on('error', () => {
+      terminalClients.delete(ws);
       proc.stdout?.off('data', onStdout);
       proc.stderr?.off('data', onStderr);
       proc.off('exit', onExit);

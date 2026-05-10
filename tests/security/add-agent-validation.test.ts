@@ -49,6 +49,8 @@ let projectsDir: string;
 let handleCreateProject: (body: unknown, res: ServerResponse) => void;
 let handleAddAgent: (body: unknown, res: ServerResponse) => void;
 let handleUpdateProject: (body: unknown, res: ServerResponse) => void;
+let handleSetRole: (body: unknown, res: ServerResponse) => void;
+let handleRegister: (body: unknown, res: ServerResponse) => void;
 
 beforeAll(async () => {
   vi.resetModules();
@@ -62,6 +64,8 @@ beforeAll(async () => {
   handleCreateProject = H.handleCreateProject;
   handleAddAgent = H.handleAddAgent;
   handleUpdateProject = H.handleUpdateProject;
+  handleSetRole = H.handleSetRole;
+  handleRegister = H.handleRegister;
 });
 
 afterAll(() => {
@@ -183,5 +187,63 @@ describe('handleCreateProject is also hardened [C-1 regression]', () => {
     const { res, result } = createMockRes();
     handleCreateProject({ name: '../escape' }, res);
     expect(result.statusCode).toBe(400);
+  });
+});
+
+describe('handleSetRole rejects unsafe role + ARCHITECT_ROLE [QW-3 / S-NEW-4]', () => {
+  // We need a real registered peer to flip the role on. handleRegister
+  // gives us back a peer id we can drive into handleSetRole.
+  let peerId: string;
+  beforeEach(() => {
+    // Re-register every test so the peer exists in the in-memory DB.
+    const { res, result } = createMockRes();
+    handleRegister({
+      pid: process.pid,
+      cwd: '/tmp',
+      role: 'qa',
+      project_id: 'proj-a',
+    }, res);
+    expect(result.statusCode).toBe(200);
+    peerId = (result.body as unknown as { id: string }).id;
+  });
+
+  it('rejects role "arquitectura" (architect-impersonation)', () => {
+    const { res, result } = createMockRes();
+    handleSetRole({ id: peerId, role: 'arquitectura' }, res);
+    expect(result.statusCode).toBe(403);
+    expect(result.body?.error).toMatch(/reserved/i);
+  });
+
+  it('rejects role with shell metachars', () => {
+    const { res, result } = createMockRes();
+    handleSetRole({ id: peerId, role: '$(touch /tmp/acc-pwn-canary-nope)' }, res);
+    expect(result.statusCode).toBe(400);
+    expect(result.body?.error).toMatch(/Invalid role/i);
+  });
+
+  it('rejects role with path traversal', () => {
+    const { res, result } = createMockRes();
+    handleSetRole({ id: peerId, role: '../etc/passwd' }, res);
+    expect(result.statusCode).toBe(400);
+  });
+
+  it('rejects role with newline / NUL', () => {
+    for (const bad of ['a\nb', 'a\0b']) {
+      const { res, result } = createMockRes();
+      handleSetRole({ id: peerId, role: bad }, res);
+      expect(result.statusCode).toBe(400);
+    }
+  });
+
+  it('rejects role over 64 chars', () => {
+    const { res, result } = createMockRes();
+    handleSetRole({ id: peerId, role: 'a'.repeat(65) }, res);
+    expect(result.statusCode).toBe(400);
+  });
+
+  it('accepts a clean role rename', () => {
+    const { res, result } = createMockRes();
+    handleSetRole({ id: peerId, role: 'qa-mobile' }, res);
+    expect(result.statusCode).toBe(200);
   });
 });

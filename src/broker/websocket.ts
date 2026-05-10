@@ -5,6 +5,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
+import { isAllowedOrigin, rejectUpgrade } from './origin.js';
 
 export type BrokerEvent =
   | 'peer:connected'
@@ -26,6 +27,11 @@ const clients = new Set<WsClient>();
 const wss = new WebSocketServer({ noServer: true });
 
 export function handleEventsUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, projectId: string | null): void {
+  if (!isAllowedOrigin(req)) {
+    console.error(`[broker:ws] rejecting /ws upgrade from origin=${JSON.stringify(req.headers.origin)} remote=${req.socket.remoteAddress}`);
+    rejectUpgrade(socket, 403, 'Forbidden');
+    return;
+  }
   wss.handleUpgrade(req, socket, head, (ws) => {
     const client: WsClient = { ws, projectId };
     clients.add(client);
@@ -38,6 +44,15 @@ export function handleEventsUpgrade(req: IncomingMessage, socket: Duplex, head: 
       clients.delete(client);
     });
   });
+}
+
+// Close every connected dashboard client. Called from the broker
+// shutdown path so browsers see a clean 1001 instead of a TCP RST.
+export function closeAllEventsClients(): void {
+  for (const client of clients) {
+    try { client.ws.close(1001, 'Broker shutting down'); } catch { /* ignore */ }
+  }
+  clients.clear();
 }
 
 export function broadcast(event: BrokerEvent, data: unknown, projectId?: string): void {

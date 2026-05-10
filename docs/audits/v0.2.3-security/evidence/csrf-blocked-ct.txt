@@ -1,0 +1,15 @@
+# csrf-blocked-ct — POST with Content-Type: text/plain rejected with 415 [QW-1]
+
+# request →
+POST /api/project/delete HTTP/1.1
+Host: 127.0.0.1:7919
+Content-Type: text/plain
+
+{"project_id":"demo"}
+
+
+# response ←
+HTTP/1.1 415
+Content-Type: application/json
+
+{"ok":false,"error":"Content-Type must be application/json"}

@@ -929,6 +929,25 @@ export function handleSetRole(body: unknown, res: ServerResponse): void {
   const b = body as SetRoleRequest;
   if (!b.id || b.role == null) return error(res, 'Missing required fields: id, role');
 
+  // [QW-3 / S-NEW-4 / M-5 v0.2.1 / L-5 v0.2.1] — handleSetRole used to
+  // accept any string. A peer that registered as 'qa' could call
+  // /api/set-role with role='arquitectura' and start receiving every
+  // send_to_role('arquitectura', …) intended for the tech lead, or
+  // emit shell metachars / path-traversal that would later be
+  // interpolated into prompts and shell templates.
+  //
+  // Defense:
+  //   1. assertSafeIdentifier: same rules as register/add-agent
+  //      (no shell metachars, no traversal, no NUL, ≤64 chars).
+  //   2. ARCHITECT_ROLE is reserved — it gets seeded by
+  //      migrateLegacyProjects / handleCreateProject and the dashboard
+  //      treats it as the permanent tech lead. A non-architect peer
+  //      cannot self-promote into it.
+  if (!validateIdentifiers(res, { name: 'role', value: b.role })) return;
+  if (b.role === ARCHITECT_ROLE) {
+    return error(res, `Role "${ARCHITECT_ROLE}" is reserved`, 403);
+  }
+
   const peer = selectPeerById(b.id);
   if (!peer) return error(res, `Peer not found: ${b.id}`, 404);
 

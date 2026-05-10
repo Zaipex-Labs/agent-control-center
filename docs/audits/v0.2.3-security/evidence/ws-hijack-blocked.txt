@@ -1,0 +1,14 @@
+# QW-2 / S-NEW-2 — WebSocket upgrade from external Origin rejected
+#
+# Each probe is a node ws client connecting to /ws/terminal/backend?project=demo
+# with a forged Origin header. The broker should respond 403 Forbidden on the
+# HTTP upgrade — never accept the WS handshake.
+
+# external Origin: Origin=http://attacker.com
+  upgradeStatus=403 opened=false
+
+# subdomain spoofing: Origin=https://evil.localhost.attacker.com
+  upgradeStatus=403 opened=false
+
+# private LAN IP: Origin=http://10.0.0.5
+  upgradeStatus=403 opened=false

@@ -1,0 +1,14 @@
+# QW-5 evidence — graceful broker shutdown on SIGTERM
+# captured by scripts/qa-v0.2.3-sigterm.sh on 2026-05-10T03:01:50Z
+
+## broker stderr (full lifecycle)
+[broker] dashboard dir: /Users/jmanuel/Desktop/zaipex/zaipex-acc/dist/dashboard
+[broker] Escuchando en http://127.0.0.1:7929
+[broker:lifecycle] received SIGTERM — terminals → agents → events → http → db
+[broker:lifecycle] shutdown complete
+
+## ws client stderr (verifies clean 1001 close)
+[ws-client] connected
+[ws-client] CLOSE code=1001 reason=Broker shutting down
+
+## broker process exited (SIGTERM → graceful shutdown → exit 0)

@@ -9,12 +9,13 @@ import { join, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ACC_HOST, ACC_PORT, CLEANUP_INTERVAL_MS } from '../shared/config.js';
 import { t, getLang } from '../shared/i18n/index.js';
-import { initDatabase } from './database.js';
+import { initDatabase, closeDatabase } from './database.js';
 import { gcOrphanBlobs } from './blob-gc.js';
 import { cleanStalePeers } from './cleanup.js';
 import { URL } from 'node:url';
-import { handleEventsUpgrade } from './websocket.js';
-import { handleTerminalUpgrade } from './terminal.js';
+import { handleEventsUpgrade, closeAllEventsClients } from './websocket.js';
+import { handleTerminalUpgrade, killAllWebAgentsEverywhere, closeAllTerminalClients } from './terminal.js';
+import { isAllowedHost, isAllowedOrigin, isJsonContentType } from './origin.js';
 import {
   parseBody,
   handleHealth,
@@ -140,6 +141,27 @@ export function createBrokerServer(): Server {
     const url = req.url ?? '/';
     const method = req.method ?? 'GET';
 
+    // CSRF + DNS-rebinding gate (S-NEW-1). Reject anything whose Host
+    // header is not a localhost name (covers DNS rebinding) and any
+    // state-changing request whose Origin is not localhost (covers
+    // cross-origin POSTs from a malicious page). Origin missing is
+    // tolerated only when the connection comes from loopback — that's
+    // how non-browser clients (curl, MCP server, CLI, tests) talk to
+    // us.
+    if (!isAllowedHost(req)) {
+      console.error(`[broker:csrf] reject host=${JSON.stringify(req.headers.host)} url=${url}`);
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Forbidden host' }));
+      return;
+    }
+    const isStateChanging = method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS';
+    if (isStateChanging && !isAllowedOrigin(req)) {
+      console.error(`[broker:csrf] reject origin=${JSON.stringify(req.headers.origin)} method=${method} url=${url}`);
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Forbidden origin' }));
+      return;
+    }
+
     if (method === 'GET' && url === '/health') {
       return handleHealth(res);
     }
@@ -175,6 +197,15 @@ export function createBrokerServer(): Server {
     if (method === 'POST') {
       const handler = POST_ROUTES[url];
       if (handler) {
+        // Reject non-JSON Content-Type. parseBody assumes JSON, and
+        // accepting text/plain / form-urlencoded would let a cross-
+        // origin <script> emit "simple requests" without preflight
+        // (S-NEW-1).
+        if (!isJsonContentType(req)) {
+          res.writeHead(415, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Content-Type must be application/json' }));
+          return;
+        }
         try {
           const body = await parseBody(req);
           await handler(body, res);
@@ -251,6 +282,73 @@ export function createBrokerServer(): Server {
   return server;
 }
 
+// Graceful shutdown for the broker process [QW-5]. Without these
+// handlers a SIGTERM (launchd reload, `pkill node`, container stop)
+// or any throw in an async handler crashes the broker, leaving the
+// PTY children of spawnWebAgent orphaned, the WAL un-checkpointed,
+// and dashboard WS clients with a dangling TCP connection.
+//
+// Close order matters and is asserted by tests/broker/lifecycle.test.ts:
+//   1. Terminal WS clients (/ws/terminal/<role>): close FIRST so any
+//      pending stdin write can't reach a dying agent and dashboard
+//      viewers see a clean 1001 instead of agent stdout going dark
+//      before the WS notifies them.
+//   2. Web agent processes: kill once nobody can write stdin to them.
+//   3. Events WS clients (/ws): close after the agent layer is gone
+//      so the dashboard's last event is the one that says "broker
+//      shutting down", not a garbled half-state.
+//   4. HTTP server: drain remaining connections.
+//   5. SQLite database: close LAST with a wal_checkpoint(TRUNCATE)
+//      so on-disk state is consistent.
+let shutdownRunning = false;
+// Test-only hook so the order test can clear the idempotency latch
+// between cases. Not exported from `main()`'s import path.
+export function _resetShutdownLatchForTests(): void { shutdownRunning = false; }
+export function shutdownBroker(server: Server, label: string): Promise<void> {
+  if (shutdownRunning) return Promise.resolve();
+  shutdownRunning = true;
+  console.error(`[broker:lifecycle] ${label} — terminals → agents → events → http → db`);
+  return new Promise<void>((resolve) => {
+    try {
+      const closedTerm = closeAllTerminalClients();
+      if (closedTerm > 0) console.error(`[broker:lifecycle] closed ${closedTerm} terminal WS client(s)`);
+    } catch (e) { console.error('[broker:lifecycle] closeAllTerminalClients', e); }
+    try {
+      const killed = killAllWebAgentsEverywhere();
+      if (killed > 0) console.error(`[broker:lifecycle] killed ${killed} web agent(s)`);
+    } catch (e) { console.error('[broker:lifecycle] killAllWebAgentsEverywhere', e); }
+    try { closeAllEventsClients(); } catch (e) { console.error('[broker:lifecycle] closeAllEventsClients', e); }
+    server.close(() => {
+      try { closeDatabase(); } catch (e) { console.error('[broker:lifecycle] closeDatabase', e); }
+      console.error('[broker:lifecycle] shutdown complete');
+      resolve();
+    });
+    // Hard cap: if server.close hangs (lingering keep-alive sockets,
+    // half-open WS) force-resolve after 5s so the parent (launchd /
+    // shell) gets the exit and doesn't sit in "stopping" forever.
+    setTimeout(() => {
+      try { closeDatabase(); } catch { /* ignore */ }
+      resolve();
+    }, 5000).unref();
+  });
+}
+
+export function installLifecycleHandlers(server: Server): void {
+  const onSignal = (sig: NodeJS.Signals): void => {
+    void shutdownBroker(server, `received ${sig}`).then(() => process.exit(0));
+  };
+  process.on('SIGTERM', onSignal);
+  process.on('SIGINT', onSignal);
+  process.on('uncaughtException', (err) => {
+    console.error('[broker:lifecycle] uncaughtException', err);
+    void shutdownBroker(server, 'uncaughtException').then(() => process.exit(1));
+  });
+  process.on('unhandledRejection', (reason) => {
+    console.error('[broker:lifecycle] unhandledRejection', reason);
+    void shutdownBroker(server, 'unhandledRejection').then(() => process.exit(1));
+  });
+}
+
 export function main(): void {
   const server = createBrokerServer();
 
@@ -265,6 +363,8 @@ export function main(): void {
     }
     throw err;
   });
+
+  installLifecycleHandlers(server);
 }
 
 // Run directly
