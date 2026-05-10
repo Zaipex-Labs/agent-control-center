@@ -152,6 +152,16 @@ export function parseRawBody(req: IncomingMessage, maxSize: number): Promise<Buf
 
 const MAX_TEXT_LENGTH = 100_000; // 100KB per message text
 
+// [S-NEW-6] cap attachments[] per send-message / send-to-role call.
+// A 1MB request body fits ~5,000 descriptors (each is a hash + mime +
+// name + size — under 200 bytes). Without a tope every getBlob() does a
+// readdirSync (L-2), every addBlobRef does an INSERT, and a single
+// malicious request can hold the event loop for hundreds of ms while
+// the dashboard renders nothing useful. 32 is comfortably above the
+// real-world ceiling (deepest cluster I've seen is 8 PNGs in one
+// review thread).
+const MAX_ATTACHMENTS_PER_MESSAGE = 32;
+
 // Back-compat wrapper around assertSafeIdentifier (src/shared/validate.ts).
 // Preserves the res-based callsite API so handlers can stay
 // `if (!validateIdentifiers(res, …)) return;`. Underlying rules
@@ -1137,6 +1147,15 @@ export async function handleSendMessage(body: unknown, res: ServerResponse): Pro
   // dashboard can decide to re-upload. The blob_refs rows are inserted
   // AFTER insertMessage so we have a real message_id.
   const incoming = (b as SendMessageRequest & { attachments?: Attachment[] }).attachments ?? [];
+  if (incoming.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: false,
+      error: `Too many attachments (max ${MAX_ATTACHMENTS_PER_MESSAGE} per message)`,
+      code: 'TOO_MANY_ATTACHMENTS',
+    }));
+    return;
+  }
   for (const att of incoming) {
     if (!getBlob(att.hash)) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -1273,6 +1292,15 @@ export async function handleSendToRole(body: unknown, res: ServerResponse): Prom
 
   // Same attachments handling as handleSendMessage (see there for rationale).
   const incoming = (b as SendToRoleRequest & { attachments?: Attachment[] }).attachments ?? [];
+  if (incoming.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: false,
+      error: `Too many attachments (max ${MAX_ATTACHMENTS_PER_MESSAGE} per message)`,
+      code: 'TOO_MANY_ATTACHMENTS',
+    }));
+    return;
+  }
   for (const att of incoming) {
     if (!getBlob(att.hash)) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
