@@ -406,7 +406,24 @@ export function shutdownBroker(server: Server, label: string): Promise<void> {
   });
 }
 
+// [F-4 v0.2.3 / FU-5 v0.2.4] Track which servers already had handlers
+// installed so a second installLifecycleHandlers(server) call is a
+// no-op. Without this, accumulating signal listeners on hot reload
+// would (a) trip Node's MaxListenersExceededWarning after ~10 reloads
+// and (b) run the lifecycle path N times in parallel on a single
+// SIGTERM. The WeakSet means servers don't keep themselves alive past
+// their natural GC.
+const lifecycleInstalledFor = new WeakSet<Server>();
+// Test-only hook so the idempotency-suite can verify "second call is a
+// no-op" without holding the WeakSet entry across cases.
+export function _resetLifecycleHandlersForTests(server: Server): void {
+  lifecycleInstalledFor.delete(server);
+}
+
 export function installLifecycleHandlers(server: Server): void {
+  if (lifecycleInstalledFor.has(server)) return;
+  lifecycleInstalledFor.add(server);
+
   const onSignal = (sig: NodeJS.Signals): void => {
     void shutdownBroker(server, `received ${sig}`).then(() => process.exit(0));
   };

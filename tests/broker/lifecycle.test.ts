@@ -13,6 +13,7 @@ import {
   shutdownBroker,
   installLifecycleHandlers,
   _resetShutdownLatchForTests,
+  _resetLifecycleHandlersForTests,
 } from '../../src/broker/index.js';
 import { closeDatabase, getDb } from '../../src/broker/database.js';
 import * as wsMod from '../../src/broker/websocket.js';
@@ -128,8 +129,23 @@ describe('shutdownBroker close order [QW-5 follow-up]', () => {
 });
 
 describe('installLifecycleHandlers (QW-5)', () => {
+  // Helper to detach what installLifecycleHandlers attaches without
+  // touching other listeners that vitest itself relies on.
+  function detachHandlers(before: { SIGTERM: number; SIGINT: number; uncaughtException: number; unhandledRejection: number }) {
+    process.removeAllListeners('SIGTERM');
+    process.removeAllListeners('SIGINT');
+    const trim = (ev: 'uncaughtException' | 'unhandledRejection', target: number) => {
+      const fns = process.listeners(ev) as Array<(...args: unknown[]) => void>;
+      while (fns.length > target) {
+        const f = fns.pop();
+        if (f) process.off(ev, f);
+      }
+    };
+    trim('uncaughtException', before.uncaughtException);
+    trim('unhandledRejection', before.unhandledRejection);
+  }
+
   it('registers SIGTERM, SIGINT, uncaughtException, unhandledRejection', () => {
-    // Snapshot listener counts before/after to verify we attach.
     const before = {
       SIGTERM: process.listenerCount('SIGTERM'),
       SIGINT: process.listenerCount('SIGINT'),
@@ -145,19 +161,63 @@ describe('installLifecycleHandlers (QW-5)', () => {
     expect(process.listenerCount('uncaughtException')).toBe(before.uncaughtException + 1);
     expect(process.listenerCount('unhandledRejection')).toBe(before.unhandledRejection + 1);
 
-    // Detach our listeners so we don't leak into other tests.
-    process.removeAllListeners('SIGTERM');
-    process.removeAllListeners('SIGINT');
-    // Don't fully wipe uncaughtException/unhandledRejection — vitest
-    // uses them. Trim down to the count we observed before.
-    const trim = (ev: 'uncaughtException' | 'unhandledRejection', target: number) => {
-      const fns = process.listeners(ev) as Array<(...args: unknown[]) => void>;
-      while (fns.length > target) {
-        const f = fns.pop();
-        if (f) process.off(ev, f);
-      }
+    _resetLifecycleHandlersForTests(fakeServer);
+    detachHandlers(before);
+  });
+
+  // [F-4 v0.2.3 / FU-5 v0.2.4] repeat calls must not stack listeners.
+  it('is idempotent — second call adds zero new listeners', () => {
+    const before = {
+      SIGTERM: process.listenerCount('SIGTERM'),
+      SIGINT: process.listenerCount('SIGINT'),
+      uncaughtException: process.listenerCount('uncaughtException'),
+      unhandledRejection: process.listenerCount('unhandledRejection'),
     };
-    trim('uncaughtException', before.uncaughtException);
-    trim('unhandledRejection', before.unhandledRejection);
+
+    const fakeServer = { close: (cb: () => void) => cb() } as unknown as Server;
+    installLifecycleHandlers(fakeServer);
+    const afterFirst = {
+      SIGTERM: process.listenerCount('SIGTERM'),
+      SIGINT: process.listenerCount('SIGINT'),
+      uncaughtException: process.listenerCount('uncaughtException'),
+      unhandledRejection: process.listenerCount('unhandledRejection'),
+    };
+
+    // Call 5 more times — each MUST be a no-op.
+    for (let i = 0; i < 5; i++) installLifecycleHandlers(fakeServer);
+
+    const afterSixth = {
+      SIGTERM: process.listenerCount('SIGTERM'),
+      SIGINT: process.listenerCount('SIGINT'),
+      uncaughtException: process.listenerCount('uncaughtException'),
+      unhandledRejection: process.listenerCount('unhandledRejection'),
+    };
+
+    expect(afterSixth).toEqual(afterFirst);
+
+    _resetLifecycleHandlersForTests(fakeServer);
+    detachHandlers(before);
+  });
+
+  // Different server instances should each get their own set of
+  // handlers — the latch is per-server, not global.
+  it('two distinct servers each get handlers installed', () => {
+    const before = {
+      SIGTERM: process.listenerCount('SIGTERM'),
+      SIGINT: process.listenerCount('SIGINT'),
+      uncaughtException: process.listenerCount('uncaughtException'),
+      unhandledRejection: process.listenerCount('unhandledRejection'),
+    };
+
+    const a = { close: (cb: () => void) => cb() } as unknown as Server;
+    const b = { close: (cb: () => void) => cb() } as unknown as Server;
+    installLifecycleHandlers(a);
+    installLifecycleHandlers(b);
+
+    expect(process.listenerCount('SIGTERM')).toBe(before.SIGTERM + 2);
+
+    _resetLifecycleHandlersForTests(a);
+    _resetLifecycleHandlersForTests(b);
+    detachHandlers(before);
   });
 });
