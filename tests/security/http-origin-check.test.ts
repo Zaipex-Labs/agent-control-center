@@ -5,6 +5,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { Server } from 'node:http';
 import { request as httpRequest } from 'node:http';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createBrokerServer } from '../../src/broker/index.js';
 
 // [QW-1] — broker HTTP must reject:
@@ -17,18 +20,28 @@ import { createBrokerServer } from '../../src/broker/index.js';
 //
 // Closes S-NEW-1.
 
-let server: Server;
+let server: Server | null = null;
 let port: number;
+let home: string;
 
 beforeAll(async () => {
-  process.env['ACC_HOME'] = process.env['ACC_HOME'] ?? '/tmp/acc-test-http-origin';
+  // Unique ACC_HOME per test file — see comment in
+  // ws-origin-check.test.ts (CI macOS 22.x failure).
+  home = mkdtempSync(join(tmpdir(), 'acc-test-http-origin-'));
+  process.env['ACC_HOME'] = home;
   server = createBrokerServer();
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  port = (server.address() as { port: number }).port;
+  await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
+  port = (server!.address() as { port: number }).port;
 });
 
 afterAll(async () => {
-  await new Promise<void>((resolve) => server.close(() => resolve()));
+  if (server) {
+    await new Promise<void>((resolve) => server!.close(() => resolve()));
+    server = null;
+  }
+  if (home) {
+    try { rmSync(home, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
 });
 
 // We use http.request directly so we can override the Host header,

@@ -4,6 +4,9 @@
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { Server } from 'node:http';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import WebSocket from 'ws';
 import {
   createBrokerServer,
@@ -40,9 +43,13 @@ function openClient(port: number, path = '/ws'): Promise<WebSocket> {
 describe('shutdownBroker (QW-5)', () => {
   let server: Server;
   let port: number;
+  let home: string;
 
   beforeAll(async () => {
-    process.env['ACC_HOME'] = process.env['ACC_HOME'] ?? '/tmp/acc-test-lifecycle';
+    // Unique ACC_HOME — vitest can co-schedule files in the same
+    // worker, and a shared SQLite WAL trips SQLITE_BUSY on macOS APFS.
+    home = mkdtempSync(join(tmpdir(), 'acc-test-lifecycle-'));
+    process.env['ACC_HOME'] = home;
     server = createBrokerServer();
     port = await listen(server);
   });
@@ -50,6 +57,9 @@ describe('shutdownBroker (QW-5)', () => {
   afterAll(() => {
     // safety net — if the test failed before shutdown, force-close.
     try { closeDatabase(); } catch { /* ignore */ }
+    if (home) {
+      try { rmSync(home, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
   });
 
   it('closes connected dashboard WS clients with code 1001', async () => {
@@ -84,7 +94,8 @@ describe('shutdownBroker close order [QW-5 follow-up]', () => {
   // Verifies the contract documented at src/broker/index.ts above
   // shutdownBroker: terminals → kill agents → events → http → db.
   it('runs cleanup in the order: terminals → agents → events → db', async () => {
-    process.env['ACC_HOME'] = process.env['ACC_HOME'] ?? '/tmp/acc-test-lifecycle-order';
+    const home = mkdtempSync(join(tmpdir(), 'acc-test-lifecycle-order-'));
+    process.env['ACC_HOME'] = home;
     const server = createBrokerServer();
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     _resetShutdownLatchForTests();
@@ -112,6 +123,7 @@ describe('shutdownBroker close order [QW-5 follow-up]', () => {
     sEvents.mockRestore();
     sDb.mockRestore();
     _resetShutdownLatchForTests();
+    try { rmSync(home, { recursive: true, force: true }); } catch { /* ignore */ }
   });
 });
 
