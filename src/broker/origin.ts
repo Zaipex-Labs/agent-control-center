@@ -57,6 +57,17 @@ export function isAllowedHost(req: IncomingMessage): boolean {
   return LOCALHOST_HOST_RE.test(host);
 }
 
+// "application/json" optionally followed by "; charset=utf-8" or any
+// other parameter. Anything else (text/plain, multipart, missing CT) is
+// rejected so cross-origin "simple requests" (which can omit preflight
+// when CT is text/plain or form-urlencoded) cannot reach the broker.
+export function isJsonContentType(req: IncomingMessage): boolean {
+  const ct = req.headers['content-type'];
+  if (typeof ct !== 'string') return false;
+  const main = ct.split(';', 1)[0].trim().toLowerCase();
+  return main === 'application/json';
+}
+
 // Write a minimal HTTP error response on a raw upgrade socket so the
 // client sees a proper 4xx instead of a TCP RST. ws lib's handleUpgrade
 // hasn't been called yet at this point so the socket is still in HTTP

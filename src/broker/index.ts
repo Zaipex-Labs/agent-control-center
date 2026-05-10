@@ -15,6 +15,7 @@ import { cleanStalePeers } from './cleanup.js';
 import { URL } from 'node:url';
 import { handleEventsUpgrade } from './websocket.js';
 import { handleTerminalUpgrade } from './terminal.js';
+import { isAllowedHost, isAllowedOrigin, isJsonContentType } from './origin.js';
 import {
   parseBody,
   handleHealth,
@@ -140,6 +141,27 @@ export function createBrokerServer(): Server {
     const url = req.url ?? '/';
     const method = req.method ?? 'GET';
 
+    // CSRF + DNS-rebinding gate (S-NEW-1). Reject anything whose Host
+    // header is not a localhost name (covers DNS rebinding) and any
+    // state-changing request whose Origin is not localhost (covers
+    // cross-origin POSTs from a malicious page). Origin missing is
+    // tolerated only when the connection comes from loopback — that's
+    // how non-browser clients (curl, MCP server, CLI, tests) talk to
+    // us.
+    if (!isAllowedHost(req)) {
+      console.error(`[broker:csrf] reject host=${JSON.stringify(req.headers.host)} url=${url}`);
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Forbidden host' }));
+      return;
+    }
+    const isStateChanging = method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS';
+    if (isStateChanging && !isAllowedOrigin(req)) {
+      console.error(`[broker:csrf] reject origin=${JSON.stringify(req.headers.origin)} method=${method} url=${url}`);
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Forbidden origin' }));
+      return;
+    }
+
     if (method === 'GET' && url === '/health') {
       return handleHealth(res);
     }
@@ -175,6 +197,15 @@ export function createBrokerServer(): Server {
     if (method === 'POST') {
       const handler = POST_ROUTES[url];
       if (handler) {
+        // Reject non-JSON Content-Type. parseBody assumes JSON, and
+        // accepting text/plain / form-urlencoded would let a cross-
+        // origin <script> emit "simple requests" without preflight
+        // (S-NEW-1).
+        if (!isJsonContentType(req)) {
+          res.writeHead(415, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Content-Type must be application/json' }));
+          return;
+        }
         try {
           const body = await parseBody(req);
           await handler(body, res);
