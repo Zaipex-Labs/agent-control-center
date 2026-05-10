@@ -678,6 +678,30 @@ export function handleListModifiedFiles(body: unknown, res: ServerResponse): voi
 //      message to each agent so they overwrite that entry with their own
 //      contextual summary on their next poll. If an agent is slow or down,
 //      the mechanical baseline stays as the effective snapshot.
+// [M-1a] Save-resume protocol — injected dynamically when the broker
+// triggers `[system:save-resume]`. Before this commit the protocol
+// (the literal `set_shared("resume", ...)` instruction with its JSON
+// shape) lived in the agent's system prompt as rule G9, eating ~175
+// tokens × every turn × every agent for a message that only fires at
+// shutdown / save-resume. By prepending the full protocol to the
+// trigger message itself, G9 in the system prompt can collapse to a
+// one-line pointer (~25 tokens), reclaiming ~150 tokens per agent
+// per turn (M-1b commits the system prompt change).
+//
+// `kind` distinguishes the two existing call sites:
+//   - 'periodic': /api/project/save-resume — user pressed "Save" while
+//     the team is alive. No shutdown urgency.
+//   - 'shutdown': /api/project/down — agents have ~3s before SIGTERM.
+function buildSaveResumePrompt(role: string, now: string, kind: 'periodic' | 'shutdown'): string {
+  const intro = kind === 'shutdown'
+    ? 'The team is shutting down. Save a final resume snapshot now so you can resume next session.'
+    : 'Save your own resume snapshot so you can pick up where you left off next time.';
+  const urgency = kind === 'shutdown'
+    ? ' You have ~3 seconds before shutdown.'
+    : ' Just update shared_state and return to whatever you were doing before this message.';
+  return `[system:save-resume] ${intro} Call set_shared("resume", "${role}", JSON.stringify({ summary: "<1-2 sentences about what you were working on>", next_steps: ["<short bullet>", "<short bullet>"], open_questions: ["<optional>"], updated_at: "${now}" })). Do this silently — do NOT reply to the user.${urgency}`;
+}
+
 export function handleSaveResume(body: unknown, res: ServerResponse): void {
   const b = body as { project_id?: string };
   if (!b.project_id) return error(res, 'Missing required field: project_id');
@@ -703,7 +727,7 @@ export function handleSaveResume(body: unknown, res: ServerResponse): void {
   const now = new Date().toISOString();
 
   for (const peer of liveAgents) {
-    const promptText = `[system:save-resume] Save your own resume snapshot so you can pick up where you left off next time. Call set_shared("resume", "${peer.role}", JSON.stringify({ summary: "<1-2 sentences about what you were working on>", next_steps: ["<short bullet>", "<short bullet>"], open_questions: ["<optional>"], updated_at: "${now}" })). Do this silently — do NOT reply to the user. Just update shared_state and return to whatever you were doing before this message.`;
+    const promptText = buildSaveResumePrompt(peer.role, now, 'periodic');
     try {
       insertMessage(
         b.project_id,
@@ -804,7 +828,7 @@ export async function handleProjectDown(body: unknown, res: ServerResponse): Pro
   });
   const now = new Date().toISOString();
   for (const peer of liveAgents) {
-    const promptText = `[system:save-resume] The team is shutting down. Save a final resume snapshot now so you can resume next session. Call set_shared("resume", "${peer.role}", JSON.stringify({ summary: "<1-2 sentences about what you were working on>", next_steps: ["<short bullet>"], open_questions: ["<optional>"], updated_at: "${now}" })). Do this silently. You have ~3 seconds before shutdown.`;
+    const promptText = buildSaveResumePrompt(peer.role, now, 'shutdown');
     try {
       insertMessage(b.project_id, 'system', peer.id, 'notification', promptText, null, now, null);
       insertLogEntry(b.project_id, 'system', 'system', peer.id, peer.role, 'notification', promptText, null, now, 'system', null);
