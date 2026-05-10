@@ -223,6 +223,7 @@ export default function ThreadList({ threads, activeThread, agents, onSelect, on
               <ThreadCard
                 key={t.id}
                 thread={t}
+                agents={agents}
                 active={activeThread?.id === t.id}
                 onClick={() => onSelect(t)}
               />
