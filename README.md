@@ -298,7 +298,7 @@ npm run test:watch                 # watch mode
 | `whoami` | — | Identidad del agente / Agent identity |
 | `send_message` | `to_id, text, type?, metadata?` | Mensaje directo / Direct message by ID |
 | `send_to_role` | `role, text, type?, metadata?` | Broadcast por rol / Broadcast by role |
-| `check_messages` | — | Leer pendientes / Read pending messages |
+| `manual_catch_up` | — | Force-poll pendientes (normalmente innecesario, channel push entrega solo) / Force-poll for pending messages (rarely needed; channel push delivers automatically) |
 | `get_history` | `role?, type?, limit?` | Historial / Project history |
 | `set_shared` | `namespace, key, value` | Escribir estado / Write shared state |
 | `get_shared` | `namespace, key` | Leer estado / Read shared state |

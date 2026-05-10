@@ -146,9 +146,24 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
     },
   );
 
+  // FASE D-2 (v0.3.0): renamed from `check_messages` (M-2 / M-12 / M-14
+  // in audit §7). Reasoning:
+  //   - The MCP server's pushMessage() (src/server/channel.ts) already
+  //     polls every 1s and pushes new messages via the
+  //     `notifications/claude/channel` channel. In normal operation
+  //     check_messages always returned [] because the broker had
+  //     already delivered them.
+  //   - The old name + description ("Poll for new messages, mark as
+  //     delivered") encouraged agents to call it on every turn,
+  //     wasting a round-trip and a dedup race against the server poll.
+  //   - But it isn't dead: src/broker/tmux.ts uses it as a fallback
+  //     when channel push isn't available (tmux notification text says
+  //     "Usa <name> para leer el mensaje").
+  // Renamed to `manual_catch_up` so agents understand it's a fallback,
+  // not the primary delivery path.
   mcp.tool(
-    'check_messages',
-    'Poll for new messages sent to this agent. Returns and marks them as delivered.',
+    'manual_catch_up',
+    'Force-poll for messages addressed to this agent. Normally not needed — the broker pushes new messages automatically via the MCP channel. Use only when explicitly told (e.g. a tmux fallback notification said to call it) or when you suspect channel delivery is broken.',
     async () => {
       const resp = await brokerFetch<PollMessagesResponse>('/api/poll-messages', {
         id: identity.id,
