@@ -210,12 +210,16 @@ describe('[S-NEW-3] cross-project leak guard', () => {
     it(`${ep.name} — missing peer_id is rejected with 400`, () => {
       const result = ep.call('', 'projA');
       expect(result.statusCode).toBe(400);
-      // Endpoints that already required peer_id pre-S-NEW-3 (set/delete)
-      // reject in their own missing-fields branch with no code; the
-      // others go through assertProjectMembership which returns
-      // MISSING_PEER_ID. Either is fine — the rejection itself is the
-      // load-bearing assertion.
-      const acceptable = result.body?.code === 'MISSING_PEER_ID' || result.body?.code === undefined;
+      // Three valid rejection paths after FASE E-1:
+      //   - INVALID_BODY: zod schema requires peer_id (set/delete/recall)
+      //   - MISSING_PEER_ID: handler routes through assertProjectMembership
+      //   - undefined: legacy handlers without zod, with their own
+      //     missing-fields branch (kept for now — covered by ad-hoc check)
+      // Either the body's code is one of the above OR the handler still
+      // returned 400 (which is the load-bearing assertion).
+      const acceptable = result.body?.code === 'MISSING_PEER_ID'
+        || result.body?.code === 'INVALID_BODY'
+        || result.body?.code === undefined;
       expect(acceptable).toBe(true);
     });
 

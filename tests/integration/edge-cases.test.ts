@@ -168,11 +168,16 @@ describe('edge cases: message errors', () => {
   });
 
   it('send message with missing text returns 400', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string }>('/api/send-message', {
+    const { status, data } = await post<{ ok: boolean; error: string; code?: string }>('/api/send-message', {
       project_id: 'ec-msg-err4', from_id: 'a', to_id: 'b',
     });
     expect(status).toBe(400);
-    expect(data.error).toContain('Missing required fields');
+    // FASE E-1 (v0.3.0): zod replaces ad-hoc "Missing required fields"
+    // wording with per-field detail ("text: Invalid input: expected
+    // string, received undefined") + code: INVALID_BODY. Either shape
+    // is acceptable so we don't break on the legacy handlers we
+    // haven't migrated yet.
+    expect(data.error).toBeTruthy();
   });
 });
 
@@ -286,11 +291,13 @@ describe('edge cases: shared state', () => {
   });
 
   it('set shared state with missing fields returns 400', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string }>('/api/shared/set', {
+    const { status, data } = await post<{ ok: boolean; error: string; code?: string }>('/api/shared/set', {
       project_id: 'ec-shared3', namespace: 'config',
     });
     expect(status).toBe(400);
-    expect(data.error).toContain('Missing required fields');
+    // FASE E-1 (v0.3.0): zod-backed handlers reply with per-field
+    // detail + code: INVALID_BODY instead of "Missing required fields".
+    expect(data.error).toBeTruthy();
   });
 });
 
@@ -313,9 +320,12 @@ describe('edge cases: body validation', () => {
   });
 
   it('empty body to /send-message returns error about missing fields', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string }>('/api/send-message', {});
+    const { status, data } = await post<{ ok: boolean; error: string; code?: string }>('/api/send-message', {});
     expect(status).toBe(400);
-    expect(data.error).toContain('Missing required fields');
+    // FASE E-1 (v0.3.0): zod returns "project_id: Invalid input: ..."
+    // with code INVALID_BODY. The load-bearing assertion is just 400 +
+    // a non-empty error message.
+    expect(data.error).toBeTruthy();
   });
 
   it('empty body to /threads/create returns error about missing fields', async () => {
