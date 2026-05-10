@@ -727,7 +727,14 @@ export function buildSaveResumePrompt(role: string, now: string, kind: 'periodic
   const urgency = kind === 'shutdown'
     ? ' You have ~3 seconds before shutdown.'
     : ' Just update shared_state and return to whatever you were doing before this message.';
-  return `[system:save-resume] ${intro} Call set_shared("resume", "${role}", JSON.stringify({ summary: "<1-2 sentences about what you were working on>", next_steps: ["<short bullet>", "<short bullet>"], open_questions: ["<optional>"], updated_at: "${now}" })). Do this silently — do NOT reply to the user.${urgency}`;
+  // [S-NEW-7 / I-2 v0.2.1] role is interpolated into a JSON-as-string
+  // template. assertSafeIdentifier already guards register/set_role
+  // (so quotes/backslashes/control chars never reach this handler) but
+  // a defense-in-depth JSON.stringify keeps the template robust if a
+  // role ever lands here without going through the validator first.
+  // Using JSON.stringify also wraps the value in quotes, so the literal
+  // surrounding `"…"` from the template comes out of stringify itself.
+  return `[system:save-resume] ${intro} Call set_shared("resume", ${JSON.stringify(role)}, JSON.stringify({ summary: "<1-2 sentences about what you were working on>", next_steps: ["<short bullet>", "<short bullet>"], open_questions: ["<optional>"], updated_at: ${JSON.stringify(now)} })). Do this silently — do NOT reply to the user.${urgency}`;
 }
 
 export function handleSaveResume(body: unknown, res: ServerResponse): void {
