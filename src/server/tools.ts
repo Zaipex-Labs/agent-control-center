@@ -81,14 +81,17 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
 
   mcp.tool(
     'send_message',
-    'Send a message to a specific agent by ID. Use list_peers to find IDs. Optionally pass thread_id, metadata with a short topic, or attachments (previously uploaded blobs identified by hash + mime + name + size) for images or files.',
+    // FASE C-3 / M-11 (v0.3.0): `type` accepts any string. Common
+    // values: "message" (default), "question", "response",
+    // "task_request", "task_complete", "contract_update",
+    // "notification". The dashboard renders unknown values with the
+    // generic message tag, so a custom string is safe — we just lose
+    // the per-type color chip in the UI.
+    'Send a message to a specific agent by ID. Use list_peers to find IDs. Optionally pass thread_id, metadata with a short topic, or attachments (previously uploaded blobs identified by hash + mime + name + size) for images or files. `type` is an optional string tag; common values: "message" (default), "question", "response", "task_request", "task_complete".',
     {
       to_id: z.string(),
       text: z.string(),
-      type: z.enum([
-        'message', 'question', 'response', 'contract_update',
-        'notification', 'task_request', 'task_complete',
-      ]).optional(),
+      type: z.string().optional(),
       thread_id: z.string().optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
       attachments: z.array(attachmentSchema).optional(),
@@ -112,14 +115,11 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
 
   mcp.tool(
     'send_to_role',
-    'Broadcast a message to all agents with a given role (e.g. "backend", "frontend"). No need to know their IDs. Optionally pass thread_id, metadata with a short topic, or attachments (previously uploaded blobs).',
+    'Broadcast a message to all agents with a given role (e.g. "backend", "frontend"). No need to know their IDs. Optionally pass thread_id, metadata with a short topic, or attachments (previously uploaded blobs). `type` is an optional string tag; common values: "message" (default), "question", "response", "task_request", "task_complete".',
     {
       role: z.string(),
       text: z.string(),
-      type: z.enum([
-        'message', 'question', 'response', 'contract_update',
-        'notification', 'task_request', 'task_complete',
-      ]).optional(),
+      type: z.string().optional(),
       thread_id: z.string().optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
       attachments: z.array(attachmentSchema).optional(),
@@ -161,13 +161,10 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
 
   mcp.tool(
     'get_history',
-    'Get conversation history for this project. Optionally filter by role, message type, thread_id, or limit.',
+    'Get conversation history for this project. Optionally filter by role, message type (any string used as a tag, e.g. "question" or "task_request"), thread_id, or limit.',
     {
       role: z.string().optional(),
-      type: z.enum([
-        'message', 'question', 'response', 'contract_update',
-        'notification', 'task_request', 'task_complete',
-      ]).optional(),
+      type: z.string().optional(),
       limit: z.number().optional(),
       thread_id: z.string().optional(),
     },
