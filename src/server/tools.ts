@@ -200,7 +200,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
       // either the agent forgot and shipped an object that the SDK
       // refused, or it stringified twice and broke downstream
       // consumers.
-      value: z.union([z.string(), z.record(z.unknown())]),
+      value: z.union([z.string(), z.record(z.string(), z.unknown())]),
     },
     async (args) => {
       const value = typeof args.value === 'string'
