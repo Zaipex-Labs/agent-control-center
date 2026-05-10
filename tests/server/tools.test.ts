@@ -82,6 +82,7 @@ describe('registerTools — registration', () => {
       'get_thread_context',
       'list_peers',
       'list_shared',
+      'recall',
       'send_message',
       'send_to_role',
       'set_role',
@@ -376,5 +377,43 @@ describe('identity tools', () => {
       id: 'agent-1',
       role: 'qa',
     });
+  });
+});
+
+// FASE A-2 (v0.3.0): recall MCP tool
+describe('recall', () => {
+  it('forwards the query (and optional limit) to /api/decisions/recall', async () => {
+    nextResponse = { matches: [] };
+    const tools = setup();
+    await tools.get('recall')!.handler({ query: 'esm' });
+    expect(brokerCalls[0]!.path).toBe('/api/decisions/recall');
+    expect(brokerCalls[0]!.body).toMatchObject({
+      project_id: 'proj-x',
+      peer_id: 'agent-1',
+      query: 'esm',
+    });
+    // limit is optional — when omitted, it should not be forced
+    expect((brokerCalls[0]!.body as any).limit).toBeUndefined();
+  });
+
+  it('passes through a custom limit', async () => {
+    nextResponse = { matches: [] };
+    const tools = setup();
+    await tools.get('recall')!.handler({ query: 'auth', limit: 3 });
+    expect((brokerCalls[0]!.body as any).limit).toBe(3);
+  });
+
+  it('returns the broker matches as JSON in the content text', async () => {
+    nextResponse = {
+      matches: [
+        { key: 'use-esm', value: 'we use esm', author_role: 'backend', score: 1.0 },
+      ],
+    };
+    const tools = setup();
+    const result = await tools.get('recall')!.handler({ query: 'esm' });
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].key).toBe('use-esm');
+    expect(parsed[0].author_role).toBe('backend');
   });
 });

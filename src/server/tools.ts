@@ -258,6 +258,32 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
     },
   );
 
+  // ── Team memory ────────────────────────────────────────────
+
+  // FASE A-2 (v0.3.0): recall over the reserved `decisions`
+  // namespace. Cheap fuzzy match (LIKE + length-normalized scoring),
+  // project-scoped on the broker side. Useful before asking the team
+  // a question that may already have been decided.
+  mcp.tool(
+    'recall',
+    'Search this team\'s past decisions before asking a question. Fuzzy-matches a query over keys and values in the project\'s `decisions` namespace and returns the top matches. Use it whenever you are about to ask about an architectural choice, a contract, or "how do we…" — there\'s probably already a decision.',
+    {
+      query: z.string().min(2),
+      limit: z.number().int().min(1).max(20).optional(),
+    },
+    async (args) => {
+      const resp = await brokerFetch<{ matches: unknown[] }>('/api/decisions/recall', {
+        project_id: identity.project_id,
+        peer_id: identity.id,
+        query: args.query,
+        limit: args.limit,
+      });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(resp.matches, null, 2) }],
+      };
+    },
+  );
+
   // [M-4] Expose delete_shared so agents can clean up entries in
   // namespaces that grow forever (e.g. "files" — the dashboard work-
   // desk panel). The broker handler already exists

@@ -37,6 +37,7 @@ import {
   handleSharedGet,
   handleSharedList,
   handleSharedDelete,
+  handleDecisionsRecall,
   handleCreateThread,
   handleListThreads,
   handleGetThread,
@@ -78,6 +79,7 @@ const POST_ROUTES: Record<string, PostHandler> = {
   '/api/shared/get': handleSharedGet,
   '/api/shared/list': handleSharedList,
   '/api/shared/delete': handleSharedDelete,
+  '/api/decisions/recall': handleDecisionsRecall,
   '/api/threads/create': handleCreateThread,
   '/api/threads/list': handleListThreads,
   '/api/threads/get': handleGetThread,
@@ -109,6 +111,7 @@ const ROUTE_BODY_LIMITS: Record<string, number> = {
   '/api/set-role': 1024,
   '/api/csrf/issue': 1024,
   '/api/list-peers': 1024,
+  '/api/decisions/recall': 4 * 1024,        // ids + short query + limit
 };
 
 const MIME_TYPES: Record<string, string> = {

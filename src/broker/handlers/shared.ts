@@ -15,6 +15,7 @@ import {
   listSharedKeys,
   deleteSharedState,
   selectPeerById,
+  searchDecisions,
 } from '../database.js';
 import type {
   SharedSetRequest,
@@ -96,6 +97,35 @@ export function handleSharedList(body: unknown, res: ServerResponse): void {
   if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
   json(res, { keys: listSharedKeys(b.project_id, b.namespace) });
+}
+
+// FASE A-2 (v0.3.0): recall over the reserved `decisions` namespace.
+// Project-scoped via assertProjectMembership (same gate as the rest of
+// shared/*). Limit defaults to 5, capped at 20 — recall is meant to
+// surface a handful of relevant items, not a full-text search engine.
+export const RECALL_DEFAULT_LIMIT = 5;
+export const RECALL_MAX_LIMIT = 20;
+
+export function handleDecisionsRecall(body: unknown, res: ServerResponse): void {
+  const b = body as { project_id?: string; peer_id?: string; query?: string; limit?: number };
+  if (!b.project_id || !b.peer_id || !b.query) {
+    return error(res, 'Missing required fields: project_id, peer_id, query');
+  }
+  if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
+
+  const requested = typeof b.limit === 'number' && b.limit > 0 ? b.limit : RECALL_DEFAULT_LIMIT;
+  const limit = Math.min(requested, RECALL_MAX_LIMIT);
+
+  // Trim and bound the query — empty or single-char queries would
+  // match nearly every row, which defeats the purpose. The handler
+  // pretends nothing matched in that case.
+  const query = b.query.trim();
+  if (query.length < 2) {
+    return json(res, { matches: [] });
+  }
+
+  const matches = searchDecisions(b.project_id, DECISIONS_NAMESPACE, query, limit);
+  json(res, { matches });
 }
 
 export function handleSharedDelete(body: unknown, res: ServerResponse): void {

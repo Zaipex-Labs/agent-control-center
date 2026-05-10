@@ -34,6 +34,10 @@ export {
   handleSharedGet,
   handleSharedList,
   handleSharedDelete,
+  handleDecisionsRecall,
+  DECISIONS_NAMESPACE,
+  RECALL_DEFAULT_LIMIT,
+  RECALL_MAX_LIMIT,
 } from './shared.js';
 
 export {
