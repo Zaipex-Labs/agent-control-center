@@ -19,6 +19,7 @@ import { storeBlob, getBlob, deleteBlobFile, listBlobFilesOnDisk, MAX_BLOB_SIZE 
 import { addBlobRef, releaseBlobRefsForProject, getAllBlobRefCounts, blobBelongsToProject } from './blob-refs.js';
 import { serializeAttachments, type Attachment } from '../shared/attachments.js';
 import { assertSafeIdentifier } from '../shared/validate.js';
+import { issueToken as issueCsrfToken } from './csrf-tokens.js';
 import type {
   RegisterRequest,
   HeartbeatRequest,
@@ -923,6 +924,43 @@ export function handleSetSummary(body: unknown, res: ServerResponse): void {
 
   updateSummary(b.id, b.summary);
   json(res, { ok: true });
+}
+
+// One-shot CSRF token for /ws/terminal/<role> [F-3]. Closes the residual
+// S-NEW-2 cross-port caveat: the Origin gate alone admits a malicious
+// dev server on http://127.0.0.1:<other-port> because its Origin matches
+// the localhost regex. Requiring a token bound to (project, role) and
+// keyed off a registered peer_id stops cross-port attackers, who cannot
+// read the dashboard's localStorage and therefore have no peer_id to
+// trade for a token.
+export function handleCsrfIssue(body: unknown, res: ServerResponse): void {
+  const b = body as { peer_id?: string; project_id?: string; role?: string };
+  if (!b.peer_id || !b.project_id || !b.role) {
+    return error(res, 'Missing required fields: peer_id, project_id, role');
+  }
+  if (!validateIdentifiers(res, { name: 'role', value: b.role })) return;
+
+  // Membership check: the requester must be a peer registered in this
+  // project. A cross-port attacker has no way to manufacture a peer_id
+  // because /api/register requires the same Origin gate AND the
+  // dashboard's persisted peer_id lives in its own origin's localStorage.
+  const peer = selectPeerById(b.peer_id);
+  if (!peer || peer.project_id !== b.project_id) {
+    return error(res, 'Forbidden', 403);
+  }
+
+  // Defense-in-depth: only emit a token if the target role actually
+  // exists as a live agent in this project. This avoids handing out
+  // tokens for ghost roles and keeps the failure mode aligned with the
+  // 503 already returned by handleTerminalUpgrade.
+  const peers = selectPeersByProject(b.project_id);
+  const target = peers.find(p => p.role === b.role && p.agent_type !== 'dashboard');
+  if (!target) {
+    return error(res, 'No agent found for role', 404);
+  }
+
+  const token = issueCsrfToken(b.project_id, b.role);
+  json(res, { ok: true, token });
 }
 
 export function handleSetRole(body: unknown, res: ServerResponse): void {

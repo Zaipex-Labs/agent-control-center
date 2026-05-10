@@ -16,6 +16,7 @@ import { URL } from 'node:url';
 import { handleEventsUpgrade, closeAllEventsClients } from './websocket.js';
 import { handleTerminalUpgrade, killAllWebAgentsEverywhere, closeAllTerminalClients } from './terminal.js';
 import { isAllowedHost, isAllowedOrigin, isJsonContentType } from './origin.js';
+import { startTokenCleanup, stopTokenCleanup } from './csrf-tokens.js';
 import {
   parseBody,
   handleHealth,
@@ -24,6 +25,7 @@ import {
   handleUnregister,
   handleSetSummary,
   handleSetRole,
+  handleCsrfIssue,
   handleListPeers,
   handleSendMessage,
   handleSendToRole,
@@ -64,6 +66,7 @@ const POST_ROUTES: Record<string, PostHandler> = {
   '/api/unregister': handleUnregister,
   '/api/set-summary': handleSetSummary,
   '/api/set-role': handleSetRole,
+  '/api/csrf/issue': handleCsrfIssue,
   '/api/list-peers': handleListPeers,
   '/api/send-message': handleSendMessage,
   '/api/send-to-role': handleSendToRole,
@@ -136,6 +139,10 @@ export function createBrokerServer(): Server {
     }
   }, CLEANUP_INTERVAL_MS);
   cleanupInterval.unref();
+
+  // CSRF token cleanup [F-3]: purge expired one-shot tokens issued for
+  // /ws/terminal upgrades. Idempotent — safe to call repeatedly.
+  startTokenCleanup();
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = req.url ?? '/';
@@ -309,6 +316,7 @@ export function shutdownBroker(server: Server, label: string): Promise<void> {
   shutdownRunning = true;
   console.error(`[broker:lifecycle] ${label} — terminals → agents → events → http → db`);
   return new Promise<void>((resolve) => {
+    try { stopTokenCleanup(); } catch (e) { console.error('[broker:lifecycle] stopTokenCleanup', e); }
     try {
       const closedTerm = closeAllTerminalClients();
       if (closedTerm > 0) console.error(`[broker:lifecycle] closed ${closedTerm} terminal WS client(s)`);
