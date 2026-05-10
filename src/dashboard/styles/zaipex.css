@@ -184,9 +184,12 @@ code, pre {
  * illustration alongside the info column — it gets hidden, info goes
  * full width. Stops badge truncation ("INACTIVO" → "IM") and overflow.
  *
- * ProjectPage's top nav stacks the title + action buttons below the
- * back link with reduced padding so the controls don't fight the
- * project name for horizontal space.
+ * [UX-7 / FU-6 v0.2.4] ProjectPage's top nav stacks in a column on
+ * narrow viewports. Pre-v0.2.5 only had flex-wrap, which still squeezed
+ * the project title + back button + actions onto one row at 390px and
+ * truncated text. Now: column-direction places back-link first, then
+ * the project title, then the action row — each gets full width.
+ * Padding shrinks to 6/12 to claw back vertical space.
  */
 @media (max-width: 768px) {
   .project-card-illustration {
@@ -197,15 +200,22 @@ code, pre {
     padding: 20px !important;
   }
   .project-page-nav {
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch !important;
     height: auto !important;
-    padding: 8px 12px !important;
-    gap: 8px;
+    padding: 6px 12px !important;
+    gap: 6px;
+  }
+  .project-page-nav > span {
+    /* Project title — center under the back link instead of being
+     * shoved to one side by space-between. */
+    text-align: center;
   }
   .project-page-nav-actions {
     flex-wrap: wrap;
-    flex-basis: 100%;
-    justify-content: flex-end;
+    width: 100%;
+    justify-content: center !important;
+    gap: 6px !important;
   }
 }
 

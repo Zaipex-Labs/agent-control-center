@@ -38,7 +38,9 @@ export function useMessages(
   const [waitingFor, setWaitingFor] = useState<WaitingReply | null>(null);
   const [sendError, setSendError] = useState<SendError | null>(null);
   const [lastSend, setLastSend] = useState<{ toRole: string; text: string; type: MessageType } | null>(null);
-  const waitingTimeout = useRef<ReturnType<typeof setTimeout>>();
+  // [Q-10] @types/react@19 removed the no-arg useRef overload; pass an
+  // explicit `undefined` and widen the generic so undefined is allowed.
+  const waitingTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const { lastEvent } = useWebSocket(projectId);
 
   // Keep senderId in a ref so doSend can wait for it to be ready after a
@@ -47,19 +49,23 @@ export function useMessages(
   const senderIdRef = useRef(senderId);
   senderIdRef.current = senderId;
 
-  // Initial fetch
+  // Initial fetch — needs senderId for the [S-NEW-3] cross-project gate
   useEffect(() => {
     if (!projectId) {
       setMessages([]);
       setLoading(false);
       return;
     }
+    if (!senderId) {
+      // Wait for the dashboard peer to register before pulling history.
+      return;
+    }
     setLoading(true);
-    getHistory(projectId, threadId, 100)
+    getHistory(projectId, senderId, threadId, 100)
       .then((msgs) => setMessages(msgs.reverse()))
       .catch(() => setMessages([]))
       .finally(() => setLoading(false));
-  }, [projectId, threadId]);
+  }, [projectId, senderId, threadId]);
 
   // Real-time: append new messages from WebSocket
   useEffect(() => {

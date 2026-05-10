@@ -215,16 +215,23 @@ describe('edge cases: threads', () => {
   });
 
   it('get thread that does not exist returns 404', async () => {
+    // [S-NEW-3/8] requires registered peer + non-empty project_id
+    const reg = await post<{ id: string }>('/api/register', {
+      pid: process.pid, cwd: '/t', role: 'agent', project_id: 'ec-thread-get',
+    });
     const { status, data } = await post<{ ok: boolean; error: string }>('/api/threads/get', {
-      thread_id: 'nonexistent-thread-id',
+      project_id: 'ec-thread-get', thread_id: 'nonexistent-thread-id', peer_id: reg.data.id,
     });
     expect(status).toBe(404);
     expect(data.error).toContain('Thread not found');
   });
 
   it('update thread that does not exist returns 404', async () => {
+    const reg = await post<{ id: string }>('/api/register', {
+      pid: process.pid, cwd: '/t', role: 'agent', project_id: 'ec-thread-upd',
+    });
     const { status, data } = await post<{ ok: boolean; error: string }>('/api/threads/update', {
-      thread_id: 'nonexistent-thread-id', name: 'New Name',
+      project_id: 'ec-thread-upd', thread_id: 'nonexistent-thread-id', name: 'New Name', peer_id: reg.data.id,
     });
     expect(status).toBe(404);
     expect(data.error).toContain('Thread not found');
@@ -239,11 +246,14 @@ describe('edge cases: threads', () => {
   });
 
   it('thread summary with no messages returns "(no messages yet)"', async () => {
+    const reg = await post<{ id: string }>('/api/register', {
+      pid: process.pid, cwd: '/t', role: 'agent', project_id: 'ec-thread4',
+    });
     const thread = await post<{ id: string }>('/api/threads/create', {
-      project_id: 'ec-thread4', created_by: 'peer-1', name: 'Empty Thread',
+      project_id: 'ec-thread4', created_by: reg.data.id, name: 'Empty Thread',
     });
     const { status, data } = await post<{ summary: string }>('/api/threads/summary', {
-      thread_id: thread.data.id,
+      project_id: 'ec-thread4', thread_id: thread.data.id, peer_id: reg.data.id,
     });
     expect(status).toBe(200);
     expect(data.summary).toContain('(no messages yet)');
@@ -254,16 +264,22 @@ describe('edge cases: threads', () => {
 
 describe('edge cases: shared state', () => {
   it('get nonexistent key returns 404 with error "not found"', async () => {
+    const reg = await post<{ id: string }>('/api/register', {
+      pid: process.pid, cwd: '/t', role: 'agent', project_id: 'ec-shared1',
+    });
     const { status, data } = await post<{ error: string }>('/api/shared/get', {
-      project_id: 'ec-shared1', namespace: 'config', key: 'does-not-exist',
+      project_id: 'ec-shared1', namespace: 'config', key: 'does-not-exist', peer_id: reg.data.id,
     });
     expect(status).toBe(404);
     expect(data.error).toBe('not found');
   });
 
   it('delete nonexistent key returns ok: true (idempotent)', async () => {
+    const reg = await post<{ id: string }>('/api/register', {
+      pid: process.pid, cwd: '/t', role: 'agent', project_id: 'ec-shared2',
+    });
     const { status, data } = await post<{ ok: boolean }>('/api/shared/delete', {
-      project_id: 'ec-shared2', namespace: 'config', key: 'does-not-exist', peer_id: 'p1',
+      project_id: 'ec-shared2', namespace: 'config', key: 'does-not-exist', peer_id: reg.data.id,
     });
     expect(status).toBe(200);
     expect(data.ok).toBe(true);
@@ -406,7 +422,7 @@ describe('edge cases: cross-project isolation', () => {
 
     // Get history for project A filtered by thread_id — should have 1 message
     const histA = await post<{ messages: Array<{ text: string; project_id: string }> }>('/api/get-history', {
-      project_id: projA, thread_id: threadId,
+      project_id: projA, thread_id: threadId, peer_id: peerA1.data.id,
     });
     expect(histA.data.messages.length).toBeGreaterThanOrEqual(1);
     const textsA = histA.data.messages.map(m => m.text);
@@ -414,7 +430,7 @@ describe('edge cases: cross-project isolation', () => {
 
     // Get history for project B filtered by thread_id — should only have the project B message
     const histB = await post<{ messages: Array<{ text: string; project_id: string }> }>('/api/get-history', {
-      project_id: projB, thread_id: threadId,
+      project_id: projB, thread_id: threadId, peer_id: peerB1.data.id,
     });
     const textsB = histB.data.messages.map(m => m.text);
     expect(textsB).not.toContain('Let us design the API');

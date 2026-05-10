@@ -174,6 +174,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
     async (args) => {
       const resp = await brokerFetch<GetHistoryResponse>('/api/get-history', {
         project_id: identity.project_id,
+        peer_id: identity.id,
         role: args.role,
         type: args.type,
         limit: args.limit,
@@ -229,6 +230,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
     async (args) => {
       const resp = await brokerFetch<SharedGetResponse | { error: string }>('/api/shared/get', {
         project_id: identity.project_id,
+        peer_id: identity.id,
         namespace: args.namespace,
         key: args.key,
       });
@@ -247,6 +249,7 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
     async (args) => {
       const resp = await brokerFetch<SharedListResponse>('/api/shared/list', {
         project_id: identity.project_id,
+        peer_id: identity.id,
         namespace: args.namespace,
       });
       return {
@@ -290,6 +293,8 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
     },
     async (args) => {
       const resp = await brokerFetch<ThreadSummaryResponse>('/api/threads/summary', {
+        project_id: identity.project_id,
+        peer_id: identity.id,
         thread_id: args.thread_id,
       });
       return {

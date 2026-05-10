@@ -4,8 +4,8 @@
 
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse, Server } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { join, extname, dirname } from 'node:path';
+import { readFile, realpath } from 'node:fs/promises';
+import { join, extname, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ACC_HOST, ACC_PORT, CLEANUP_INTERVAL_MS } from '../shared/config.js';
 import { t, getLang } from '../shared/i18n/index.js';
@@ -19,6 +19,8 @@ import { isAllowedHost, isAllowedOrigin, isJsonContentType } from './origin.js';
 import { startTokenCleanup, stopTokenCleanup } from './csrf-tokens.js';
 import {
   parseBody,
+  BodyTooLargeError,
+  DEFAULT_MAX_BODY_SIZE,
   handleHealth,
   handleRegister,
   handleHeartbeat,
@@ -91,6 +93,22 @@ const POST_ROUTES: Record<string, PostHandler> = {
   '/api/project/save-resume': handleSaveResume,
   '/api/project/modified-files': handleListModifiedFiles,
   '/api/threads/delete': handleDeleteThread,
+};
+
+// [P-11] Per-route body caps. The previous global 1 MB ceiling was
+// 1000× larger than what /api/heartbeat or /api/poll-messages need
+// (their bodies are tiny JSON objects), making the broker more open
+// than necessary to slow-loris / large-body DoS. Routes that need
+// more (shared/set, send-message with attachments) keep the 1 MB
+// default. Anything not in this map uses DEFAULT_MAX_BODY_SIZE.
+const ROUTE_BODY_LIMITS: Record<string, number> = {
+  '/api/heartbeat': 1024,                  // ~24 bytes in practice
+  '/api/poll-messages': 4 * 1024,           // peer id + small filters
+  '/api/unregister': 1024,
+  '/api/set-summary': 16 * 1024,            // user-typed text, capped soft
+  '/api/set-role': 1024,
+  '/api/csrf/issue': 1024,
+  '/api/list-peers': 1024,
 };
 
 const MIME_TYPES: Record<string, string> = {
@@ -174,7 +192,10 @@ export function createBrokerServer(): Server {
     }
 
     if (method === 'GET' && url === '/api/projects') {
-      return handleListProjects(res);
+      // [P-2] now async; await so any thrown error is caught here
+      // rather than becoming an unhandled rejection.
+      await handleListProjects(res);
+      return;
     }
 
     if (method === 'GET' && url === '/api/lang') {
@@ -213,11 +234,24 @@ export function createBrokerServer(): Server {
           res.end(JSON.stringify({ ok: false, error: 'Content-Type must be application/json' }));
           return;
         }
+        // [P-11] per-route body cap; default for routes not in the
+        // map is the global 1 MB.
+        const bodyLimit = ROUTE_BODY_LIMITS[url] ?? DEFAULT_MAX_BODY_SIZE;
         try {
-          const body = await parseBody(req);
+          const body = await parseBody(req, bodyLimit);
           await handler(body, res);
           return;
-        } catch {
+        } catch (e) {
+          if (e instanceof BodyTooLargeError) {
+            res.writeHead(413, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              ok: false,
+              error: e.message,
+              code: 'BODY_TOO_LARGE',
+              limit: e.limit,
+            }));
+            return;
+          }
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'Invalid JSON body' }));
           return;
@@ -240,33 +274,51 @@ export function createBrokerServer(): Server {
 
     // Static file serving for dashboard (SPA fallback)
     if (method === 'GET') {
-      const safePath = pathOnly.replace(/\.\./g, '');
-      const filePath = safePath === '/' ? '/index.html' : safePath;
+      // [S-NEW-5 / L-7] resolve the requested path and require it to
+      // live under DASHBOARD_DIR after symlinks resolve. The previous
+      // `safePath.replace(/\.\./g, '')` left `....//` intact (`....//`
+      // → `..//`) and didn't catch symlinks at all.
+      const filePath = pathOnly === '/' ? '/index.html' : pathOnly;
       const fullPath = join(DASHBOARD_DIR, filePath);
-
+      const dashboardBase = await realpath(DASHBOARD_DIR).catch(() => DASHBOARD_DIR);
+      let resolved: string | null = null;
       try {
-        const content = await readFile(fullPath);
-        const ext = extname(filePath);
-        const headers: Record<string, string> = {
-          'Content-Type': MIME_TYPES[ext] ?? 'application/octet-stream',
-        };
-        // Vite hashed assets get long cache
-        if (safePath.startsWith('/assets/')) {
-          headers['Cache-Control'] = 'public, max-age=31536000, immutable';
-        }
-        res.writeHead(200, headers);
-        res.end(content);
-        return;
+        resolved = await realpath(fullPath);
       } catch {
-        // File not found — SPA fallback to index.html
+        // Fall through — handled by the SPA fallback below.
+      }
+      const insideDashboard =
+        resolved !== null &&
+        (resolved === dashboardBase || resolved.startsWith(dashboardBase + sep));
+
+      if (insideDashboard) {
         try {
-          const indexContent = await readFile(join(DASHBOARD_DIR, 'index.html'));
-          res.writeHead(200, { 'Content-Type': 'text/html' });
-          res.end(indexContent);
+          const content = await readFile(resolved!);
+          const ext = extname(filePath);
+          const headers: Record<string, string> = {
+            'Content-Type': MIME_TYPES[ext] ?? 'application/octet-stream',
+          };
+          // Vite hashed assets get long cache
+          if (pathOnly.startsWith('/assets/')) {
+            headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+          }
+          res.writeHead(200, headers);
+          res.end(content);
           return;
         } catch {
-          // Dashboard not built yet
+          // Fall through to SPA fallback.
         }
+      }
+
+      // SPA fallback — index.html. Always served from inside DASHBOARD_DIR
+      // (no traversal possible) so it doesn't need the realpath dance.
+      try {
+        const indexContent = await readFile(join(DASHBOARD_DIR, 'index.html'));
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(indexContent);
+        return;
+      } catch {
+        // Dashboard not built yet
       }
     }
 
@@ -354,7 +406,24 @@ export function shutdownBroker(server: Server, label: string): Promise<void> {
   });
 }
 
+// [F-4 v0.2.3 / FU-5 v0.2.4] Track which servers already had handlers
+// installed so a second installLifecycleHandlers(server) call is a
+// no-op. Without this, accumulating signal listeners on hot reload
+// would (a) trip Node's MaxListenersExceededWarning after ~10 reloads
+// and (b) run the lifecycle path N times in parallel on a single
+// SIGTERM. The WeakSet means servers don't keep themselves alive past
+// their natural GC.
+const lifecycleInstalledFor = new WeakSet<Server>();
+// Test-only hook so the idempotency-suite can verify "second call is a
+// no-op" without holding the WeakSet entry across cases.
+export function _resetLifecycleHandlersForTests(server: Server): void {
+  lifecycleInstalledFor.delete(server);
+}
+
 export function installLifecycleHandlers(server: Server): void {
+  if (lifecycleInstalledFor.has(server)) return;
+  lifecycleInstalledFor.add(server);
+
   const onSignal = (sig: NodeJS.Signals): void => {
     void shutdownBroker(server, `received ${sig}`).then(() => process.exit(0));
   };

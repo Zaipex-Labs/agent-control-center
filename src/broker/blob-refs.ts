@@ -62,6 +62,33 @@ export function releaseBlobRefsForMessage(messageId: number): string[] {
 }
 
 /**
+ * [S-NEW-9] Release every blob_ref owned by messages in a thread, scoped
+ * to a project so a forged thread_id from another project can't drop
+ * unrelated rows. Called by handleDeleteThread before the thread row
+ * itself is removed.
+ */
+export function releaseBlobRefsForThread(projectId: string, threadId: string): string[] {
+  const db = getDb();
+  const candidates = db.prepare(`
+    SELECT DISTINCT br.blob_hash AS blob_hash
+    FROM blob_refs br
+    JOIN messages m ON m.id = br.message_id
+    WHERE m.project_id = ? AND m.thread_id = ?
+  `).all(projectId, threadId) as Array<{ blob_hash: string }>;
+  db.prepare(`
+    DELETE FROM blob_refs
+    WHERE message_id IN (
+      SELECT id FROM messages WHERE project_id = ? AND thread_id = ?
+    )
+  `).run(projectId, threadId);
+  const orphans: string[] = [];
+  for (const c of candidates) {
+    if (countBlobRefs(c.blob_hash) === 0) orphans.push(c.blob_hash);
+  }
+  return orphans;
+}
+
+/**
  * [H-2] — returns true iff at least one row in blob_refs links the blob
  * to the project. Used by the download ACL so a peer can only fetch
  * blobs that live inside its project.

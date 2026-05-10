@@ -107,6 +107,7 @@ describe('attachments round-trip', () => {
     // 4. read history, confirm attachment survived metadata round-trip
     const hist = await post<{ messages: Array<{ text: string; metadata: string | null }> }>('/api/get-history', {
       project_id: 'demo',
+      peer_id: a.id,
       limit: 10,
     });
     expect(hist.messages.length).toBe(1);

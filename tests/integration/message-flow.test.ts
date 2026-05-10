@@ -144,6 +144,7 @@ describe('message flow integration', () => {
 
     const hist = await post<{ messages: Array<{ text: string; from_role: string; to_role: string }> }>('/api/get-history', {
       project_id: projId,
+      peer_id: a.data.id,
     });
     expect(hist.data.messages).toHaveLength(3);
   });
@@ -161,6 +162,7 @@ describe('message flow integration', () => {
     // Filter by "devops" — should see C→B (from) and A→C (to)
     const hist = await post<{ messages: Array<{ text: string }> }>('/api/get-history', {
       project_id: projId,
+      peer_id: a.data.id,
       role: 'devops',
     });
     expect(hist.data.messages).toHaveLength(2);
@@ -177,6 +179,7 @@ describe('message flow integration', () => {
 
     const hist = await post<{ messages: unknown[] }>('/api/get-history', {
       project_id: projId,
+      peer_id: a.data.id,
       limit: 3,
     });
     expect(hist.data.messages).toHaveLength(3);

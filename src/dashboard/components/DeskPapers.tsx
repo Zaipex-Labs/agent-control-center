@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { listModifiedFiles, listSharedKeys, getSharedState, type ModifiedFile } from '../lib/api';
 import { t } from '../../shared/i18n/browser';
+import { useCurrentPeerId } from '../hooks/useDashboardPeer';
 
 // Extension palette — mirrors the reference mock.
 const EXT_STYLES: Record<string, { bg: string; fg: string }> = {
@@ -58,6 +59,7 @@ export default function DeskPapers({ projectId, refreshKey, onOpenPath }: DeskPa
   const [toast, setToast] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFired = useRef(false);
+  const peerId = useCurrentPeerId();
 
   // Clamp the page index when the papers list shrinks.
   useEffect(() => {
@@ -81,20 +83,22 @@ export default function DeskPapers({ projectId, refreshKey, onOpenPath }: DeskPa
   };
 
   useEffect(() => {
+    if (!peerId) return;
     let cancelled = false;
 
     const load = async () => {
+      if (!peerId) return;
       try {
         const [gitFiles, sharedKeys] = await Promise.all([
-          listModifiedFiles(projectId).catch(() => [] as ModifiedFile[]),
-          listSharedKeys(projectId, 'files').catch(() => [] as string[]),
+          listModifiedFiles(projectId, peerId).catch(() => [] as ModifiedFile[]),
+          listSharedKeys(projectId, peerId, 'files').catch(() => [] as string[]),
         ]);
 
         // Fetch all shared-state notes in parallel.
         const notesList = await Promise.all(
           sharedKeys.map(async (key) => {
             try {
-              const entry = await getSharedState(projectId, 'files', key);
+              const entry = await getSharedState(projectId, peerId, 'files', key);
               let parsed: { note?: string; agent?: string } = {};
               try { parsed = JSON.parse(entry.value); } catch { parsed = { note: entry.value }; }
               return { key, note: parsed.note ?? '', agent: parsed.agent ?? entry.updated_by };
@@ -133,7 +137,7 @@ export default function DeskPapers({ projectId, refreshKey, onOpenPath }: DeskPa
     load();
     const interval = setInterval(load, 12_000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [projectId, refreshKey]);
+  }, [projectId, peerId, refreshKey]);
 
   if (papers === null) {
     return (

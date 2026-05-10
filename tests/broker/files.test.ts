@@ -30,42 +30,42 @@ describe('gitModifiedFiles', () => {
     rmSync(notRepo, { recursive: true, force: true });
   });
 
-  it('returns empty array on empty cwd', () => {
-    expect(gitModifiedFiles('')).toEqual([]);
+  it('returns empty array on empty cwd', async () => {
+    expect(await gitModifiedFiles('')).toEqual([]);
   });
 
-  it('returns empty array when cwd does not exist', () => {
-    expect(gitModifiedFiles('/definitely/does/not/exist/xyz')).toEqual([]);
+  it('returns empty array when cwd does not exist', async () => {
+    expect(await gitModifiedFiles('/definitely/does/not/exist/xyz')).toEqual([]);
   });
 
-  it('returns empty array for a non-git directory', () => {
-    expect(gitModifiedFiles(notRepo)).toEqual([]);
+  it('returns empty array for a non-git directory', async () => {
+    expect(await gitModifiedFiles(notRepo)).toEqual([]);
   });
 
-  it('returns empty array when repo is clean', () => {
-    expect(gitModifiedFiles(repo)).toEqual([]);
+  it('returns empty array when repo is clean', async () => {
+    expect(await gitModifiedFiles(repo)).toEqual([]);
   });
 
-  it('detects untracked files', () => {
+  it('detects untracked files', async () => {
     writeFileSync(join(repo, 'untracked.txt'), 'new\n');
-    const entries = gitModifiedFiles(repo);
+    const entries = await gitModifiedFiles(repo);
     const found = entries.find(e => e.path === 'untracked.txt');
     expect(found).toBeDefined();
     expect(found!.status).toBe('??');
   });
 
-  it('detects modified tracked files', () => {
+  it('detects modified tracked files', async () => {
     writeFileSync(join(repo, 'a.txt'), 'changed\n');
-    const entries = gitModifiedFiles(repo);
+    const entries = await gitModifiedFiles(repo);
     const found = entries.find(e => e.path === 'a.txt');
     expect(found).toBeDefined();
     expect(found!.status.trim()).toBe('M');
   });
 
-  it('detects files in subdirectories', () => {
+  it('detects files in subdirectories', async () => {
     mkdirSync(join(repo, 'sub'), { recursive: true });
     writeFileSync(join(repo, 'sub', 'nested.txt'), 'x\n');
-    const entries = gitModifiedFiles(repo);
+    const entries = await gitModifiedFiles(repo);
     // Git porcelain output may list either the individual file or the
     // whole directory ("sub/") when the dir is entirely new. Accept both.
     expect(
@@ -73,12 +73,32 @@ describe('gitModifiedFiles', () => {
     ).toBe(true);
   });
 
-  it('returns GitFileEntry objects with path and status', () => {
-    const entries = gitModifiedFiles(repo);
+  it('returns GitFileEntry objects with path and status', async () => {
+    const entries = await gitModifiedFiles(repo);
     for (const e of entries) {
       expect(typeof e.path).toBe('string');
       expect(typeof e.status).toBe('string');
       expect(e.status).toHaveLength(2);
+    }
+  });
+
+  // [P-3] fans out one git-status spawn per agent in parallel — pin the
+  // contract that calling gitModifiedFiles N times concurrently still
+  // returns N independent results (no shared state, no cross-talk).
+  it('runs concurrently for multiple cwds (P-3)', async () => {
+    const repo2 = mkdtempSync(join(tmpdir(), 'acc-files-repo2-'));
+    try {
+      execSync('git init -q', { cwd: repo2 });
+      writeFileSync(join(repo2, 'b.txt'), 'b\n');
+      // Running two queries in parallel must not deadlock or mix results.
+      const [a, b] = await Promise.all([
+        gitModifiedFiles(repo),
+        gitModifiedFiles(repo2),
+      ]);
+      expect(Array.isArray(a)).toBe(true);
+      expect(Array.isArray(b)).toBe(true);
+    } finally {
+      rmSync(repo2, { recursive: true, force: true });
     }
   });
 });

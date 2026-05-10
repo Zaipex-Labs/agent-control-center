@@ -17,8 +17,9 @@ export function useCurrentPeerId(): string | undefined {
 
 export function useDashboardPeer(projectId: string | undefined): string | undefined {
   const [peerId, setPeerId] = useState<string>();
-  const idRef = useRef<string>();
-  const heartbeatRef = useRef<ReturnType<typeof setInterval>>();
+  // [Q-10] @types/react@19 removed the no-arg useRef overload.
+  const idRef = useRef<string | undefined>(undefined);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const projectRef = useRef(projectId);
   projectRef.current = projectId;
 

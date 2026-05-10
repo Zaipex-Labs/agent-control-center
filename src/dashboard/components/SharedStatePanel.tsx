@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { listSharedKeys, getSharedState } from '../lib/api';
 import type { SharedStateEntry } from '../lib/types';
 import { t } from '../../shared/i18n/browser';
+import { useCurrentPeerId } from '../hooks/useDashboardPeer';
 
 const KNOWN_NAMESPACES = ['resume', 'contracts', 'config', 'types', 'schemas', 'env', 'files'];
 
@@ -47,7 +48,7 @@ function JsonPreview({ value }: { value: string }) {
   );
 }
 
-function NamespaceCard({ ns, projectId }: { ns: NamespaceData; projectId: string }) {
+function NamespaceCard({ ns, projectId, peerId }: { ns: NamespaceData; projectId: string; peerId: string | undefined }) {
   const [expanded, setExpanded] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [keyValue, setKeyValue] = useState<SharedStateEntry | null>(null);
@@ -58,14 +59,15 @@ function NamespaceCard({ ns, projectId }: { ns: NamespaceData; projectId: string
       setKeyValue(null);
       return;
     }
+    if (!peerId) return;
     setSelectedKey(key);
     try {
-      const entry = await getSharedState(projectId, ns.namespace, key);
+      const entry = await getSharedState(projectId, peerId, ns.namespace, key);
       setKeyValue(entry);
     } catch {
       setKeyValue(null);
     }
-  }, [projectId, ns.namespace, selectedKey]);
+  }, [projectId, peerId, ns.namespace, selectedKey]);
 
   return (
     <div style={{
@@ -144,21 +146,26 @@ interface SharedStatePanelProps {
 export default function SharedStatePanel({ projectId, refreshKey }: SharedStatePanelProps) {
   const [namespaces, setNamespaces] = useState<NamespaceData[]>([]);
   const [loading, setLoading] = useState(true);
+  const peerId = useCurrentPeerId();
 
   useEffect(() => {
+    if (!peerId) {
+      setLoading(true);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
 
     Promise.all(
       KNOWN_NAMESPACES.map(async (ns) => {
         try {
-          const keys = await listSharedKeys(projectId, ns);
+          const keys = await listSharedKeys(projectId, peerId, ns);
           if (keys.length === 0) return null;
 
           // Get last updated info from first key
           let lastUpdated: { by: string; at: string } | undefined;
           try {
-            const entry = await getSharedState(projectId, ns, keys[0]);
+            const entry = await getSharedState(projectId, peerId, ns, keys[0]);
             lastUpdated = { by: entry.updated_by, at: entry.updated_at };
           } catch { /* ignore */ }
 
@@ -174,7 +181,7 @@ export default function SharedStatePanel({ projectId, refreshKey }: SharedStateP
     });
 
     return () => { cancelled = true; };
-  }, [projectId, refreshKey]);
+  }, [projectId, peerId, refreshKey]);
 
   return (
     <div>
@@ -200,7 +207,7 @@ export default function SharedStatePanel({ projectId, refreshKey }: SharedStateP
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {namespaces.map(ns => (
-            <NamespaceCard key={ns.namespace} ns={ns} projectId={projectId} />
+            <NamespaceCard key={ns.namespace} ns={ns} projectId={projectId} peerId={peerId} />
           ))}
         </div>
       )}

@@ -572,26 +572,53 @@ export function handleTerminalUpgrade(req: IncomingMessage, socket: Duplex, head
     log(`piping ws to process ${key} pid=${proc.pid}`);
     terminalClients.add(ws);
 
+    // [S-NEW-10] Hard backstop: drop frames if the WS send buffer is
+    // saturated. Without this, a stuck client could accumulate process
+    // stdout in memory until the heap blew out.
+    // [P-5] Soft backpressure on top: pause the PTY's stdout/stderr
+    // when the WS buffer is over LIMIT, resume once it drains below
+    // LIMIT/2 (hysteresis prevents thrashing). This way data isn't
+    // dropped under transient slowness — only under sustained
+    // saturation does S-NEW-10's drop kick in.
+    const WS_SEND_BACKPRESSURE_LIMIT = 1024 * 1024; // 1 MB
+    const RESUME_AT = WS_SEND_BACKPRESSURE_LIMIT / 2;
+
+    const maybeResume = () => {
+      if (ws.bufferedAmount < RESUME_AT) {
+        if (proc.stdout && proc.stdout.isPaused()) proc.stdout.resume();
+        if (proc.stderr && proc.stderr.isPaused()) proc.stderr.resume();
+      }
+    };
+
+    const sendIfBufferOK = (data: Buffer) => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      if (ws.bufferedAmount > WS_SEND_BACKPRESSURE_LIMIT) {
+        // Hard cap reached — drop. The pause path below should
+        // normally prevent us from getting here, but if the PTY queued
+        // more data before the pause took effect we drop the excess.
+        return;
+      }
+      ws.send(data, () => maybeResume());
+      // [P-5] If this send pushed us over the limit, pause the source
+      // so the PTY stops producing until the OS drains the socket.
+      if (ws.bufferedAmount > WS_SEND_BACKPRESSURE_LIMIT) {
+        proc.stdout?.pause();
+        proc.stderr?.pause();
+      }
+    };
+
     // Send buffered output first
     const buf = outputBuffers.get(key);
     if (buf) {
       for (const chunk of buf) {
-        ws.send(chunk);
+        sendIfBufferOK(chunk);
       }
     }
 
     // Process stdout → WebSocket
-    const onStdout = (data: Buffer) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
-      }
-    };
+    const onStdout = (data: Buffer) => sendIfBufferOK(data);
 
-    const onStderr = (data: Buffer) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
-      }
-    };
+    const onStderr = (data: Buffer) => sendIfBufferOK(data);
 
     proc.stdout?.on('data', onStdout);
     proc.stderr?.on('data', onStderr);
@@ -604,26 +631,61 @@ export function handleTerminalUpgrade(req: IncomingMessage, socket: Duplex, head
     };
     proc.on('exit', onExit);
 
+    // [S-NEW-10] Token bucket on stdin so a misbehaving (or hijacked)
+    // client cannot flood the agent with input. 16 KB/s sustained, 64
+    // KB burst capacity — well above human typing / paste rate but
+    // tight enough that a flood gets choked off in <1s.
+    const STDIN_REFILL_BYTES_PER_SEC = 16 * 1024;
+    const STDIN_BURST_CAPACITY = 64 * 1024;
+    let stdinTokens = STDIN_BURST_CAPACITY;
+    let stdinLastRefill = Date.now();
+    const refillStdinTokens = (): void => {
+      const now = Date.now();
+      const elapsedSec = (now - stdinLastRefill) / 1000;
+      stdinLastRefill = now;
+      stdinTokens = Math.min(
+        STDIN_BURST_CAPACITY,
+        stdinTokens + elapsedSec * STDIN_REFILL_BYTES_PER_SEC,
+      );
+    };
+
     // WebSocket → process stdin
     ws.on('message', (raw: Buffer | string) => {
       if (!proc.stdin?.writable) return;
-      proc.stdin.write(raw.toString());
+      const text = typeof raw === 'string' ? raw : raw.toString();
+      const cost = Buffer.byteLength(text);
+      refillStdinTokens();
+      if (stdinTokens < cost) {
+        // Bucket empty — drop this frame silently. We don't close the
+        // socket because legitimate paste-of-a-large-blob just needs
+        // to wait for refill.
+        return;
+      }
+      stdinTokens -= cost;
+      proc.stdin.write(text);
     });
 
     // Cleanup on WebSocket close
-    ws.on('close', () => {
-      log(`ws closed for ${key}`);
+    const cleanup = (): void => {
       terminalClients.delete(ws);
       proc.stdout?.off('data', onStdout);
       proc.stderr?.off('data', onStderr);
       proc.off('exit', onExit);
+      // [P-5] If we paused the PTY before this WS disconnected, the
+      // stream would stay paused forever and the next reconnect would
+      // see nothing. Resume on the way out — other listeners (status
+      // poller, output buffer) need it flowing.
+      if (proc.stdout && proc.stdout.isPaused()) proc.stdout.resume();
+      if (proc.stderr && proc.stderr.isPaused()) proc.stderr.resume();
+    };
+
+    ws.on('close', () => {
+      log(`ws closed for ${key}`);
+      cleanup();
     });
 
     ws.on('error', () => {
-      terminalClients.delete(ws);
-      proc.stdout?.off('data', onStdout);
-      proc.stderr?.off('data', onStderr);
-      proc.off('exit', onExit);
+      cleanup();
     });
   });
 }

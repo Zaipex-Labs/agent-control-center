@@ -15,9 +15,27 @@ const findings = {
   consoleErrors: [],
   pageErrors: [],
   failedRequests: [],
+  // [FU-2 v0.2.4] explicit top-level field. Every URL whose origin
+  // is NOT `http://127.0.0.1:<port>` (or `localhost:<port>` / `[::1]`)
+  // gets recorded here. `[]` is the expected clean state for a tool
+  // sold as "local-only".
+  externalResources: [],
   metrics: {},
   notes: [],
 };
+
+// Returns true when `url` belongs to the broker we're auditing, false
+// when it points anywhere else (Google Fonts, analytics, CDNs, …).
+function isLocalUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol === 'data:' || u.protocol === 'blob:' || u.protocol === 'about:') return true;
+    const host = u.hostname;
+    return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+  } catch {
+    return false;
+  }
+}
 
 const browser = await puppeteer.launch({
   headless: 'new',
@@ -63,15 +81,33 @@ page.on('requestfailed', (req) => {
   });
 });
 
+// Set so we don't list the same external URL multiple times (fonts
+// load on every page, analytics may re-fire, etc.). The `findings`
+// array is the de-duplicated public view written to qa-report.json.
+const seenExternal = new Set();
+
 page.on('response', (res) => {
   if (inFuzz) return;
+  const url = res.url();
   const status = res.status();
   if (status >= 400) {
     findings.failedRequests.push({
-      url: res.url(),
+      url,
       method: res.request().method(),
       status,
       page: page.url(),
+    });
+  }
+  // [FU-2 v0.2.4] every response URL that left 127.0.0.1 lands in
+  // externalResources, regardless of status. The dashboard is
+  // supposed to be 100% local; one entry here is the audit's signal
+  // to investigate.
+  if (!isLocalUrl(url) && !seenExternal.has(url)) {
+    seenExternal.add(url);
+    findings.externalResources.push({
+      url,
+      status,
+      seenOn: page.url(),
     });
   }
 });
