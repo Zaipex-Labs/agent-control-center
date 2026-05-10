@@ -39,6 +39,7 @@
     "test:watch": "vitest",
     "dashboard:dev": "vite",
     "dashboard:build": "vite build",
+    "typecheck:dashboard": "tsc --noEmit -p tsconfig.dashboard.json",
     "prepublishOnly": "npm run build && npm run dashboard:build && npm test",
     "postbuild": "node -e \"import('node:fs').then(fs => fs.chmodSync('dist/cli/index.js', 0o755))\""
   },
