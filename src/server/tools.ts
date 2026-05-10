@@ -250,6 +250,31 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
     },
   );
 
+  // [M-4] Expose delete_shared so agents can clean up entries in
+  // namespaces that grow forever (e.g. "files" — the dashboard work-
+  // desk panel). The broker handler already exists
+  // (`handlers.ts:handleSharedDelete`) and is wired to /api/shared/delete;
+  // it just wasn't surfaced via MCP.
+  mcp.tool(
+    'delete_shared',
+    'Delete a key from shared state. Returns ok when the key was removed; missing keys return ok too (idempotent).',
+    {
+      namespace: z.string(),
+      key: z.string(),
+    },
+    async (args) => {
+      const resp = await brokerFetch<OkResponse>('/api/shared/delete', {
+        project_id: identity.project_id,
+        namespace: args.namespace,
+        key: args.key,
+        peer_id: identity.id,
+      });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(resp) }],
+      };
+    },
+  );
+
   // ── Threads ────────────────────────────────────────────────
 
   mcp.tool(

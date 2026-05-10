@@ -76,6 +76,7 @@ describe('registerTools — registration', () => {
     const names = Array.from(tools.keys()).sort();
     expect(names).toEqual([
       'check_messages',
+      'delete_shared',
       'get_history',
       'get_shared',
       'get_thread_context',
@@ -305,6 +306,34 @@ describe('shared state tools', () => {
     const result = await tools.get('list_shared')!.handler({ namespace: 'types' });
     expect(brokerCalls[0]!.path).toBe('/api/shared/list');
     expect(JSON.parse(result.content[0].text)).toEqual(['a', 'b', 'c']);
+  });
+
+  // [M-4] delete_shared was already wired in the broker
+  // (handleSharedDelete + POST /api/shared/delete) — only the MCP tool
+  // surface was missing.
+  it('delete_shared posts namespace/key + peer_id to /api/shared/delete', async () => {
+    const tools = setup();
+    await tools.get('delete_shared')!.handler({
+      namespace: 'files',
+      key: 'src/foo.ts',
+    });
+    expect(brokerCalls[0]!.path).toBe('/api/shared/delete');
+    expect(brokerCalls[0]!.body).toMatchObject({
+      project_id: 'proj-x',
+      namespace: 'files',
+      key: 'src/foo.ts',
+      peer_id: 'agent-1',
+    });
+  });
+
+  it('delete_shared is idempotent — returns the broker OK response as-is', async () => {
+    nextResponse = { ok: true };
+    const tools = setup();
+    const result = await tools.get('delete_shared')!.handler({
+      namespace: 'files',
+      key: 'no-such-file.ts',
+    });
+    expect(JSON.parse(result.content[0].text)).toEqual({ ok: true });
   });
 });
 
