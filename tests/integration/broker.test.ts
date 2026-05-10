@@ -160,7 +160,7 @@ describe('broker integration', () => {
 
     // History shows both messages
     const history = await post<{ messages: Array<{ from_role: string; to_role: string }> }>('/api/get-history', {
-      project_id: 'integ',
+      project_id: 'integ', peer_id: idA,
     });
     expect(history.data.messages).toHaveLength(2);
     expect(history.data.messages[0].from_role).toBe('backend');
@@ -197,22 +197,29 @@ describe('broker integration', () => {
   });
 
   it('shared state round-trip', async () => {
+    // [S-NEW-3] register the peer that will issue the calls so it
+    // passes the membership gate.
+    const reg = await post<{ id: string }>('/api/register', {
+      pid: process.pid, cwd: '/p1', role: 'agent', project_id: 'integ',
+    });
+    const peerId = reg.data.id;
+
     // Set
     const set = await post<{ ok: boolean }>('/api/shared/set', {
-      project_id: 'integ', namespace: 'contracts', key: 'api-spec', value: '{"version":"2.1"}', peer_id: 'p1',
+      project_id: 'integ', namespace: 'contracts', key: 'api-spec', value: '{"version":"2.1"}', peer_id: peerId,
     });
     expect(set.data.ok).toBe(true);
 
     // Get
     const got = await post<{ value: string; updated_by: string }>('/api/shared/get', {
-      project_id: 'integ', namespace: 'contracts', key: 'api-spec',
+      project_id: 'integ', namespace: 'contracts', key: 'api-spec', peer_id: peerId,
     });
     expect(got.data.value).toBe('{"version":"2.1"}');
-    expect(got.data.updated_by).toBe('p1');
+    expect(got.data.updated_by).toBe(peerId);
 
     // Get missing
     const missing = await post<{ error: string }>('/api/shared/get', {
-      project_id: 'integ', namespace: 'contracts', key: 'nope',
+      project_id: 'integ', namespace: 'contracts', key: 'nope', peer_id: peerId,
     });
     expect(missing.status).toBe(404);
     expect(missing.data.error).toBe('not found');

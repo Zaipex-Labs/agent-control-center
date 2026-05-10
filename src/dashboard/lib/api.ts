@@ -161,10 +161,11 @@ export async function deleteProject(projectId: string): Promise<void> {
   await apiFetch<{ ok: boolean }>('project/delete', { project_id: projectId });
 }
 
-export async function deleteThread(projectId: string, threadId: string): Promise<void> {
+export async function deleteThread(projectId: string, threadId: string, peerId: string): Promise<void> {
   await apiFetch<{ ok: boolean }>('threads/delete', {
     project_id: projectId,
     thread_id: threadId,
+    peer_id: peerId,
   });
 }
 
@@ -198,9 +199,10 @@ export async function projectDown(projectId: string): Promise<{ ok: boolean; kil
   });
 }
 
-export async function saveResume(projectId: string): Promise<{ ok: boolean; snapshotted: number }> {
+export async function saveResume(projectId: string, peerId: string): Promise<{ ok: boolean; snapshotted: number }> {
   return apiFetch<{ ok: boolean; snapshotted: number }>('project/save-resume', {
     project_id: projectId,
+    peer_id: peerId,
   });
 }
 
@@ -238,8 +240,10 @@ export async function searchThreads(projectId: string, query: string): Promise<{
   });
 }
 
-export async function getThreadSummary(threadId: string): Promise<string> {
+export async function getThreadSummary(projectId: string, peerId: string, threadId: string): Promise<string> {
   const resp = await apiFetch<{ summary: string }>('threads/summary', {
+    project_id: projectId,
+    peer_id: peerId,
     thread_id: threadId,
   });
   return resp.summary;
@@ -249,11 +253,13 @@ export async function getThreadSummary(threadId: string): Promise<string> {
 
 export async function getHistory(
   projectId: string,
+  peerId: string,
   threadId?: string,
   limit?: number,
 ): Promise<LogEntry[]> {
   const resp = await apiFetch<{ messages: LogEntry[] }>('get-history', {
     project_id: projectId,
+    peer_id: peerId,
     thread_id: threadId,
     limit,
   });
@@ -305,19 +311,22 @@ export async function sendToRole(
 
 export async function getSharedState(
   projectId: string,
+  peerId: string,
   namespace: string,
   key: string,
 ): Promise<SharedStateEntry> {
   return apiFetch<SharedStateEntry>('shared/get', {
     project_id: projectId,
+    peer_id: peerId,
     namespace,
     key,
   });
 }
 
-export async function listSharedKeys(projectId: string, namespace: string): Promise<string[]> {
+export async function listSharedKeys(projectId: string, peerId: string, namespace: string): Promise<string[]> {
   const resp = await apiFetch<{ keys: string[] }>('shared/list', {
     project_id: projectId,
+    peer_id: peerId,
     namespace,
   });
   return resp.keys;
@@ -333,9 +342,10 @@ export interface ModifiedFile {
   cwd: string;
 }
 
-export async function listModifiedFiles(projectId: string): Promise<ModifiedFile[]> {
+export async function listModifiedFiles(projectId: string, peerId: string): Promise<ModifiedFile[]> {
   const resp = await apiFetch<{ files: ModifiedFile[] }>('project/modified-files', {
     project_id: projectId,
+    peer_id: peerId,
   });
   return resp.files;
 }

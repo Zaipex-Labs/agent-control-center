@@ -16,7 +16,8 @@ import { gitModifiedFiles } from './files.js';
 import { tmuxNotify, tmuxInjectWithContext } from './tmux.js';
 import { broadcast } from './websocket.js';
 import { storeBlob, getBlob, deleteBlobFile, listBlobFilesOnDisk, MAX_BLOB_SIZE } from './blobs.js';
-import { addBlobRef, releaseBlobRefsForProject, getAllBlobRefCounts, blobBelongsToProject } from './blob-refs.js';
+import { addBlobRef, releaseBlobRefsForProject, releaseBlobRefsForThread, getAllBlobRefCounts, blobBelongsToProject } from './blob-refs.js';
+import { assertProjectMembership } from './_helpers.js';
 import { serializeAttachments, type Attachment } from '../shared/attachments.js';
 import { assertSafeIdentifier } from '../shared/validate.js';
 import { issueToken as issueCsrfToken } from './csrf-tokens.js';
@@ -610,8 +611,13 @@ export function handleProjectUp(body: unknown, res: ServerResponse): void {
 // files. The dashboard merges this list with shared_state notes client
 // side.
 export function handleListModifiedFiles(body: unknown, res: ServerResponse): void {
-  const b = body as { project_id?: string };
+  const b = body as { project_id?: string; peer_id?: string };
   if (!b.project_id) return error(res, 'Missing required field: project_id');
+  // [S-NEW-3] cross-project leak guard. The earlier H-1 fix only covered
+  // /api/send-message and /api/send-to-role. Without this, a peer in
+  // project A could ask for the modified-files list of project B by
+  // forging the body's project_id.
+  if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
   const configPath = join(PROJECTS_DIR, `${b.project_id}.json`);
   if (!existsSync(configPath)) return error(res, `Project not found: ${b.project_id}`, 404);
@@ -706,8 +712,12 @@ export function buildSaveResumePrompt(role: string, now: string, kind: 'periodic
 }
 
 export function handleSaveResume(body: unknown, res: ServerResponse): void {
-  const b = body as { project_id?: string };
+  const b = body as { project_id?: string; peer_id?: string };
   if (!b.project_id) return error(res, 'Missing required field: project_id');
+  // [S-NEW-3] save-resume writes shared_state for every live agent in
+  // the project, so leaking it cross-project would let A force B to
+  // emit a resume snapshot. Same gate as H-1.
+  if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
   const peers = selectPeersByProject(b.project_id);
   const liveAgents = peers.filter(p => {
@@ -1395,8 +1405,11 @@ export function handlePollMessages(body: unknown, res: ServerResponse): void {
 }
 
 export function handleGetHistory(body: unknown, res: ServerResponse): void {
-  const b = body as GetHistoryRequest;
+  const b = body as GetHistoryRequest & { peer_id?: string };
   if (!b.project_id) return error(res, 'Missing required field: project_id');
+  // [S-NEW-3] history can include arbitrary text + tool calls — any
+  // cross-project read here is a full conversation leak.
+  if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
   const messages = selectHistory(b.project_id, {
     role: b.role,
@@ -1416,6 +1429,10 @@ export function handleSharedSet(body: unknown, res: ServerResponse): void {
   if (!b.project_id || !b.namespace || !b.key || b.value == null || !b.peer_id) {
     return error(res, 'Missing required fields: project_id, namespace, key, value, peer_id');
   }
+  // [S-NEW-3] peer_id was already required (used as updated_by) but
+  // we never checked it actually belonged to project_id. A peer in A
+  // could overwrite a config key in B otherwise.
+  if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
   setSharedState(b.project_id, b.namespace, b.key, b.value, b.peer_id, new Date().toISOString());
   broadcast('shared:updated', { namespace: b.namespace, key: b.key }, b.project_id);
@@ -1423,10 +1440,13 @@ export function handleSharedSet(body: unknown, res: ServerResponse): void {
 }
 
 export function handleSharedGet(body: unknown, res: ServerResponse): void {
-  const b = body as SharedGetRequest;
+  const b = body as SharedGetRequest & { peer_id?: string };
   if (!b.project_id || !b.namespace || !b.key) {
     return error(res, 'Missing required fields: project_id, namespace, key');
   }
+  // [S-NEW-3] shared/get exposes secrets stored as values (db credentials,
+  // contract specs). Without membership the read is open to any peer.
+  if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
   const entry = getSharedState(b.project_id, b.namespace, b.key);
   if (!entry) return json(res, { error: 'not found' }, 404);
@@ -1435,10 +1455,13 @@ export function handleSharedGet(body: unknown, res: ServerResponse): void {
 }
 
 export function handleSharedList(body: unknown, res: ServerResponse): void {
-  const b = body as SharedListRequest;
+  const b = body as SharedListRequest & { peer_id?: string };
   if (!b.project_id || !b.namespace) {
     return error(res, 'Missing required fields: project_id, namespace');
   }
+  // [S-NEW-3] enumerating keys leaks the namespace's structure even if
+  // values stay opaque — gate with the same membership check.
+  if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
   json(res, { keys: listSharedKeys(b.project_id, b.namespace) });
 }
@@ -1448,6 +1471,8 @@ export function handleSharedDelete(body: unknown, res: ServerResponse): void {
   if (!b.project_id || !b.namespace || !b.key || !b.peer_id) {
     return error(res, 'Missing required fields: project_id, namespace, key, peer_id');
   }
+  // [S-NEW-3] a destructive op even more obviously needs membership.
+  if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
   deleteSharedState(b.project_id, b.namespace, b.key);
   json(res, { ok: true });
@@ -1499,25 +1524,31 @@ export function handleListThreads(body: unknown, res: ServerResponse): void {
 }
 
 export function handleGetThread(body: unknown, res: ServerResponse): void {
-  const b = body as ThreadGetRequest;
-  if (!b.thread_id) {
-    return error(res, 'Missing required field: thread_id');
+  const b = body as ThreadGetRequest & { peer_id?: string };
+  // [S-NEW-8] previously this allowed thread_id alone, then queried with
+  // project_id=''. Since generateId() yields ~32 bits of entropy, that
+  // path was brute-forceable on a local broker. Require both ids and
+  // a member peer.
+  if (!b.thread_id || !b.project_id) {
+    return error(res, 'Missing required fields: project_id, thread_id');
   }
+  if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
-  // Search across all projects since we only have thread_id
-  const thread = selectThreadById('', b.thread_id);
+  const thread = selectThreadById(b.project_id, b.thread_id);
   if (!thread) return error(res, `Thread not found: ${b.thread_id}`, 404);
 
   json(res, thread);
 }
 
 export function handleUpdateThread(body: unknown, res: ServerResponse): void {
-  const b = body as ThreadUpdateRequest;
-  if (!b.thread_id) {
-    return error(res, 'Missing required field: thread_id');
+  const b = body as ThreadUpdateRequest & { peer_id?: string };
+  // [S-NEW-8] same brute-force scope as handleGetThread.
+  if (!b.thread_id || !b.project_id) {
+    return error(res, 'Missing required fields: project_id, thread_id');
   }
+  if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
-  const updated = updateThread(b.project_id ?? '', b.thread_id, {
+  const updated = updateThread(b.project_id, b.thread_id, {
     name: b.name,
     status: b.status,
   });
@@ -1538,9 +1569,23 @@ export function handleUpdateThread(body: unknown, res: ServerResponse): void {
 // so the team history is preserved even after the thread disappears from
 // the sidebar.
 export function handleDeleteThread(body: unknown, res: ServerResponse): void {
-  const b = body as { project_id?: string; thread_id?: string };
+  const b = body as { project_id?: string; thread_id?: string; peer_id?: string };
   if (!b.project_id || !b.thread_id) {
     return error(res, 'Missing required fields: project_id, thread_id');
+  }
+  // [S-NEW-3] gate cross-project deletion the same way as messaging.
+  if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
+
+  // [S-NEW-9] release blob_refs owned by every message in this thread
+  // BEFORE deleteThread() runs. Otherwise a deleted thread leaves
+  // attached blob files on disk forever (the project-level sweep only
+  // fires when the entire project is dropped). Orphans whose ref
+  // count drops to zero are unlinked from the blob store.
+  try {
+    const orphans = releaseBlobRefsForThread(b.project_id, b.thread_id);
+    for (const h of orphans) deleteBlobFile(h);
+  } catch (e) {
+    console.error(`[broker:delete-thread] blob cleanup failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 
   const ok = deleteThread(b.project_id, b.thread_id);
@@ -1624,10 +1669,14 @@ export function handleSearchThreads(body: unknown, res: ServerResponse): void {
 }
 
 export function handleThreadSummary(body: unknown, res: ServerResponse): void {
-  const b = body as ThreadSummaryRequest;
-  if (!b.thread_id) {
-    return error(res, 'Missing required field: thread_id');
+  const b = body as ThreadSummaryRequest & { project_id?: string; peer_id?: string };
+  // [S-NEW-3] previously thread_id alone was enough; the summary leaks
+  // the last 10 messages of any thread cross-project. Require
+  // project_id + member peer like every other thread endpoint.
+  if (!b.thread_id || !b.project_id) {
+    return error(res, 'Missing required fields: project_id, thread_id');
   }
+  if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
   const entries = selectLogByThread(b.thread_id, 10);
 

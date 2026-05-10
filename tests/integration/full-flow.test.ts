@@ -211,7 +211,7 @@ describe('full flow integration', () => {
   // 7. get_history with thread_id only returns messages from that thread (should be 2)
   it('get_history with thread_id returns only thread messages', async () => {
     const history = await post<{ messages: Array<{ text: string; thread_id: string }> }>('/api/get-history', {
-      project_id: 'fullflow', thread_id: thread1Id,
+      project_id: 'fullflow', thread_id: thread1Id, peer_id: peer1Id,
     });
     expect(history.data.messages).toHaveLength(2);
     for (const msg of history.data.messages) {
@@ -222,7 +222,7 @@ describe('full flow integration', () => {
   // 8. get_history without thread_id returns all messages
   it('get_history without thread_id returns all messages', async () => {
     const history = await post<{ messages: Array<{ text: string }> }>('/api/get-history', {
-      project_id: 'fullflow',
+      project_id: 'fullflow', peer_id: peer1Id,
     });
     expect(history.data.messages.length).toBeGreaterThanOrEqual(2);
   });
@@ -245,20 +245,22 @@ describe('full flow integration', () => {
 
     // History for thread 1 should still be 2
     const history1 = await post<{ messages: Array<{ thread_id: string }> }>('/api/get-history', {
-      project_id: 'fullflow', thread_id: thread1Id,
+      project_id: 'fullflow', thread_id: thread1Id, peer_id: peer1Id,
     });
     expect(history1.data.messages).toHaveLength(2);
 
     // History for thread 2 should be 1
     const history2 = await post<{ messages: Array<{ thread_id: string }> }>('/api/get-history', {
-      project_id: 'fullflow', thread_id: thread2Id,
+      project_id: 'fullflow', thread_id: thread2Id, peer_id: peer1Id,
     });
     expect(history2.data.messages).toHaveLength(1);
   });
 
   // 10. Thread summary
   it('thread summary contains message texts', async () => {
-    const resp = await post<{ summary: string }>('/api/threads/summary', { thread_id: thread1Id });
+    const resp = await post<{ summary: string }>('/api/threads/summary', {
+      project_id: 'fullflow', thread_id: thread1Id, peer_id: peer1Id,
+    });
     expect(resp.status).toBe(200);
     expect(resp.data.summary).toContain('Necesitamos el endpoint de customers');
     expect(resp.data.summary).toContain('Ya tengo el GET /customers listo');
@@ -274,7 +276,7 @@ describe('full flow integration', () => {
 
     // Get
     const got = await post<{ value: string; updated_by: string }>('/api/shared/get', {
-      project_id: 'fullflow', namespace: 'contracts', key: 'customers-api',
+      project_id: 'fullflow', namespace: 'contracts', key: 'customers-api', peer_id: peer1Id,
     });
     expect(got.status).toBe(200);
     expect(got.data.value).toBe('{"version":"1.0"}');
@@ -282,7 +284,7 @@ describe('full flow integration', () => {
 
     // List
     const list = await post<{ keys: string[] }>('/api/shared/list', {
-      project_id: 'fullflow', namespace: 'contracts',
+      project_id: 'fullflow', namespace: 'contracts', peer_id: peer1Id,
     });
     expect(list.data.keys).toContain('customers-api');
 
@@ -294,7 +296,7 @@ describe('full flow integration', () => {
 
     // Get after delete returns 404
     const gone = await post<{ error: string }>('/api/shared/get', {
-      project_id: 'fullflow', namespace: 'contracts', key: 'customers-api',
+      project_id: 'fullflow', namespace: 'contracts', key: 'customers-api', peer_id: peer1Id,
     });
     expect(gone.status).toBe(404);
     expect(gone.data.error).toBe('not found');
@@ -302,17 +304,28 @@ describe('full flow integration', () => {
 
   // 12. Shared state isolation between projects
   it('shared state isolation: project A data not visible from project B', async () => {
-    // Set in project A
-    await post<{ ok: boolean }>('/api/shared/set', {
-      project_id: 'proj-a', namespace: 'config', key: 'secret', value: '"hidden"', peer_id: 'pa',
+    // Register the two peers used by the cross-project test (otherwise
+    // [S-NEW-3] returns 404 before getSharedState even runs).
+    const regA = await post<{ id: string }>('/api/register', {
+      pid: process.pid, cwd: '/a', role: 'agent', project_id: 'proj-a',
+    });
+    const regB = await post<{ id: string }>('/api/register', {
+      pid: process.pid, cwd: '/b', role: 'agent', project_id: 'proj-b',
     });
 
-    // Get from project B returns 404
-    const got = await post<{ error: string }>('/api/shared/get', {
-      project_id: 'proj-b', namespace: 'config', key: 'secret',
+    // Set in project A
+    await post<{ ok: boolean }>('/api/shared/set', {
+      project_id: 'proj-a', namespace: 'config', key: 'secret', value: '"hidden"', peer_id: regA.data.id,
     });
-    expect(got.status).toBe(404);
-    expect(got.data.error).toBe('not found');
+
+    // [S-NEW-3] cross-project read is now blocked at the membership
+    // gate (403) — used to fall through to "not found" (404) in v0.2.4
+    // and earlier. The project isolation guarantee strengthens.
+    const got = await post<{ ok: boolean; code?: string }>('/api/shared/get', {
+      project_id: 'proj-a', namespace: 'config', key: 'secret', peer_id: regB.data.id,
+    });
+    expect(got.status).toBe(403);
+    expect(got.data.code).toBe('PROJECT_MISMATCH');
   });
 
   // 13. Search threads by name
@@ -341,7 +354,7 @@ describe('full flow integration', () => {
   it('archive thread: archived thread excluded from active list', async () => {
     // Archive thread 1
     const upd = await post<{ ok: boolean }>('/api/threads/update', {
-      project_id: 'fullflow', thread_id: thread1Id, status: 'archived',
+      project_id: 'fullflow', thread_id: thread1Id, status: 'archived', peer_id: peer1Id,
     });
     expect(upd.data.ok).toBe(true);
 

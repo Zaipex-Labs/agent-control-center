@@ -20,7 +20,7 @@ function activeThreadStorageKey(projectId: string): string {
   return `acc.activeThread.${projectId}`;
 }
 
-export function useThreads(projectId: string | undefined): UseThreadsReturn {
+export function useThreads(projectId: string | undefined, peerId: string | undefined): UseThreadsReturn {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [activeThread, setActiveThreadState] = useState<Thread | null>(null);
   const [loading, setLoading] = useState(true);
@@ -119,12 +119,12 @@ export function useThreads(projectId: string | undefined): UseThreadsReturn {
 
   const deleteThread = useCallback(
     async (threadId: string) => {
-      if (!projectId) return;
-      await apiDeleteThread(projectId, threadId);
+      if (!projectId || !peerId) return;
+      await apiDeleteThread(projectId, threadId, peerId);
       setThreads((prev) => prev.filter((t) => t.id !== threadId));
       setActiveThread((cur) => (cur?.id === threadId ? null : cur));
     },
-    [projectId],
+    [projectId, peerId, setActiveThread],
   );
 
   return { threads, activeThread, setActiveThread, createThread, deleteThread, loading };

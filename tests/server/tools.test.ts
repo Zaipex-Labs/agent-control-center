@@ -346,7 +346,13 @@ describe('get_thread_context', () => {
     const tools = setup();
     const result = await tools.get('get_thread_context')!.handler({ thread_id: 'thr-42' });
     expect(brokerCalls[0]!.path).toBe('/api/threads/summary');
-    expect(brokerCalls[0]!.body).toEqual({ thread_id: 'thr-42' });
+    // [S-NEW-3] now carries project_id + peer_id so the broker can
+    // gate cross-project reads. Identity comes from the MCP session.
+    expect(brokerCalls[0]!.body).toEqual({
+      project_id: 'proj-x',
+      peer_id: 'agent-1',
+      thread_id: 'thr-42',
+    });
     expect(result.content[0].text).toBe('3 messages about auth');
   });
 });

@@ -427,7 +427,8 @@ describe('handleGetHistory', () => {
     }, sendRes);
 
     const { res, result } = createMockRes();
-    handleGetHistory({ project_id: 'proj' }, res);
+    // [S-NEW-3] peer_id required for cross-project membership check
+    handleGetHistory({ project_id: 'proj', peer_id: 'f' }, res);
     expect((result.body as { messages: unknown[] }).messages).toHaveLength(1);
   });
 
@@ -441,6 +442,12 @@ describe('handleGetHistory', () => {
 // ── Shared state handlers ──────────────────────────────────────
 
 describe('handleSharedSet / Get / List / Delete', () => {
+  // [S-NEW-3] every shared/* handler now needs a registered peer
+  // belonging to project_id. Tests register p1 in 'proj' once and reuse.
+  beforeEach(() => {
+    insertPeer(makePeer({ id: 'p1', project_id: 'proj' }));
+  });
+
   it('set + get round-trip', () => {
     const { res: setRes, result: setResult } = createMockRes();
     handleSharedSet({
@@ -449,14 +456,14 @@ describe('handleSharedSet / Get / List / Delete', () => {
     expect(setResult.statusCode).toBe(200);
 
     const { res: getRes, result: getResult } = createMockRes();
-    handleSharedGet({ project_id: 'proj', namespace: 'config', key: 'port' }, getRes);
+    handleSharedGet({ project_id: 'proj', namespace: 'config', key: 'port', peer_id: 'p1' }, getRes);
     expect(getResult.statusCode).toBe(200);
     expect((getResult.body as { value: string }).value).toBe('8080');
   });
 
   it('get returns 404 for missing key', () => {
     const { res, result } = createMockRes();
-    handleSharedGet({ project_id: 'proj', namespace: 'x', key: 'y' }, res);
+    handleSharedGet({ project_id: 'proj', namespace: 'x', key: 'y', peer_id: 'p1' }, res);
     expect(result.statusCode).toBe(404);
   });
 
@@ -467,7 +474,7 @@ describe('handleSharedSet / Get / List / Delete', () => {
     handleSharedSet({ project_id: 'proj', namespace: 'ns', key: 'b', value: '2', peer_id: 'p1' }, r2);
 
     const { res, result } = createMockRes();
-    handleSharedList({ project_id: 'proj', namespace: 'ns' }, res);
+    handleSharedList({ project_id: 'proj', namespace: 'ns', peer_id: 'p1' }, res);
     expect((result.body as { keys: string[] }).keys).toHaveLength(2);
   });
 
@@ -480,7 +487,7 @@ describe('handleSharedSet / Get / List / Delete', () => {
     expect(delResult.statusCode).toBe(200);
 
     const { res: getRes, result: getResult } = createMockRes();
-    handleSharedGet({ project_id: 'proj', namespace: 'ns', key: 'k' }, getRes);
+    handleSharedGet({ project_id: 'proj', namespace: 'ns', key: 'k', peer_id: 'p1' }, getRes);
     expect(getResult.statusCode).toBe(404);
   });
 

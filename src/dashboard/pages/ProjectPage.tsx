@@ -41,7 +41,7 @@ export default function ProjectPage() {
   const { agents } = useAgents(projectId);
   const agentStatuses = useAgentStatuses(projectId);
   const dashboardId = useDashboardPeer(projectId);
-  const { threads, activeThread, setActiveThread, createThread, deleteThread } = useThreads(projectId);
+  const { threads, activeThread, setActiveThread, createThread, deleteThread } = useThreads(projectId, dashboardId);
   const [deletingThread, setDeletingThread] = useState<Thread | null>(null);
   const { messages, loading: messagesLoading, sendMessage, waitingFor, sendError, clearError, retrySend } = useMessages(projectId, activeThread?.id, dashboardId, activeThread?.name);
   const [creatingThread, setCreatingThread] = useState(false);
@@ -274,11 +274,11 @@ export default function ProjectPage() {
   }, [projectId]);
 
   const handleSave = async (): Promise<boolean> => {
-    if (!projectId || saving) return false;
+    if (!projectId || !dashboardId || saving) return false;
     setSaving(true);
     setStatusMsg(null);
     try {
-      await saveResume(projectId);
+      await saveResume(projectId, dashboardId);
       setLastSavedAt(Date.now());
       setStatusMsg({ text: t('dash.savedToastShort'), type: 'ok' });
       setTimeout(() => setStatusMsg(null), 2500);
