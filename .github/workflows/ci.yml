@@ -43,6 +43,14 @@ jobs:
         run: npm run lint || true
         continue-on-error: true
 
+      - name: Dead-code report (allow-fail)
+        # FASE E-3 (v0.3.0): knip reports unused files / exports /
+        # devDependencies. --no-exit-code keeps the step green so
+        # findings surface as a log without blocking. Use to decide
+        # what to delete in v0.3.1.
+        run: npm run deadcode
+        continue-on-error: true
+
       - name: Build server + CLI
         run: npm run build
 

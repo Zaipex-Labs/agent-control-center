@@ -41,6 +41,7 @@
     "dashboard:build": "vite build",
     "typecheck:dashboard": "tsc --noEmit -p tsconfig.dashboard.json",
     "lint": "eslint src tests scripts --max-warnings=99999",
+    "deadcode": "knip --no-progress --no-exit-code",
     "prepublishOnly": "npm run build && npm run dashboard:build && npm test",
     "postbuild": "node -e \"import('node:fs').then(fs => fs.chmodSync('dist/cli/index.js', 0o755))\""
   },
@@ -77,6 +78,7 @@
     "@vitejs/plugin-react": "^4.7.0",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "knip": "^6.12.2",
     "puppeteer": "^24.40.0",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",
