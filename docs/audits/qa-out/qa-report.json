@@ -1,0 +1,92 @@
+{
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "metrics": {
+    "teams": {
+      "ms": 988,
+      "url": "http://127.0.0.1:7899/"
+    },
+    "project-acc-demo-debug": {
+      "ms": 985,
+      "url": "http://127.0.0.1:7899/acc-demo-debug"
+    },
+    "project-zaipex-sass": {
+      "ms": 1146,
+      "url": "http://127.0.0.1:7899/zaipex-sass"
+    },
+    "history": {
+      "ms": 956,
+      "url": "http://127.0.0.1:7899/acc-demo-debug/history"
+    },
+    "mobile-teams": {
+      "ms": 1144,
+      "url": "http://127.0.0.1:7899/"
+    },
+    "mobile-project": {
+      "ms": 965,
+      "url": "http://127.0.0.1:7899/acc-demo-debug"
+    },
+    "a11yQuick": {
+      "buttons": 6,
+      "links": 0,
+      "inputs": 0,
+      "images": 0,
+      "imagesWithoutAlt": 0,
+      "buttonsWithoutLabel": 0,
+      "headingsH1": 0,
+      "langAttr": "en",
+      "title": "Zaipex ACC — Agents Command Center",
+      "meta": {}
+    },
+    "externalResources": [
+      "https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=DM+Serif+Display&family=JetBrains+Mono:wght@400;500;600&display=swap",
+      "https://fonts.gstatic.com/s/dmsans/v17/rP2Hp2ywxg089UriCZOIHTWEBlw.woff2",
+      "https://fonts.gstatic.com/s/dmserifdisplay/v17/-nFnOHM81r4j6k0gjAW3mujVU2B2G_Bx0vrx52g.woff2",
+      "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwgknk-4.woff2"
+    ],
+    "bundle": {
+      "jsCount": 1,
+      "jsBytes": 0,
+      "jsDecoded": 483365,
+      "cssCount": 2,
+      "cssBytes": 0,
+      "total": 24
+    }
+  },
+  "notes": [
+    "projects discovered: [\"acc-demo-debug\",\"zaipex-sass\"]",
+    "composer candidates on project page: 0",
+    "broker host check: connecting via http://127.0.0.1:7899 succeeded; verify 0.0.0.0 with separate socket test if needed"
+  ],
+  "fuzz": [
+    {
+      "path": "/api/projects",
+      "error": "BASE is not defined"
+    },
+    {
+      "path": "/api/blobs/0000000000000000000000000000000000000000000000000000000000000000",
+      "error": "BASE is not defined"
+    },
+    {
+      "path": "/api/blobs/notahash",
+      "error": "BASE is not defined"
+    },
+    {
+      "path": "/api/create-project",
+      "error": "BASE is not defined"
+    },
+    {
+      "path": "/api/create-project",
+      "error": "BASE is not defined"
+    },
+    {
+      "path": "/api/create-project",
+      "error": "BASE is not defined"
+    },
+    {
+      "path": "/api/create-project",
+      "error": "BASE is not defined"
+    }
+  ]
+}
