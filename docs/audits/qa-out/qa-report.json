@@ -4,31 +4,31 @@
   "failedRequests": [],
   "metrics": {
     "teams": {
-      "ms": 993,
-      "url": "http://127.0.0.1:7919/"
+      "ms": 988,
+      "url": "http://127.0.0.1:7929/"
     },
-    "project-demo": {
-      "ms": 1126,
-      "url": "http://127.0.0.1:7919/demo"
+    "project-demo-team": {
+      "ms": 1081,
+      "url": "http://127.0.0.1:7929/demo-team"
     },
-    "project-empty-project": {
-      "ms": 961,
-      "url": "http://127.0.0.1:7919/empty-project"
+    "project-empty-team": {
+      "ms": 966,
+      "url": "http://127.0.0.1:7929/empty-team"
     },
     "history": {
-      "ms": 1160,
-      "url": "http://127.0.0.1:7919/demo/history"
+      "ms": 1152,
+      "url": "http://127.0.0.1:7929/demo-team/history"
     },
     "mobile-teams": {
-      "ms": 954,
-      "url": "http://127.0.0.1:7919/"
+      "ms": 956,
+      "url": "http://127.0.0.1:7929/"
     },
     "mobile-project": {
-      "ms": 711,
-      "url": "http://127.0.0.1:7919/demo"
+      "ms": 602,
+      "url": "http://127.0.0.1:7929/demo-team"
     },
     "a11yQuick": {
-      "buttons": 6,
+      "buttons": 5,
       "links": 0,
       "inputs": 0,
       "images": 0,
@@ -39,31 +39,26 @@
       "title": "Zaipex ACC — Agents Command Center",
       "meta": {}
     },
-    "externalResources": [
-      "https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=DM+Serif+Display&family=JetBrains+Mono:wght@400;500;600&display=swap",
-      "https://fonts.gstatic.com/s/dmsans/v17/rP2Hp2ywxg089UriCZOIHTWEBlw.woff2",
-      "https://fonts.gstatic.com/s/dmserifdisplay/v17/-nFnOHM81r4j6k0gjAW3mujVU2B2G_Bx0vrx52g.woff2",
-      "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwgknk-4.woff2"
-    ],
+    "externalResources": [],
     "bundle": {
       "jsCount": 1,
       "jsBytes": 0,
-      "jsDecoded": 483365,
-      "cssCount": 2,
+      "jsDecoded": 484495,
+      "cssCount": 1,
       "cssBytes": 0,
-      "total": 24
+      "total": 23
     }
   },
   "notes": [
-    "projects discovered: [\"demo\",\"empty-project\"]",
+    "projects discovered: [\"demo-team\",\"empty-team\"]",
     "composer candidates on project page: 0",
-    "broker host check: connecting via http://127.0.0.1:7919 succeeded; verify 0.0.0.0 with separate socket test if needed"
+    "broker host check: connecting via http://127.0.0.1:7929 succeeded; verify 0.0.0.0 with separate socket test if needed"
   ],
   "fuzz": [
     {
       "path": "/api/projects",
       "status": 200,
-      "body": "{\"projects\":[{\"name\":\"demo\",\"description\":\"\",\"created_at\":\"2026-05-10T02:44:21.827Z\",\"agents\":[{\"role\":\"arquitectura\",\"c"
+      "body": "{\"projects\":[{\"name\":\"demo-team\",\"description\":\"QA test project with backend + frontend agents\",\"created_at\":\"2026-05-10"
     },
     {
       "path": "/api/blobs/0000000000000000000000000000000000000000000000000000000000000000",
@@ -72,8 +67,8 @@
     },
     {
       "path": "/api/blobs/notahash",
-      "status": 200,
-      "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, "
+      "status": 404,
+      "body": "{\"ok\":false,\"error\":\"Not found\",\"code\":\"NOT_FOUND\"}"
     },
     {
       "path": "/api/project/create",
