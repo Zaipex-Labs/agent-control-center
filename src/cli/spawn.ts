@@ -203,7 +203,13 @@ function scheduleAgentInit(sessionName: string, agents: AgentConfig[]): void {
   const lines: string[] = ['#!/bin/sh'];
 
   for (const agent of agents) {
-    const target = `${sessionName}:${agent.role}`;
+    // [H-3 caveat] — target = sessionName + ':' + agent.role. Both
+    // sides are validated by assertSafeIdentifier before they reach
+    // here, so today it's safe. But this is the last `sh -c` template
+    // the audit flagged, and the only unescaped interpolation: defense
+    // in depth, wrap with shellEscape so a future regression in either
+    // identifier validator can't reach the shell verbatim.
+    const target = shellEscape(`${sessionName}:${agent.role}`);
     const name = agent.name || getDefaultName(agent.role);
     const prompt = `Soy ${name}, rol ${agent.role}. Ejecuta whoami y set_summary ahora.`;
 
