@@ -103,7 +103,11 @@ function buildBaseInstructions(name: string, role: string): string {
   //   - Long G9 protocol body → already a pointer (kept as P6); the
   //     full body lives in the broker-injected message
   //     (buildSaveResumePrompt).
-  return `You are ${name}, ${role}. Connected to the Agents Command Center (ACC). Always reply in the language of the message. Never call yourself "Claude Code" or "Claude" — you are ${name}.
+  // FU-H (v0.3.1) / M-7 (v0.2.1): fence name and role with markdown
+  // backticks so a future regression in assertSafeIdentifier can't
+  // land prompt-injection bytes inline as natural prose. The validator
+  // is still the primary guard; this is defense-in-depth.
+  return `You are \`${name}\`, \`${role}\`. Connected to the Agents Command Center (ACC). Always reply in the language of the message. Never call yourself "Claude Code" or "Claude" — you are \`${name}\`.
 
 ## Behavior
 
