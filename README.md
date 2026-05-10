@@ -303,10 +303,17 @@ npm run test:watch                 # watch mode
 | `set_shared` | `namespace, key, value` | Escribir estado / Write shared state |
 | `get_shared` | `namespace, key` | Leer estado / Read shared state |
 | `list_shared` | `namespace` | Listar keys / List keys |
+| `delete_shared` | `namespace, key` | Borrar key / Delete key (idempotent) |
+| `remember` | `summary, key?` | Guardar decisión / Save a decision (Team Memory · v0.3.0) |
+| `recall` | `query, limit?` | Buscar decisiones / Search decisions (Team Memory · v0.3.0) |
 | `set_summary` | `summary` | Actualizar resumen / Update summary |
 | `set_role` | `role` | Cambiar rol / Change role |
 
 **Message types:** `message`, `question`, `response`, `contract_update`, `notification`, `task_request`, `task_complete`
+
+**Project skills (v0.3.0):** drop `*.md` files into
+`~/.zaipex-acc/projects/<project>/skills/` to inject team conventions
+into every agent's system prompt. See [`docs/skills.md`](docs/skills.md).
 
 ---
 
