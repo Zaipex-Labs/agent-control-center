@@ -20,11 +20,53 @@ export type BrokerEvent =
 interface WsClient {
   ws: WebSocket;
   projectId: string | null;
+  // [P-4] flipped to true on every server-sent ping; flipped to false
+  // on the corresponding 'pong'. If a heartbeat tick finds it still
+  // true, the peer never replied → terminate the socket.
+  alive: boolean;
 }
 
 const clients = new Set<WsClient>();
 
 const wss = new WebSocketServer({ noServer: true });
+
+// [P-4] backpressure threshold + heartbeat cadence. 1 MB matches the
+// terminal-side limit so a slow tab can't accumulate broadcast frames
+// indefinitely; 30s is shorter than any common reverse-proxy idle
+// timeout (60s+) and still cheap.
+const BROADCAST_BUFFER_LIMIT = 1024 * 1024;
+const HEARTBEAT_INTERVAL_MS = 30_000;
+
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+function ensureHeartbeat(): void {
+  if (heartbeatTimer) return;
+  heartbeatTimer = setInterval(() => {
+    for (const client of clients) {
+      if (client.ws.readyState !== WebSocket.OPEN) continue;
+      if (!client.alive) {
+        // No pong since the previous tick — half-open connection.
+        // terminate() drops the socket immediately, the 'close' handler
+        // removes it from the Set.
+        try { client.ws.terminate(); } catch { /* ignore */ }
+        clients.delete(client);
+        continue;
+      }
+      client.alive = false;
+      try { client.ws.ping(); } catch { /* ignore — close handler cleans up */ }
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+  // Don't keep the event loop alive just for the heartbeat — broker
+  // shutdown wants a clean exit.
+  if (typeof heartbeatTimer.unref === 'function') heartbeatTimer.unref();
+}
+
+function stopHeartbeat(): void {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
 
 export function handleEventsUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, projectId: string | null): void {
   if (!isAllowedOrigin(req)) {
@@ -33,8 +75,14 @@ export function handleEventsUpgrade(req: IncomingMessage, socket: Duplex, head: 
     return;
   }
   wss.handleUpgrade(req, socket, head, (ws) => {
-    const client: WsClient = { ws, projectId };
+    const client: WsClient = { ws, projectId, alive: true };
     clients.add(client);
+    ensureHeartbeat();
+
+    // [P-4] reset liveness flag on every pong; the heartbeat tick uses
+    // it to detect half-open TCP sockets that close()/error() never
+    // fire on (e.g. laptop closes lid mid-session).
+    ws.on('pong', () => { client.alive = true; });
 
     ws.on('close', () => {
       clients.delete(client);
@@ -53,6 +101,9 @@ export function closeAllEventsClients(): void {
     try { client.ws.close(1001, 'Broker shutting down'); } catch { /* ignore */ }
   }
   clients.clear();
+  // [P-4] tear the heartbeat down so the broker process can exit
+  // cleanly on shutdown.
+  stopHeartbeat();
 }
 
 export function broadcast(event: BrokerEvent, data: unknown, projectId?: string): void {
@@ -60,8 +111,13 @@ export function broadcast(event: BrokerEvent, data: unknown, projectId?: string)
 
   for (const client of clients) {
     if (client.ws.readyState !== WebSocket.OPEN) continue;
-    if (!projectId || !client.projectId || client.projectId === projectId) {
-      client.ws.send(payload);
-    }
+    if (projectId && client.projectId && client.projectId !== projectId) continue;
+    // [P-4] drop the frame if the per-client send buffer is already
+    // saturated. A slow client must not be allowed to balloon the
+    // broker's heap — they'll see the next event after the OS drains
+    // the socket. This is a feature-event stream, not a transport;
+    // missing one update is recoverable from the next /api/* read.
+    if (client.ws.bufferedAmount > BROADCAST_BUFFER_LIMIT) continue;
+    try { client.ws.send(payload); } catch { /* ignore — close handler cleans up */ }
   }
 }
