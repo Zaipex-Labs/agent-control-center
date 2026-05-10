@@ -6,6 +6,8 @@ import { useEffect, useRef } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { requestWsToken } from '../lib/api';
+import { useCurrentPeerId } from '../hooks/useDashboardPeer';
 
 interface TerminalProps {
   projectId: string;
@@ -20,9 +22,10 @@ export default function Terminal({ projectId, role, visible }: TerminalProps) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
   const retriesRef = useRef(0);
+  const peerId = useCurrentPeerId();
 
   useEffect(() => {
-    if (!visible || !containerRef.current) return;
+    if (!visible || !containerRef.current || !peerId) return;
 
     const term = new XTerm({
       theme: {
@@ -64,10 +67,34 @@ export default function Terminal({ projectId, role, visible }: TerminalProps) {
     termRef.current = term;
     fitRef.current = fit;
 
-    function connect() {
+    let cancelled = false;
+    async function connect() {
+      // [F-3-B] Request a one-shot CSRF token bound to (project, role)
+      // and carry it via Sec-WebSocket-Protocol. Browsers don't allow
+      // custom headers on WS, but the protocol field IS settable through
+      // `new WebSocket(url, [protocol])`. The broker echoes it back on
+      // accept so the underlying WS handshake is valid.
+      let token: string;
+      try {
+        token = await requestWsToken(projectId, role, peerId!);
+      } catch {
+        // Couldn't issue — schedule a retry like a normal close. The
+        // token endpoint is gated on a registered peer_id, so failures
+        // here usually mean the dashboard peer was just cleaned up; the
+        // useDashboardPeer heartbeat will re-register and the next
+        // attempt will succeed.
+        if (cancelled) return;
+        if (retriesRef.current >= 3) return;
+        const delay = Math.min(2000 * 2 ** retriesRef.current, 10000);
+        retriesRef.current++;
+        reconnectTimer.current = setTimeout(connect, delay);
+        return;
+      }
+      if (cancelled) return;
+
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const url = `${protocol}//${window.location.host}/ws/terminal/${encodeURIComponent(role)}?project=${encodeURIComponent(projectId)}`;
-      const ws = new WebSocket(url);
+      const ws = new WebSocket(url, [`acc-token.${token}`]);
       wsRef.current = ws;
 
       ws.binaryType = 'arraybuffer';
@@ -120,6 +147,7 @@ export default function Terminal({ projectId, role, visible }: TerminalProps) {
     observer.observe(containerRef.current);
 
     return () => {
+      cancelled = true;
       clearTimeout(reconnectTimer.current);
       dataDisposable.dispose();
       window.removeEventListener('resize', handleWindowResize);
@@ -134,7 +162,7 @@ export default function Terminal({ projectId, role, visible }: TerminalProps) {
       fitRef.current = null;
       retriesRef.current = 0;
     };
-  }, [projectId, role, visible]);
+  }, [projectId, role, visible, peerId]);
 
   return (
     <div
