@@ -14,7 +14,7 @@ import { gcOrphanBlobs } from './blob-gc.js';
 import { cleanStalePeers } from './cleanup.js';
 import { URL } from 'node:url';
 import { handleEventsUpgrade, closeAllEventsClients } from './websocket.js';
-import { handleTerminalUpgrade, killAllWebAgentsEverywhere } from './terminal.js';
+import { handleTerminalUpgrade, killAllWebAgentsEverywhere, closeAllTerminalClients } from './terminal.js';
 import { isAllowedHost, isAllowedOrigin, isJsonContentType } from './origin.js';
 import {
   parseBody,
@@ -287,17 +287,37 @@ export function createBrokerServer(): Server {
 // or any throw in an async handler crashes the broker, leaving the
 // PTY children of spawnWebAgent orphaned, the WAL un-checkpointed,
 // and dashboard WS clients with a dangling TCP connection.
+//
+// Close order matters and is asserted by tests/broker/lifecycle.test.ts:
+//   1. Terminal WS clients (/ws/terminal/<role>): close FIRST so any
+//      pending stdin write can't reach a dying agent and dashboard
+//      viewers see a clean 1001 instead of agent stdout going dark
+//      before the WS notifies them.
+//   2. Web agent processes: kill once nobody can write stdin to them.
+//   3. Events WS clients (/ws): close after the agent layer is gone
+//      so the dashboard's last event is the one that says "broker
+//      shutting down", not a garbled half-state.
+//   4. HTTP server: drain remaining connections.
+//   5. SQLite database: close LAST with a wal_checkpoint(TRUNCATE)
+//      so on-disk state is consistent.
 let shutdownRunning = false;
+// Test-only hook so the order test can clear the idempotency latch
+// between cases. Not exported from `main()`'s import path.
+export function _resetShutdownLatchForTests(): void { shutdownRunning = false; }
 export function shutdownBroker(server: Server, label: string): Promise<void> {
   if (shutdownRunning) return Promise.resolve();
   shutdownRunning = true;
-  console.error(`[broker:lifecycle] ${label} — closing WS clients, killing agents, closing DB`);
+  console.error(`[broker:lifecycle] ${label} — terminals → agents → events → http → db`);
   return new Promise<void>((resolve) => {
-    try { closeAllEventsClients(); } catch (e) { console.error('[broker:lifecycle] closeAllEventsClients', e); }
+    try {
+      const closedTerm = closeAllTerminalClients();
+      if (closedTerm > 0) console.error(`[broker:lifecycle] closed ${closedTerm} terminal WS client(s)`);
+    } catch (e) { console.error('[broker:lifecycle] closeAllTerminalClients', e); }
     try {
       const killed = killAllWebAgentsEverywhere();
       if (killed > 0) console.error(`[broker:lifecycle] killed ${killed} web agent(s)`);
     } catch (e) { console.error('[broker:lifecycle] killAllWebAgentsEverywhere', e); }
+    try { closeAllEventsClients(); } catch (e) { console.error('[broker:lifecycle] closeAllEventsClients', e); }
     server.close(() => {
       try { closeDatabase(); } catch (e) { console.error('[broker:lifecycle] closeDatabase', e); }
       console.error('[broker:lifecycle] shutdown complete');

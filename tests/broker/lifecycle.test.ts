@@ -2,15 +2,19 @@
 // Licensed under the Apache License, Version 2.0
 // See LICENSE file for details.
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { Server } from 'node:http';
 import WebSocket from 'ws';
 import {
   createBrokerServer,
   shutdownBroker,
   installLifecycleHandlers,
+  _resetShutdownLatchForTests,
 } from '../../src/broker/index.js';
 import { closeDatabase, getDb } from '../../src/broker/database.js';
+import * as wsMod from '../../src/broker/websocket.js';
+import * as termMod from '../../src/broker/terminal.js';
+import * as dbMod from '../../src/broker/database.js';
 
 // [QW-5] — broker must clean up gracefully on signal / crash. No PTY
 // children orphaned, WAL checkpointed, WS clients see a clean 1001
@@ -73,6 +77,41 @@ describe('shutdownBroker (QW-5)', () => {
 
   it('is idempotent (second call resolves without error)', async () => {
     await expect(shutdownBroker(server, 'test idempotent')).resolves.toBeUndefined();
+  });
+});
+
+describe('shutdownBroker close order [QW-5 follow-up]', () => {
+  // Verifies the contract documented at src/broker/index.ts above
+  // shutdownBroker: terminals → kill agents → events → http → db.
+  it('runs cleanup in the order: terminals → agents → events → db', async () => {
+    process.env['ACC_HOME'] = process.env['ACC_HOME'] ?? '/tmp/acc-test-lifecycle-order';
+    const server = createBrokerServer();
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    _resetShutdownLatchForTests();
+
+    const order: string[] = [];
+    const sTerm = vi.spyOn(termMod, 'closeAllTerminalClients').mockImplementation(() => {
+      order.push('terminals'); return 0;
+    });
+    const sKill = vi.spyOn(termMod, 'killAllWebAgentsEverywhere').mockImplementation(() => {
+      order.push('agents'); return 0;
+    });
+    const sEvents = vi.spyOn(wsMod, 'closeAllEventsClients').mockImplementation(() => {
+      order.push('events');
+    });
+    const sDb = vi.spyOn(dbMod, 'closeDatabase').mockImplementation(() => {
+      order.push('db');
+    });
+
+    await shutdownBroker(server, 'order test');
+
+    expect(order).toEqual(['terminals', 'agents', 'events', 'db']);
+
+    sTerm.mockRestore();
+    sKill.mockRestore();
+    sEvents.mockRestore();
+    sDb.mockRestore();
+    _resetShutdownLatchForTests();
   });
 });
 

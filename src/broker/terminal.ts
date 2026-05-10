@@ -45,6 +45,11 @@ const wss = new WebSocketServer({ noServer: true });
 const agentProcesses = new Map<string, ChildProcess>();
 // Buffer output so WS clients connecting later see the full history
 const outputBuffers = new Map<string, Buffer[]>();
+// Track every live /ws/terminal/* WebSocket so the lifecycle path
+// (QW-5 shutdownBroker) can close them BEFORE we kill the underlying
+// agent process. Without this Set the WS-close happens indirectly via
+// the proc 'exit' handler, which is racy on shutdown.
+const terminalClients = new Set<WebSocket>();
 const MAX_BUFFER = 100000; // ~100KB per agent
 // Last-seen live status line per agent ("Nesting… (1m 11s · ↓ 1.0k tokens)")
 // so we only broadcast when it actually changes, and new WS clients can
@@ -473,6 +478,19 @@ export function killAllWebAgentsEverywhere(): number {
   return killed;
 }
 
+// Close every live /ws/terminal/* WebSocket. Sent BEFORE the agent
+// processes are killed so dashboard terminal viewers see a clean
+// 1001 close (and stop sending stdin) before the PTY tears down.
+// Order matters in shutdownBroker (QW-5 follow-up).
+export function closeAllTerminalClients(): number {
+  let n = 0;
+  for (const ws of terminalClients) {
+    try { ws.close(1001, 'Broker shutting down'); n++; } catch { /* ignore */ }
+  }
+  terminalClients.clear();
+  return n;
+}
+
 export function getWebAgent(projectId: string, role: string): ChildProcess | undefined {
   return agentProcesses.get(processKey(projectId, role));
 }
@@ -503,6 +521,7 @@ export function handleTerminalUpgrade(req: IncomingMessage, socket: Duplex, head
   wss.handleUpgrade(req, socket, head, (ws) => {
     log(`ws connect for ${key}`);
     log(`piping ws to process ${key} pid=${proc.pid}`);
+    terminalClients.add(ws);
 
     // Send buffered output first
     const buf = outputBuffers.get(key);
@@ -545,12 +564,14 @@ export function handleTerminalUpgrade(req: IncomingMessage, socket: Duplex, head
     // Cleanup on WebSocket close
     ws.on('close', () => {
       log(`ws closed for ${key}`);
+      terminalClients.delete(ws);
       proc.stdout?.off('data', onStdout);
       proc.stderr?.off('data', onStderr);
       proc.off('exit', onExit);
     });
 
     ws.on('error', () => {
+      terminalClients.delete(ws);
       proc.stdout?.off('data', onStdout);
       proc.stderr?.off('data', onStderr);
       proc.off('exit', onExit);
