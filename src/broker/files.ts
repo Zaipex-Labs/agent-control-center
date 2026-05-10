@@ -2,8 +2,11 @@
 // Licensed under the Apache License, Version 2.0
 // See LICENSE file for details.
 
-import { execSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 // Returns the set of files currently modified in the given working
 // directory according to `git status --porcelain`. Each entry carries the
@@ -13,22 +16,26 @@ import { existsSync } from 'node:fs';
 //
 // Silent on failure: if the cwd is not a git repo, git is missing, or
 // anything else goes wrong, returns an empty array.
+//
+// [P-3] async since v0.2.5. Previously this used execSync with a 2.5s
+// timeout, blocking the broker's event loop in the worst case for
+// agents.length × 2.5s. Async + Promise.all in handleListModifiedFiles
+// fans out the spawns concurrently and never holds the loop.
 export interface GitFileEntry {
   path: string;
   status: string;
 }
 
-export function gitModifiedFiles(cwd: string): GitFileEntry[] {
+export async function gitModifiedFiles(cwd: string): Promise<GitFileEntry[]> {
   if (!cwd || !existsSync(cwd)) return [];
   try {
-    const out = execSync('git status --porcelain', {
-      cwd,
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      timeout: 2500,
-    });
+    const { stdout } = await execFileAsync(
+      'git',
+      ['status', '--porcelain'],
+      { cwd, encoding: 'utf-8', timeout: 2500 },
+    );
     const entries: GitFileEntry[] = [];
-    for (const rawLine of out.split('\n')) {
+    for (const rawLine of stdout.split('\n')) {
       const line = rawLine.replace(/\r$/, '');
       if (line.length < 3) continue;
       const status = line.slice(0, 2);

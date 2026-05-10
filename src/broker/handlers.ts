@@ -629,7 +629,7 @@ export function handleProjectUp(body: unknown, res: ServerResponse): void {
 // Silent on repos that aren't git-initialized — they just contribute zero
 // files. The dashboard merges this list with shared_state notes client
 // side.
-export function handleListModifiedFiles(body: unknown, res: ServerResponse): void {
+export async function handleListModifiedFiles(body: unknown, res: ServerResponse): Promise<void> {
   const b = body as { project_id?: string; peer_id?: string };
   if (!b.project_id) return error(res, 'Missing required field: project_id');
   // [S-NEW-3] cross-project leak guard. The earlier H-1 fix only covered
@@ -644,6 +644,13 @@ export function handleListModifiedFiles(body: unknown, res: ServerResponse): voi
   const config = JSON.parse(readFileSync(configPath, 'utf-8'));
   const agents: Array<{ role: string; name?: string; cwd: string }> = config.agents ?? [];
 
+  // [P-3] Fan out one git-status spawn per agent in parallel. Previously
+  // this was a sequential execSync loop with a 2.5s timeout each, so
+  // worst case it stalled the broker's event loop for agents.length × 2.5s.
+  const perAgentEntries = await Promise.all(
+    agents.map(agent => gitModifiedFiles(agent.cwd).then(entries => ({ agent, entries }))),
+  );
+
   // Key files by (cwd, path) so the same filename in two different agent
   // directories doesn't collapse.
   const seen = new Set<string>();
@@ -655,8 +662,7 @@ export function handleListModifiedFiles(body: unknown, res: ServerResponse): voi
     cwd: string;
   }> = [];
 
-  for (const agent of agents) {
-    const entries = gitModifiedFiles(agent.cwd);
+  for (const { agent, entries } of perAgentEntries) {
     // Skip untracked paths (status "??"). They are pure noise if the repo
     // isn't initialized or if a cwd has lots of generated files — we'd
     // rather show nothing and let agents explicitly pin files via
