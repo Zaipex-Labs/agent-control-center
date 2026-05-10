@@ -2,13 +2,13 @@
 // Licensed under the Apache License, Version 2.0
 // See LICENSE file for details.
 
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import TeamsPage from './pages/TeamsPage';
 import ProjectPage from './pages/ProjectPage';
 
-function HistoryPage() {
-  return <div><h1>History</h1></div>;
-}
+// [UX-1] /history was a stub ("<h1>History</h1>") that left users on a
+// blank page. Until the page exists, route is hidden — direct visitors
+// (and any stale bookmark) land on Teams instead.
 
 export default function App() {
   return (
@@ -16,7 +16,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<TeamsPage />} />
         <Route path="/:projectId" element={<ProjectPage />} />
-        <Route path="/:projectId/history" element={<HistoryPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
