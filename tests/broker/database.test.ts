@@ -26,9 +26,11 @@ import {
   insertLogEntry,
   selectHistory,
   setSharedState,
+  setSharedStateWithMeta,
   getSharedState,
   listSharedKeys,
   deleteSharedState,
+  searchDecisions,
 } from '../../src/broker/database.js';
 import type { Peer } from '../../src/shared/types.js';
 
@@ -321,5 +323,114 @@ describe('shared state CRUD', () => {
 
   it('returns empty list for missing namespace', () => {
     expect(listSharedKeys('proj', 'nonexistent')).toHaveLength(0);
+  });
+});
+
+// FASE A-1 (v0.3.0)
+describe('shared_state · author_*/created_at migration', () => {
+  it('exposes the new columns on PRAGMA table_info', () => {
+    const cols = (getDb().prepare("PRAGMA table_info(shared_state)").all() as Array<{ name: string }>);
+    const names = cols.map(c => c.name);
+    expect(names).toContain('author_role');
+    expect(names).toContain('author_peer_id');
+    expect(names).toContain('created_at');
+  });
+
+  it('is idempotent — second initDatabase does not duplicate or throw', () => {
+    expect(() => initDatabase(':memory:')).not.toThrow();
+    const cols = (getDb().prepare("PRAGMA table_info(shared_state)").all() as Array<{ name: string }>);
+    expect(cols.filter(c => c.name === 'author_role')).toHaveLength(1);
+  });
+});
+
+describe('setSharedStateWithMeta + searchDecisions', () => {
+  it('writes author_* + created_at and preserves them on update', () => {
+    const t1 = '2026-05-10T10:00:00Z';
+    const t2 = '2026-05-10T11:00:00Z';
+    setSharedStateWithMeta('proj', 'decisions', 'use-esm', 'v1', 'p1', t1, {
+      author_role: 'backend', author_peer_id: 'p1',
+    });
+    const row1 = getSharedState('proj', 'decisions', 'use-esm')!;
+    expect(row1.value).toBe('v1');
+    expect(row1.author_role).toBe('backend');
+    expect(row1.author_peer_id).toBe('p1');
+    expect(row1.created_at).toBe(t1);
+    expect(row1.updated_at).toBe(t1);
+
+    // Second write by a different peer
+    setSharedStateWithMeta('proj', 'decisions', 'use-esm', 'v2', 'p2', t2, {
+      author_role: 'frontend', author_peer_id: 'p2',
+    });
+    const row2 = getSharedState('proj', 'decisions', 'use-esm')!;
+    expect(row2.value).toBe('v2');
+    // author + created_at frozen at first write
+    expect(row2.author_role).toBe('backend');
+    expect(row2.author_peer_id).toBe('p1');
+    expect(row2.created_at).toBe(t1);
+    // updated bumped
+    expect(row2.updated_by).toBe('p2');
+    expect(row2.updated_at).toBe(t2);
+  });
+
+  it('searchDecisions matches keys and values, ranks key hits higher', () => {
+    const now = '2026-05-10T10:00:00Z';
+    setSharedStateWithMeta('proj', 'decisions', 'use-esm', 'all modules in esm format', 'p1', now, { author_role: 'backend', author_peer_id: 'p1' });
+    setSharedStateWithMeta('proj', 'decisions', 'http-client', 'esm with native fetch only', 'p1', now, { author_role: 'backend', author_peer_id: 'p1' });
+    setSharedStateWithMeta('proj', 'decisions', 'auth-strategy', 'jwt rotation every 7 days', 'p1', now, { author_role: 'backend', author_peer_id: 'p1' });
+
+    const out = searchDecisions('proj', 'decisions', 'esm', 5);
+    expect(out.length).toBe(2);
+    // 'use-esm' should rank above 'http-client' (key hit > value-only hit)
+    expect(out[0].key).toBe('use-esm');
+    expect(out[1].key).toBe('http-client');
+  });
+
+  it('searchDecisions is project-scoped (no cross-project leak)', () => {
+    const now = '2026-05-10T10:00:00Z';
+    setSharedStateWithMeta('p1', 'decisions', 'use-esm', 'esm in p1', 'peer1', now, { author_role: 'backend', author_peer_id: 'peer1' });
+    setSharedStateWithMeta('p2', 'decisions', 'use-esm', 'esm in p2', 'peer2', now, { author_role: 'backend', author_peer_id: 'peer2' });
+
+    const out = searchDecisions('p1', 'decisions', 'esm', 10);
+    expect(out).toHaveLength(1);
+    expect(out[0].value).toBe('esm in p1');
+  });
+
+  it('searchDecisions is namespace-scoped', () => {
+    const now = '2026-05-10T10:00:00Z';
+    setSharedStateWithMeta('proj', 'decisions', 'use-esm', 'esm in decisions', 'p1', now, { author_role: 'backend', author_peer_id: 'p1' });
+    setSharedState('proj', 'config', 'use-esm', 'esm in config', 'p1', now);
+
+    const out = searchDecisions('proj', 'decisions', 'esm', 10);
+    expect(out).toHaveLength(1);
+    expect(out[0].value).toBe('esm in decisions');
+  });
+
+  it('searchDecisions returns top-K only', () => {
+    const now = '2026-05-10T10:00:00Z';
+    for (let i = 0; i < 20; i++) {
+      setSharedStateWithMeta('proj', 'decisions', `key-esm-${i}`, `v${i}`, 'p1', now, { author_role: 'backend', author_peer_id: 'p1' });
+    }
+    expect(searchDecisions('proj', 'decisions', 'esm', 5)).toHaveLength(5);
+    expect(searchDecisions('proj', 'decisions', 'esm', 100)).toHaveLength(20);
+  });
+
+  it('searchDecisions latency under 100ms with 1k seeded rows', () => {
+    const now = '2026-05-10T10:00:00Z';
+    // Seed 1000 decisions across mixed-content rows.
+    const insert = (i: number, content: string) => setSharedStateWithMeta(
+      'proj', 'decisions', `key-${i}`, content, 'p1', now,
+      { author_role: 'backend', author_peer_id: 'p1' },
+    );
+    for (let i = 0; i < 1000; i++) {
+      insert(i, i % 7 === 0 ? 'use esm modules everywhere' : 'lorem ipsum dolor sit amet');
+    }
+    const t0 = Date.now();
+    const hits = searchDecisions('proj', 'decisions', 'esm', 5);
+    const elapsed = Date.now() - t0;
+    // The harness needs to be roomy on slow CI hardware. 100ms is our
+    // budget per the FASE A checkpoint metric — anything beyond means
+    // we picked the wrong index strategy and need to reconsider.
+    expect(elapsed).toBeLessThan(100);
+    expect(hits).toHaveLength(5);
   });
 });

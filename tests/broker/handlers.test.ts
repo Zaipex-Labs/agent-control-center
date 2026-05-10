@@ -533,3 +533,78 @@ describe('handleSharedSet / Get / List / Delete', () => {
     expect(result.statusCode).toBe(400);
   });
 });
+
+// FASE A-1 (v0.3.0): decisions namespace write-through
+describe('handleSharedSet · decisions namespace write-through', () => {
+  beforeEach(() => {
+    insertPeer(makePeer({ id: 'p-back', project_id: 'proj', role: 'backend', name: 'Turing' }));
+    insertPeer(makePeer({ id: 'p-front', project_id: 'proj', role: 'frontend', name: 'Lovelace' }));
+  });
+
+  it('first write stamps author_role + author_peer_id + created_at', () => {
+    const { res } = createMockRes();
+    handleSharedSet({
+      project_id: 'proj', namespace: 'decisions', key: 'use-esm', value: 'we use esm everywhere',
+      peer_id: 'p-back',
+    }, res);
+
+    const { res: getRes, result: getResult } = createMockRes();
+    handleSharedGet({
+      project_id: 'proj', namespace: 'decisions', key: 'use-esm', peer_id: 'p-back',
+    }, getRes);
+    const body = getResult.body as Record<string, unknown>;
+    expect(body.value).toBe('we use esm everywhere');
+    expect(body.author_role).toBe('backend');
+    expect(body.author_peer_id).toBe('p-back');
+    expect(typeof body.created_at).toBe('string');
+    expect(body.updated_by).toBe('p-back');
+  });
+
+  it('second write by another peer keeps original author_* + created_at, bumps updated_*', async () => {
+    const { res: r1 } = createMockRes();
+    handleSharedSet({
+      project_id: 'proj', namespace: 'decisions', key: 'use-esm', value: 'v1',
+      peer_id: 'p-back',
+    }, r1);
+
+    const { res: r1get, result: r1result } = createMockRes();
+    handleSharedGet({ project_id: 'proj', namespace: 'decisions', key: 'use-esm', peer_id: 'p-back' }, r1get);
+    const v1 = r1result.body as Record<string, unknown>;
+
+    // Force a measurable timestamp gap.
+    await new Promise(r => setTimeout(r, 10));
+
+    const { res: r2 } = createMockRes();
+    handleSharedSet({
+      project_id: 'proj', namespace: 'decisions', key: 'use-esm', value: 'v2',
+      peer_id: 'p-front',
+    }, r2);
+
+    const { res: r2get, result: r2result } = createMockRes();
+    handleSharedGet({ project_id: 'proj', namespace: 'decisions', key: 'use-esm', peer_id: 'p-back' }, r2get);
+    const v2 = r2result.body as Record<string, unknown>;
+
+    // value updated, author_* + created_at preserved, updated_* bumped.
+    expect(v2.value).toBe('v2');
+    expect(v2.author_role).toBe('backend');
+    expect(v2.author_peer_id).toBe('p-back');
+    expect(v2.created_at).toBe(v1.created_at);
+    expect(v2.updated_by).toBe('p-front');
+    expect(v2.updated_at).not.toBe(v1.updated_at);
+  });
+
+  it('non-decisions namespaces still work and do NOT carry author_* in response', () => {
+    const { res } = createMockRes();
+    handleSharedSet({
+      project_id: 'proj', namespace: 'config', key: 'port', value: '8080', peer_id: 'p-back',
+    }, res);
+
+    const { res: getRes, result: getResult } = createMockRes();
+    handleSharedGet({ project_id: 'proj', namespace: 'config', key: 'port', peer_id: 'p-back' }, getRes);
+    const body = getResult.body as Record<string, unknown>;
+    expect(body.value).toBe('8080');
+    expect(body.author_role).toBeUndefined();
+    expect(body.author_peer_id).toBeUndefined();
+    expect(body.created_at).toBeUndefined();
+  });
+});

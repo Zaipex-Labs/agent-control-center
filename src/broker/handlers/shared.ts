@@ -10,9 +10,11 @@ import type { ServerResponse } from 'node:http';
 import { broadcast } from '../websocket.js';
 import {
   setSharedState,
+  setSharedStateWithMeta,
   getSharedState,
   listSharedKeys,
   deleteSharedState,
+  selectPeerById,
 } from '../database.js';
 import type {
   SharedSetRequest,
@@ -21,6 +23,12 @@ import type {
   SharedDeleteRequest,
 } from '../../shared/types.js';
 import { json, error, assertProjectMembership } from './_helpers.js';
+
+// FASE A-1 (v0.3.0): the `decisions` namespace is reserved for Team
+// Memory. Writes to it auto-record author_role / author_peer_id /
+// created_at via setSharedStateWithMeta. Reads work like any other
+// namespace.
+export const DECISIONS_NAMESPACE = 'decisions';
 
 export function handleSharedSet(body: unknown, res: ServerResponse): void {
   const b = body as SharedSetRequest;
@@ -32,7 +40,21 @@ export function handleSharedSet(body: unknown, res: ServerResponse): void {
   // could overwrite a config key in B otherwise.
   if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
-  setSharedState(b.project_id, b.namespace, b.key, b.value, b.peer_id, new Date().toISOString());
+  const now = new Date().toISOString();
+
+  if (b.namespace === DECISIONS_NAMESPACE) {
+    // Write-through: stamp the author from the registered peer. If the
+    // row already exists, setSharedStateWithMeta preserves the original
+    // author_* / created_at — only updated_by / updated_at get bumped.
+    const peer = selectPeerById(b.peer_id);
+    setSharedStateWithMeta(
+      b.project_id, b.namespace, b.key, b.value, b.peer_id, now,
+      { author_role: peer?.role ?? '', author_peer_id: b.peer_id },
+    );
+  } else {
+    setSharedState(b.project_id, b.namespace, b.key, b.value, b.peer_id, now);
+  }
+
   broadcast('shared:updated', { namespace: b.namespace, key: b.key }, b.project_id);
   json(res, { ok: true });
 }
@@ -49,7 +71,19 @@ export function handleSharedGet(body: unknown, res: ServerResponse): void {
   const entry = getSharedState(b.project_id, b.namespace, b.key);
   if (!entry) return json(res, { error: 'not found' }, 404);
 
-  json(res, { value: entry.value, updated_by: entry.updated_by, updated_at: entry.updated_at });
+  // FASE A-1 (v0.3.0): include author_role / author_peer_id /
+  // created_at when the row was written through the decisions
+  // write-through path. They stay null for every other namespace, so
+  // omit them entirely in that case to keep the response shape stable.
+  const out: Record<string, unknown> = {
+    value: entry.value,
+    updated_by: entry.updated_by,
+    updated_at: entry.updated_at,
+  };
+  if (entry.author_role) out.author_role = entry.author_role;
+  if (entry.author_peer_id) out.author_peer_id = entry.author_peer_id;
+  if (entry.created_at) out.created_at = entry.created_at;
+  json(res, out);
 }
 
 export function handleSharedList(body: unknown, res: ServerResponse): void {
