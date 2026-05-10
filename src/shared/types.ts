@@ -204,10 +204,17 @@ export interface PollMessagesResponse {
 export interface GetHistoryRequest {
   project_id: string;
   role?: string;
-  type?: MessageType;
+  // FASE C-3 / M-11 (v0.3.0): the wire schema is now any string;
+  // MessageType remains the canonical enum for typed callsites.
+  type?: MessageType | string;
   limit?: number;
   session_id?: string;
   thread_id?: string;
+  // FASE D-1 / M-5 (v0.3.0): paginate by sent_at. Both bounds are
+  // ISO timestamps; the server applies them as `sent_at < before` /
+  // `sent_at > after` so the agent can scroll back without re-fetching.
+  before?: string;
+  after?: string;
 }
 
 export interface GetHistoryResponse {

@@ -345,6 +345,13 @@ export function handlePollMessages(body: unknown, res: ServerResponse): void {
   json(res, { messages: fresh });
 }
 
+// FASE D-1 / M-5 (v0.3.0): default + max bounded so an agent can no
+// longer accidentally pull every log entry into context. The previous
+// default (100) was already enforced at selectHistory; surfacing it
+// here lets us also cap a request that asks for `limit: 99999`.
+export const HISTORY_DEFAULT_LIMIT = 20;
+export const HISTORY_MAX_LIMIT = 100;
+
 export function handleGetHistory(body: unknown, res: ServerResponse): void {
   const b = body as GetHistoryRequest & { peer_id?: string };
   if (!b.project_id) return error(res, 'Missing required field: project_id');
@@ -352,12 +359,17 @@ export function handleGetHistory(body: unknown, res: ServerResponse): void {
   // cross-project read here is a full conversation leak.
   if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
+  const requested = typeof b.limit === 'number' && b.limit > 0 ? b.limit : HISTORY_DEFAULT_LIMIT;
+  const limit = Math.min(requested, HISTORY_MAX_LIMIT);
+
   const messages = selectHistory(b.project_id, {
     role: b.role,
     type: b.type,
-    limit: b.limit,
+    limit,
     session_id: b.session_id,
     thread_id: b.thread_id,
+    before: b.before,
+    after: b.after,
   });
 
   json(res, { messages });

@@ -247,6 +247,21 @@ describe('get_history', () => {
       thread_id: 'thr-2',
     });
   });
+
+  // FASE D-1 / M-5 (v0.3.0): pagination via before/after timestamps
+  it('forwards before / after ISO timestamps for pagination', async () => {
+    nextResponse = { messages: [] };
+    const tools = setup();
+    await tools.get('get_history')!.handler({
+      before: '2026-05-04T00:00:00Z',
+      after: '2026-05-01T00:00:00Z',
+    });
+    expect(brokerCalls[0]!.body).toMatchObject({
+      project_id: 'proj-x',
+      before: '2026-05-04T00:00:00Z',
+      after: '2026-05-01T00:00:00Z',
+    });
+  });
 });
 
 describe('shared state tools', () => {

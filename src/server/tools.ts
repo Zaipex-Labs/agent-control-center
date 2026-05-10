@@ -161,12 +161,18 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
 
   mcp.tool(
     'get_history',
-    'Get conversation history for this project. Optionally filter by role, message type (any string used as a tag, e.g. "question" or "task_request"), thread_id, or limit.',
+    // FASE D-1 / M-5 (v0.3.0): default limit 20, max 100. Without
+    // these the agent could pull every log entry the project has
+    // ever produced into context. Pagination via before/after ISO
+    // timestamps lets the agent scroll back without re-fetching.
+    'Get conversation history for this project. Defaults to the most recent 20 entries (max 100). Optionally filter by role, message type (any string tag), thread_id, or limit. Paginate with `before` (ISO timestamp — returns entries strictly older than this) and `after` (strictly newer).',
     {
       role: z.string().optional(),
       type: z.string().optional(),
-      limit: z.number().optional(),
+      limit: z.number().int().min(1).max(100).optional(),
       thread_id: z.string().optional(),
+      before: z.string().optional(),
+      after: z.string().optional(),
     },
     async (args) => {
       const resp = await brokerFetch<GetHistoryResponse>('/api/get-history', {
@@ -176,6 +182,8 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
         type: args.type,
         limit: args.limit,
         thread_id: args.thread_id,
+        before: args.before,
+        after: args.after,
       });
       return {
         content: [{ type: 'text', text: JSON.stringify(resp.messages, null, 2) }],

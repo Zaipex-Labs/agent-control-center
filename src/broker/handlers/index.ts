@@ -45,6 +45,8 @@ export {
   handleSendToRole,
   handlePollMessages,
   handleGetHistory,
+  HISTORY_DEFAULT_LIMIT,
+  HISTORY_MAX_LIMIT,
 } from './messages.js';
 
 export {
