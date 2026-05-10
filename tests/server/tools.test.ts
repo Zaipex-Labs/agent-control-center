@@ -83,6 +83,7 @@ describe('registerTools — registration', () => {
       'list_peers',
       'list_shared',
       'recall',
+      'remember',
       'send_message',
       'send_to_role',
       'set_role',
@@ -377,6 +378,76 @@ describe('identity tools', () => {
       id: 'agent-1',
       role: 'qa',
     });
+  });
+});
+
+// FASE A-3 (v0.3.0): autoDecisionKey + remember
+describe('autoDecisionKey', () => {
+  it('produces <YYYYMMDD>-<first-3-words> from a sentence', async () => {
+    const { autoDecisionKey } = await import('../../src/server/tools.js');
+    const fixed = new Date('2026-05-10T12:00:00Z');
+    const k = autoDecisionKey('We use ESM modules everywhere', fixed);
+    expect(k).toBe('20260510-we-use-esm');
+  });
+
+  it('strips punctuation but keeps word order', async () => {
+    const { autoDecisionKey } = await import('../../src/server/tools.js');
+    const fixed = new Date('2026-05-10T00:00:00Z');
+    expect(autoDecisionKey('JWT, with rotation every 7 days.', fixed)).toBe('20260510-jwt-with-rotation');
+  });
+
+  it('falls back to <date>-decision for non-ASCII summaries that slug to empty', async () => {
+    const { autoDecisionKey } = await import('../../src/server/tools.js');
+    const fixed = new Date('2026-05-10T00:00:00Z');
+    expect(autoDecisionKey('💡', fixed)).toBe('20260510-decision');
+  });
+
+  it('caps slug length so a very long word does not blow up the key', async () => {
+    const { autoDecisionKey } = await import('../../src/server/tools.js');
+    const fixed = new Date('2026-05-10T00:00:00Z');
+    const huge = 'a'.repeat(200) + ' ' + 'b'.repeat(200) + ' ' + 'c'.repeat(200);
+    const k = autoDecisionKey(huge, fixed);
+    // 9 chars for date+dash + ≤40 chars slug
+    expect(k.length).toBeLessThanOrEqual(9 + 40);
+    expect(k.startsWith('20260510-')).toBe(true);
+  });
+});
+
+describe('remember', () => {
+  it('writes to /api/shared/set with namespace="decisions" and an auto key', async () => {
+    const tools = setup();
+    await tools.get('remember')!.handler({ summary: 'we use esm everywhere' });
+    expect(brokerCalls[0]!.path).toBe('/api/shared/set');
+    const body = brokerCalls[0]!.body as Record<string, unknown>;
+    expect(body.project_id).toBe('proj-x');
+    expect(body.namespace).toBe('decisions');
+    expect(body.peer_id).toBe('agent-1');
+    expect(body.value).toBe('we use esm everywhere');
+    expect(typeof body.key).toBe('string');
+    // <8 chars yyyymmdd> + - + slug → at minimum 9 chars
+    expect((body.key as string).length).toBeGreaterThanOrEqual(9);
+    expect(body.key).toMatch(/^\d{8}-/);
+  });
+
+  it('honors an explicit key', async () => {
+    const tools = setup();
+    await tools.get('remember')!.handler({
+      summary: 'jwt rotation every 7 days',
+      key: 'auth-strategy',
+    });
+    expect((brokerCalls[0]!.body as any).key).toBe('auth-strategy');
+  });
+
+  it('returns the chosen key in the response body', async () => {
+    nextResponse = { ok: true };
+    const tools = setup();
+    const res = await tools.get('remember')!.handler({
+      summary: 'use postgres for everything',
+      key: 'storage-pick',
+    });
+    const parsed = JSON.parse(res.content[0].text);
+    expect(parsed.key).toBe('storage-pick');
+    expect(parsed.ok).toBe(true);
   });
 });
 
