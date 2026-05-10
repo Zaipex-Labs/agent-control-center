@@ -82,16 +82,24 @@ export function parseAttachmentsFromMetadata(meta: string | null): Attachment[] 
 // inputs. Each attachment becomes a bracketed line appended after the
 // message body, so an agent like Claude Code can open the file with its
 // Read tool (image/* is rendered visually, others as text).
+//
+// [M-6] Compact format. The previous footer leaked the full
+// `~/.zaipex-acc/blobs/<sha256>.png` path (internal storage detail
+// the agent shouldn't reason about) and ran ~80 tokens per attachment.
+// Now we emit a short id (first 8 hex chars of the hash, enough to be
+// unambiguous in any single project), the extension, and a compact
+// size. ~25 tokens per attachment — saves ~55 tokens × every
+// attachment in conversation history.
 export function renderAttachmentFooter(atts: Attachment[]): string {
   if (atts.length === 0) return '';
   const lines = atts.map(a => {
     const ext = extensionFromMime(a.mime);
-    const path = `~/.zaipex-acc/blobs/${a.hash}.${ext}`;
+    const shortHash = a.hash.slice(0, 8);
     const size = humanSize(a.size);
     if (isImageMime(a.mime)) {
-      return `[image: ${path} · ${a.mime} · ${size}]`;
+      return `[image: ${shortHash}.${ext} · ${size}]`;
     }
-    return `[file: ${path} · ${a.mime} · ${size} · ${a.name}]`;
+    return `[file: ${shortHash}.${ext} · ${size} · ${a.name}]`;
   });
   return '\n\n' + lines.join('\n');
 }
