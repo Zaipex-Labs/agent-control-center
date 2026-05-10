@@ -4,10 +4,10 @@
 
 import { useState } from 'react';
 import type { Attachment } from '../lib/types';
-import { attachmentUrl } from '../lib/api';
 import { isImageMime } from '../../shared/attachments';
 import AttachmentChip from './AttachmentChip';
 import Lightbox from './Lightbox';
+import { useBlobUrl } from '../hooks/useBlobUrl';
 
 // Renders a list of attachments below a message. Images become clickable
 // thumbnails that open the lightbox; non-images become download chips.
@@ -23,45 +23,100 @@ export default function AttachmentsRow({ attachments }: { attachments: Attachmen
         marginTop: 8,
       }}>
         {attachments.map(att => isImageMime(att.mime) ? (
-          <button
-            key={att.hash}
-            type="button"
-            onClick={() => setZoom(att)}
-            title={att.name}
-            style={{
-              padding: 0,
-              border: '1px solid var(--z-border)',
-              borderRadius: 8,
-              background: 'transparent',
-              cursor: 'zoom-in',
-              maxWidth: 320,
-              overflow: 'hidden',
-              display: 'block',
-            }}
-          >
-            <img
-              src={attachmentUrl(att.hash)}
-              alt={att.name}
-              loading="lazy"
-              style={{
-                display: 'block',
-                maxWidth: 320,
-                maxHeight: 240,
-                objectFit: 'contain',
-              }}
-            />
-          </button>
+          <InlineImage key={att.hash} att={att} onZoom={() => setZoom(att)} />
         ) : (
           <AttachmentChip key={att.hash} att={att} />
         ))}
       </div>
       {zoom && (
         <Lightbox
-          src={attachmentUrl(zoom.hash)}
           attachment={zoom}
           onClose={() => setZoom(null)}
         />
       )}
     </>
+  );
+}
+
+// Small helper kept co-located because it's only used here. Fetches the
+// blob via useBlobUrl, shows a skeleton while loading and a subtle
+// error state if the fetch failed (e.g. the blob was GC'd or the peer
+// session expired).
+function InlineImage({ att, onZoom }: { att: Attachment; onZoom: () => void }) {
+  const { url, error } = useBlobUrl(att.hash);
+
+  const frameStyle: React.CSSProperties = {
+    padding: 0,
+    border: '1px solid var(--z-border)',
+    borderRadius: 8,
+    background: 'transparent',
+    cursor: url ? 'zoom-in' : 'default',
+    maxWidth: 320,
+    overflow: 'hidden',
+    display: 'block',
+  };
+
+  if (error) {
+    return (
+      <div
+        style={{
+          ...frameStyle,
+          cursor: 'default',
+          padding: '16px 20px',
+          color: 'var(--z-danger, #e8823a)',
+          fontFamily: 'var(--font-mono, "JetBrains Mono", monospace)',
+          fontSize: 11,
+        }}
+        title={error}
+      >
+        {att.name} · unavailable
+      </div>
+    );
+  }
+
+  if (!url) {
+    // Skeleton — same footprint as a real thumbnail so the chat doesn't
+    // reflow once the bytes arrive.
+    return (
+      <div
+        style={{
+          ...frameStyle,
+          cursor: 'default',
+          width: 160,
+          height: 120,
+          background: 'var(--z-surface-subtle, rgba(255,255,255,0.04))',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--z-text-muted)',
+          fontFamily: 'var(--font-mono, "JetBrains Mono", monospace)',
+          fontSize: 11,
+        }}
+        aria-label={`Loading ${att.name}`}
+      >
+        ⧗
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onZoom}
+      title={att.name}
+      style={frameStyle}
+    >
+      <img
+        src={url}
+        alt={att.name}
+        loading="lazy"
+        style={{
+          display: 'block',
+          maxWidth: 320,
+          maxHeight: 240,
+          objectFit: 'contain',
+        }}
+      />
+    </button>
   );
 }

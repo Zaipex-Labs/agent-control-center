@@ -35,7 +35,7 @@ beforeAll(async () => {
 
     if (method === 'POST' && url === '/api/blobs/upload') return H.handleUploadBlob(req, res);
     const blob = url.match(/^\/api\/blobs\/([a-f0-9]{64})$/);
-    if (method === 'GET' && blob) return H.handleDownloadBlob(blob[1], res);
+    if (method === 'GET' && blob) return H.handleDownloadBlob(req, blob[1], res);
 
     if (method === 'POST') {
       try {
@@ -115,8 +115,10 @@ describe('attachments round-trip', () => {
     expect(parsed.attachments[0].hash).toBe(up.hash);
     expect(parsed.attachments[0].name).toBe('login mockup.png');
 
-    // 5. download blob by hash, bytes must match
-    const dl = await fetch(`${baseUrl}/api/blobs/${up.hash}`);
+    // 5. download blob by hash with X-Peer-Id (post-H-2 ACL)
+    const dl = await fetch(`${baseUrl}/api/blobs/${up.hash}`, {
+      headers: { 'X-Peer-Id': b.id },
+    });
     expect(dl.status).toBe(200);
     expect(dl.headers.get('content-type')).toBe('image/png');
     const buf = Buffer.from(await dl.arrayBuffer());

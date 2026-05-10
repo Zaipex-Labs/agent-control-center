@@ -5,6 +5,62 @@ All notable changes to **zaipex-acc** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] — 2026-04
+
+Security patch release. Four findings from the v0.2.1 audit
+(`docs/audits/v0.2.1-audit.md`), three of them listed as vulnerabilities
+in `SECURITY.md`.
+
+### Security
+- **[C-1]** `handleCreateProject` now validates the project name against
+  path traversal, null bytes, shell metacharacters and length overflow.
+  Previously `name: "../../../tmp/pwned"` wrote a config file outside
+  `PROJECTS_DIR`.
+- **[H-1]** `send_message` and `send_to_role` now enforce project
+  isolation: `fromPeer.project_id`, `toPeer.project_id` and the body
+  `project_id` must match (403 `PROJECT_MISMATCH` otherwise). Previously
+  a peer in project A could target peers in project B by knowing the
+  target peer_id.
+- **[H-2]** `GET /api/blobs/:hash` now requires an `X-Peer-Id` header
+  and validates that the blob belongs to the peer's project via
+  `blob_refs`. Dashboard components fetch blobs as authenticated
+  responses and render them through `URL.createObjectURL`. Unknown
+  hashes return 403 (not 404) to prevent enumeration.
+  `Cache-Control` downgraded from `public` to `private`.
+- **[H-3]** Shell-injection surface in `role`/`name` removed.
+  `handleAddAgent` and `handleUpdateProject` now call
+  `assertSafeIdentifier`. `spawnWithTmux` and `tmuxInjectWithContext`
+  use `execFileSync` (no shell) and split every tmux invocation into
+  argv. The `sh -c "sleep 2 && …"` pattern is now a Node `setTimeout`.
+  Defense in depth: `assertSafeIdentifier` is called again at the
+  spawn boundary.
+
+### Changed
+- `attachmentUrl(hash)` helper removed from the dashboard public API.
+  Replaced by `useBlobUrl(hash)` hook with automatic object-URL
+  lifecycle management and a `DashboardPeerContext` provider.
+- Blob `Cache-Control: public, max-age=31536000, immutable` →
+  `private, max-age=31536000, immutable`.
+- `validateIdentifiers` extracted to `src/shared/validate.ts`. Hardened
+  to reject `..`, path separators, shell metacharacters, null bytes,
+  and identifiers longer than 64 chars. Character class unchanged at
+  `[a-zA-Z0-9_.-]` (dotted names like `my.proj` still work).
+
+### Fixed
+- `tests/cli/spawn.test.ts isMcpServerRegistered` no longer depends on
+  `claude` being in `PATH` (mocks `node:child_process`). The test was
+  timing out in environments without Claude Code installed; now runs
+  in ~17ms.
+
+### Technical
+- New `blobBelongsToProject(hash, projectId)` helper in
+  `src/broker/blob-refs.ts`.
+- No new runtime dependencies.
+- `npm audit fix` applied: `hono` 4.12.10→4.12.14 and
+  `@hono/node-server` 1.19.12→1.19.14 (transitives of
+  `@modelcontextprotocol/sdk`). `npm audit --omit=dev` now reports 0
+  vulnerabilities.
+
 ## [0.2.1] — 2026-04
 
 ### Added

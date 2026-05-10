@@ -5,17 +5,21 @@
 import { useEffect } from 'react';
 import type { Attachment } from '../lib/types';
 import AttachmentChip from './AttachmentChip';
+import { useBlobUrl } from '../hooks/useBlobUrl';
 
 interface LightboxProps {
-  src: string;
   attachment: Attachment;
   onClose: () => void;
 }
 
 // Minimal custom lightbox. Navy overlay (matches dashboard chrome),
 // monospaced close hint top-right, filename + download chip at bottom.
-// ESC and click-outside both dismiss.
-export default function Lightbox({ src, attachment, onClose }: LightboxProps) {
+// ESC and click-outside both dismiss. The full-res image is fetched
+// via useBlobUrl (X-Peer-Id authenticated), not loaded directly into
+// an <img src=/api/blobs/…> that can't send headers [H-2].
+export default function Lightbox({ attachment, onClose }: LightboxProps) {
+  const { url, error } = useBlobUrl(attachment.hash);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -60,18 +64,36 @@ export default function Lightbox({ src, attachment, onClose }: LightboxProps) {
           minHeight: 0,
         }}
       >
-        <img
-          src={src}
-          alt={attachment.name}
-          style={{
-            maxWidth: '92vw', maxHeight: '80vh',
-            objectFit: 'contain',
-            // Editorial 4px radius — less "app-like" than 8px.
-            borderRadius: 4,
-            boxShadow: '0 10px 40px rgba(0,0,0,0.6)',
-            cursor: 'default',
-          }}
-        />
+        {url ? (
+          <img
+            src={url}
+            alt={attachment.name}
+            style={{
+              maxWidth: '92vw', maxHeight: '80vh',
+              objectFit: 'contain',
+              // Editorial 4px radius — less "app-like" than 8px.
+              borderRadius: 4,
+              boxShadow: '0 10px 40px rgba(0,0,0,0.6)',
+              cursor: 'default',
+            }}
+          />
+        ) : error ? (
+          <div style={{
+            color: 'var(--z-danger, #e8823a)',
+            fontFamily: 'var(--font-mono, "JetBrains Mono", monospace)',
+            fontSize: 13,
+          }}>
+            {attachment.name} · {error}
+          </div>
+        ) : (
+          <div style={{
+            color: 'var(--z-text-light, #e5e7eb)',
+            fontFamily: 'var(--font-mono, "JetBrains Mono", monospace)',
+            fontSize: 24,
+          }}>
+            ⧗
+          </div>
+        )}
       </div>
 
       <div

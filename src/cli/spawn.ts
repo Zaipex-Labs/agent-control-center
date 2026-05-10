@@ -2,11 +2,12 @@
 // Licensed under the Apache License, Version 2.0
 // See LICENSE file for details.
 
-import { execSync, spawn as cpSpawn } from 'node:child_process';
+import { execFileSync, spawn as cpSpawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AgentConfig } from '../shared/types.js';
 import { resolveEntryPoint, getDefaultName } from '../shared/utils.js';
+import { assertSafeIdentifier } from '../shared/validate.js';
 
 export type SpawnStrategy = 'tmux' | 'windows-terminal' | 'fallback';
 
@@ -24,7 +25,7 @@ export function detectStrategy(): SpawnStrategy {
 
 function hasTmux(): boolean {
   try {
-    execSync('which tmux', { stdio: 'pipe' });
+    execFileSync('which', ['tmux'], { stdio: 'pipe' });
     return true;
   } catch {
     return false;
@@ -40,7 +41,13 @@ function getServerEntryPath(): string {
 
 export function isMcpServerRegistered(): boolean {
   try {
-    const output = execSync('claude mcp list', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+    const output = execFileSync('claude', ['mcp', 'list'], {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      // Bound timeout so a stuck child doesn't hang vitest. Matches the
+      // cli test's 5s cap (see tests/cli/spawn.test.ts).
+      timeout: 3000,
+    });
     return output.includes('zaipex-acc');
   } catch {
     return false;
@@ -51,9 +58,12 @@ export function registerMcpServer(): void {
   if (isMcpServerRegistered()) return;
 
   const serverPath = getServerEntryPath();
-  const runner = serverPath.endsWith('.ts') ? 'npx tsx' : 'node';
-  execSync(
-    `claude mcp add --scope user --transport stdio zaipex-acc -- ${runner} ${serverPath}`,
+  // runner is either "npx tsx" (two tokens) or "node" (one); expand to
+  // separate argv entries so the whole thing is shell-free.
+  const runnerArgv = serverPath.endsWith('.ts') ? ['npx', 'tsx'] : ['node'];
+  execFileSync(
+    'claude',
+    ['mcp', 'add', '--scope', 'user', '--transport', 'stdio', 'zaipex-acc', '--', ...runnerArgv, serverPath],
     { stdio: 'pipe' },
   );
 }
@@ -94,46 +104,83 @@ function buildTmuxEnvExports(projectName: string, agent: AgentConfig): string {
 
 // ── tmux strategy ──────────────────────────────────────────────
 
+// [H-3] — role and project name feed tmux argv. Defense in depth: even
+// though handleAddAgent / handleUpdateProject validate these, a CLI
+// caller (acc up from the shell) bypasses those handlers. Validate
+// again at the spawn boundary so a hand-crafted project config can't
+// slip through.
+function assertSafeSpawnInputs(projectName: string, agents: AgentConfig[]): void {
+  assertSafeIdentifier('project_id', projectName);
+  for (const agent of agents) {
+    assertSafeIdentifier('role', agent.role);
+    if (agent.name) assertSafeIdentifier('name', agent.name);
+  }
+}
+
+// Build the shell command that will run inside a tmux pane after the
+// window is created empty with `-c cwd`. Each env var value is passed
+// through shellEscape so the pane's shell interprets it safely; the
+// command itself and its args are treated the same way. This string
+// never reaches a Node shell — Node hands it to tmux via execFileSync,
+// and tmux types it into the pane via send-keys.
+function buildPaneCommandLine(projectName: string, agent: AgentConfig): string {
+  const { cmd, args } = buildAgentCommand(agent);
+  const envExports = buildTmuxEnvExports(projectName, agent);
+  return `${envExports} ${cmd} ${args.map(shellEscape).join(' ')}`;
+}
+
 export function spawnWithTmux(
   projectName: string,
   agents: AgentConfig[],
 ): SpawnResult {
+  assertSafeSpawnInputs(projectName, agents);
   const sessionName = `acc-${projectName}`;
 
   // Kill existing session if present
   try {
-    execSync(`tmux kill-session -t ${sessionName}`, { stdio: 'pipe' });
+    execFileSync('tmux', ['kill-session', '-t', sessionName], { stdio: 'pipe' });
   } catch {
     // No existing session — fine
   }
 
   const first = agents[0];
-  const { cmd, args } = buildAgentCommand(first);
-  const envExports = buildTmuxEnvExports(projectName, first);
-  const firstCmd = `cd ${shellEscape(first.cwd)} && ${envExports} ${cmd} ${args.map(shellEscape).join(' ')}`;
 
-  // Create session with first agent — window named after role
-  execSync(
-    `tmux new-session -d -s ${sessionName} -n ${first.role} '${firstCmd}'`,
-    { stdio: 'pipe' },
-  );
+  // Create the session with an empty window (no shell-command) whose
+  // cwd is the agent's working directory. This avoids embedding a
+  // shell command into tmux's positional argv, which tmux otherwise
+  // passes to `sh -c` — keeping the session creation itself shell-free.
+  execFileSync('tmux', [
+    'new-session', '-d',
+    '-s', sessionName,
+    '-n', first.role,
+    '-c', first.cwd,
+  ], { stdio: 'pipe' });
+
+  // Then type the command into the pane via send-keys. shellEscape is
+  // already applied to each piece inside buildPaneCommandLine, so the
+  // pane's shell interprets the line safely.
+  execFileSync('tmux', [
+    'send-keys', '-t', `${sessionName}:${first.role}`,
+    buildPaneCommandLine(projectName, first), 'Enter',
+  ], { stdio: 'pipe' });
 
   // Add remaining agents as separate windows (one window per agent)
   for (let i = 1; i < agents.length; i++) {
     const agent = agents[i];
-    const { cmd: aCmd, args: aArgs } = buildAgentCommand(agent);
-    const aEnvExports = buildTmuxEnvExports(projectName, agent);
-    const aFullCmd = `cd ${shellEscape(agent.cwd)} && ${aEnvExports} ${aCmd} ${aArgs.map(shellEscape).join(' ')}`;
-
-    execSync(
-      `tmux new-window -t ${sessionName} -n ${agent.role} '${aFullCmd}'`,
-      { stdio: 'pipe' },
-    );
+    execFileSync('tmux', [
+      'new-window', '-t', sessionName,
+      '-n', agent.role,
+      '-c', agent.cwd,
+    ], { stdio: 'pipe' });
+    execFileSync('tmux', [
+      'send-keys', '-t', `${sessionName}:${agent.role}`,
+      buildPaneCommandLine(projectName, agent), 'Enter',
+    ], { stdio: 'pipe' });
   }
 
   // Select the first window
   try {
-    execSync(`tmux select-window -t ${sessionName}:${first.role}`, { stdio: 'pipe' });
+    execFileSync('tmux', ['select-window', '-t', `${sessionName}:${first.role}`], { stdio: 'pipe' });
   } catch {
     // Best effort
   }
@@ -192,8 +239,9 @@ function scheduleAgentInit(sessionName: string, agents: AgentConfig[]): void {
 
 function getTmuxPanePids(session: string): number[] {
   try {
-    const output = execSync(
-      `tmux list-panes -s -t ${session} -F "#{pane_pid}"`,
+    const output = execFileSync(
+      'tmux',
+      ['list-panes', '-s', '-t', session, '-F', '#{pane_pid}'],
       { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
     );
     return output.trim().split('\n').map(s => parseInt(s, 10)).filter(n => !isNaN(n));
@@ -272,7 +320,7 @@ export function spawnAgents(
 export function killTmuxSession(projectName: string): boolean {
   const sessionName = `acc-${projectName}`;
   try {
-    execSync(`tmux kill-session -t ${sessionName}`, { stdio: 'pipe' });
+    execFileSync('tmux', ['kill-session', '-t', sessionName], { stdio: 'pipe' });
     return true;
   } catch {
     return false;
@@ -282,7 +330,7 @@ export function killTmuxSession(projectName: string): boolean {
 export function hasTmuxSession(projectName: string): boolean {
   const sessionName = `acc-${projectName}`;
   try {
-    execSync(`tmux has-session -t ${sessionName}`, { stdio: 'pipe' });
+    execFileSync('tmux', ['has-session', '-t', sessionName], { stdio: 'pipe' });
     return true;
   } catch {
     return false;

@@ -298,6 +298,89 @@ describe('handleSendToRole', () => {
   });
 });
 
+// ── Cross-project isolation [H-1] ──────────────────────────────
+//
+// v0.2.1 audit reproduced: Alice@projectA could send a message to
+// Bob@projectB if she knew Bob's peer_id. The handlers only checked
+// that peers existed, never that project_id matched. These tests
+// pin the new 403 PROJECT_MISMATCH behaviour.
+
+describe('handleSendMessage enforces project isolation [H-1]', () => {
+  it('rejects when fromPeer is in a different project', () => {
+    insertPeer(makePeer({ id: 'alice', project_id: 'projA', role: 'backend' }));
+    insertPeer(makePeer({ id: 'bob', project_id: 'projB', role: 'backend' }));
+    const { res, result } = createMockRes();
+    handleSendMessage({
+      project_id: 'projA', from_id: 'alice', to_id: 'bob', text: 'PWN',
+    }, res);
+    expect(result.statusCode).toBe(403);
+    expect((result.body as { code: string }).code).toBe('PROJECT_MISMATCH');
+  });
+
+  it('rejects when toPeer is in a different project', () => {
+    insertPeer(makePeer({ id: 'alice', project_id: 'projA' }));
+    insertPeer(makePeer({ id: 'bob', project_id: 'projB' }));
+    const { res, result } = createMockRes();
+    handleSendMessage({
+      project_id: 'projB', from_id: 'alice', to_id: 'bob', text: 'PWN',
+    }, res);
+    expect(result.statusCode).toBe(403);
+    expect((result.body as { code: string }).code).toBe('PROJECT_MISMATCH');
+  });
+
+  it('accepts when all three project_ids match', () => {
+    insertPeer(makePeer({ id: 'alice', project_id: 'projA' }));
+    insertPeer(makePeer({ id: 'bob', project_id: 'projA' }));
+    const { res, result } = createMockRes();
+    handleSendMessage({
+      project_id: 'projA', from_id: 'alice', to_id: 'bob', text: 'legit',
+    }, res);
+    expect(result.statusCode).toBe(200);
+    expect((result.body as { ok: boolean }).ok).toBe(true);
+  });
+});
+
+describe('handleSendToRole enforces project isolation [H-1]', () => {
+  it('rejects when fromPeer is in a different project', () => {
+    insertPeer(makePeer({ id: 'outsider', project_id: 'projB', role: 'cli' }));
+    insertPeer(makePeer({ id: 'victim', project_id: 'projA', role: 'backend' }));
+    const { res, result } = createMockRes();
+    handleSendToRole({
+      project_id: 'projA', from_id: 'outsider', role: 'backend', text: 'PWN',
+    }, res);
+    expect(result.statusCode).toBe(403);
+    expect((result.body as { code: string }).code).toBe('PROJECT_MISMATCH');
+  });
+
+  it('only dispatches to peers in the same project (regression guard)', () => {
+    // Three backends across two projects. Sender is in projA — must only
+    // reach the one backend in projA.
+    insertPeer(makePeer({ id: 'alice', project_id: 'projA', role: 'cli' }));
+    insertPeer(makePeer({ id: 'backA', project_id: 'projA', role: 'backend' }));
+    insertPeer(makePeer({ id: 'backB1', project_id: 'projB', role: 'backend' }));
+    insertPeer(makePeer({ id: 'backB2', project_id: 'projB', role: 'backend' }));
+
+    const { res, result } = createMockRes();
+    handleSendToRole({
+      project_id: 'projA', from_id: 'alice', role: 'backend', text: 'deploy',
+    }, res);
+    expect(result.statusCode).toBe(200);
+    expect((result.body as { sent_to: number }).sent_to).toBe(1);
+  });
+
+  it('accepts normal broadcast within the same project', () => {
+    insertPeer(makePeer({ id: 'alice', project_id: 'projA', role: 'cli' }));
+    insertPeer(makePeer({ id: 'back1', project_id: 'projA', role: 'backend' }));
+    insertPeer(makePeer({ id: 'back2', project_id: 'projA', role: 'backend' }));
+    const { res, result } = createMockRes();
+    handleSendToRole({
+      project_id: 'projA', from_id: 'alice', role: 'backend', text: 'deploy',
+    }, res);
+    expect(result.statusCode).toBe(200);
+    expect((result.body as { sent_to: number }).sent_to).toBe(2);
+  });
+});
+
 // ── PollMessages ───────────────────────────────────────────────
 
 describe('handlePollMessages', () => {

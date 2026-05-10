@@ -37,8 +37,24 @@ async function apiGet<T>(path: string): Promise<T> {
 
 // ── Blob attachments ──────────────────────────────────────────
 
-export function attachmentUrl(hash: string): string {
-  return `/api/blobs/${hash}`;
+// Blobs are now peer-scoped (see [H-2] in docs/audits/v0.2.1-audit.md):
+// the browser must send X-Peer-Id and the broker checks that the blob's
+// project matches the peer's project. We can't add headers to <img src>
+// directly, so we fetch the bytes and wrap them in an object URL.
+// `attachmentUrl(hash)` was removed — use `fetchBlobAsObjectUrl` via
+// the useBlobUrl hook.
+export async function fetchBlobAsObjectUrl(hash: string, peerId: string): Promise<string> {
+  const resp = await fetch(`/api/blobs/${hash}`, {
+    headers: { 'X-Peer-Id': peerId },
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ error: resp.statusText })) as {
+      error?: string; code?: string;
+    };
+    throw new Error(err.code ? `${err.code}: ${err.error}` : (err.error ?? `Blob fetch failed: ${resp.status}`));
+  }
+  const blob = await resp.blob();
+  return URL.createObjectURL(blob);
 }
 
 // Upload a File from the browser. Returns the stored blob descriptor
