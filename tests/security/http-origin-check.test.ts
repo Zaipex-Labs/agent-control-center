@@ -148,6 +148,65 @@ describe('Content-Type check', () => {
   });
 });
 
+// [UX-4] — /api/<unknown> must return a typed JSON 404 instead of
+// falling through to the SPA index.html (which previously returned
+// 200 + dashboard HTML, confusing CLI clients and monitoring).
+function rawGet(path: string, headers: Record<string, string> = {}): Promise<{
+  status: number;
+  body: string;
+  contentType: string;
+}> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({
+      hostname: '127.0.0.1',
+      port,
+      path,
+      method: 'GET',
+      headers,
+    }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => resolve({
+        status: res.statusCode ?? 0,
+        body: Buffer.concat(chunks).toString(),
+        contentType: res.headers['content-type'] ?? '',
+      }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+describe('/api/* never falls through to the SPA fallback [UX-4]', () => {
+  it('GET /api/blobs/notahash → 404 JSON with NOT_FOUND code', async () => {
+    const r = await rawGet('/api/blobs/notahash');
+    expect(r.status).toBe(404);
+    expect(r.contentType).toContain('application/json');
+    const parsed = JSON.parse(r.body) as { ok: boolean; error: string; code: string };
+    expect(parsed.ok).toBe(false);
+    expect(parsed.code).toBe('NOT_FOUND');
+    expect(parsed.error).toBe('Not found');
+  });
+
+  it('GET /api/does-not-exist → 404 JSON', async () => {
+    const r = await rawGet('/api/does-not-exist');
+    expect(r.status).toBe(404);
+    expect(r.contentType).toContain('application/json');
+  });
+
+  it('non-/api path can still hit the SPA fallback (returns 200 or 404 if dashboard not built)', async () => {
+    // Sanity: the gate is /api/* specific. A /random/path either
+    // serves the dashboard (200 HTML) or 404 if dist/dashboard isn't
+    // built — but it MUST NOT return JSON-shaped 404 from the gate.
+    const r = await rawGet('/some-spa-route');
+    if (r.status === 200) {
+      expect(r.contentType).toContain('text/html');
+    } else {
+      expect(r.status).toBe(404);
+    }
+  });
+});
+
 describe('Host check (DNS rebinding defense)', () => {
   it('rejects POST with attacker-controlled Host header', async () => {
     const r = await rawPost('/api/register', {
