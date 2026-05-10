@@ -572,14 +572,39 @@ export function handleTerminalUpgrade(req: IncomingMessage, socket: Duplex, head
     log(`piping ws to process ${key} pid=${proc.pid}`);
     terminalClients.add(ws);
 
-    // [S-NEW-10] Drop outbound frames once the WS send buffer exceeds
-    // 1MB. Without this, a stuck client (paused tab, slow link) would
-    // accumulate process stdout in memory until the heap blew out.
+    // [S-NEW-10] Hard backstop: drop frames if the WS send buffer is
+    // saturated. Without this, a stuck client could accumulate process
+    // stdout in memory until the heap blew out.
+    // [P-5] Soft backpressure on top: pause the PTY's stdout/stderr
+    // when the WS buffer is over LIMIT, resume once it drains below
+    // LIMIT/2 (hysteresis prevents thrashing). This way data isn't
+    // dropped under transient slowness — only under sustained
+    // saturation does S-NEW-10's drop kick in.
     const WS_SEND_BACKPRESSURE_LIMIT = 1024 * 1024; // 1 MB
+    const RESUME_AT = WS_SEND_BACKPRESSURE_LIMIT / 2;
+
+    const maybeResume = () => {
+      if (ws.bufferedAmount < RESUME_AT) {
+        if (proc.stdout && proc.stdout.isPaused()) proc.stdout.resume();
+        if (proc.stderr && proc.stderr.isPaused()) proc.stderr.resume();
+      }
+    };
+
     const sendIfBufferOK = (data: Buffer) => {
       if (ws.readyState !== WebSocket.OPEN) return;
-      if (ws.bufferedAmount > WS_SEND_BACKPRESSURE_LIMIT) return;
-      ws.send(data);
+      if (ws.bufferedAmount > WS_SEND_BACKPRESSURE_LIMIT) {
+        // Hard cap reached — drop. The pause path below should
+        // normally prevent us from getting here, but if the PTY queued
+        // more data before the pause took effect we drop the excess.
+        return;
+      }
+      ws.send(data, () => maybeResume());
+      // [P-5] If this send pushed us over the limit, pause the source
+      // so the PTY stops producing until the OS drains the socket.
+      if (ws.bufferedAmount > WS_SEND_BACKPRESSURE_LIMIT) {
+        proc.stdout?.pause();
+        proc.stderr?.pause();
+      }
     };
 
     // Send buffered output first
@@ -641,19 +666,26 @@ export function handleTerminalUpgrade(req: IncomingMessage, socket: Duplex, head
     });
 
     // Cleanup on WebSocket close
-    ws.on('close', () => {
-      log(`ws closed for ${key}`);
+    const cleanup = (): void => {
       terminalClients.delete(ws);
       proc.stdout?.off('data', onStdout);
       proc.stderr?.off('data', onStderr);
       proc.off('exit', onExit);
+      // [P-5] If we paused the PTY before this WS disconnected, the
+      // stream would stay paused forever and the next reconnect would
+      // see nothing. Resume on the way out — other listeners (status
+      // poller, output buffer) need it flowing.
+      if (proc.stdout && proc.stdout.isPaused()) proc.stdout.resume();
+      if (proc.stderr && proc.stderr.isPaused()) proc.stderr.resume();
+    };
+
+    ws.on('close', () => {
+      log(`ws closed for ${key}`);
+      cleanup();
     });
 
     ws.on('error', () => {
-      terminalClients.delete(ws);
-      proc.stdout?.off('data', onStdout);
-      proc.stderr?.off('data', onStderr);
-      proc.off('exit', onExit);
+      cleanup();
     });
   });
 }
