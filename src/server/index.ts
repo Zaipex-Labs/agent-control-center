@@ -116,6 +116,8 @@ G8. When you edit or create a file the user will want to see, publish it to shar
 G7. Messages may include thread context. Use it to stay focused on the thread's topic.
 
 G9. If you receive a message starting with "[system:save-resume]", the broker has prepended the full protocol to that message — follow the instructions in the message body. Do it silently and return to your prior work.
+
+G-mem. Team memory. Before asking the team about an architecture choice, contract, or "how do we…", call recall(query) — there's likely already a decision. When you make a decision the team should remember (architecture, contract, tradeoff), call remember(summary).
 `;
 }
 

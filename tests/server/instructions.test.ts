@@ -58,9 +58,11 @@ describe('buildInstructions [M-1b]', () => {
   });
 
   it('G9 collapsed to a one-line pointer (protocol body now lives in the broker-injected message)', () => {
-    const g9Match = prompt.match(/G9\.\s+([^]+?)\n`;|G9\.\s+([^]+?)$/);
+    // G9 lives between G7 and G-mem now (post-A-4). Match its body up
+    // to the next blank line.
+    const g9Match = prompt.match(/G9\.\s+([^]+?)\n\n/);
     expect(g9Match).not.toBeNull();
-    const g9Body = (g9Match![1] ?? g9Match![2] ?? '').trim();
+    const g9Body = g9Match![1].trim();
     // One short sentence — pre-M-1b version was ~5 lines, ~640 chars.
     expect(g9Body.length).toBeLessThan(280);
     // The literal "[system:save-resume]" trigger is still mentioned so
@@ -69,6 +71,18 @@ describe('buildInstructions [M-1b]', () => {
     expect(g9Body).toContain('[system:save-resume]');
     expect(g9Body).not.toContain('set_shared("resume"');
     expect(g9Body).not.toContain('next_steps');
+  });
+
+  // FASE A-4 (v0.3.0): G-mem
+  it('G-mem rule names both recall and remember and is concise (<300 chars)', () => {
+    const memMatch = prompt.match(/G-mem\.\s+([^]+?)\n`;|G-mem\.\s+([^]+?)$/);
+    expect(memMatch).not.toBeNull();
+    const body = (memMatch![1] ?? memMatch![2] ?? '').trim();
+    expect(body).toContain('recall');
+    expect(body).toContain('remember');
+    // Cap so future-edits don't regress to a verbose paragraph. 300
+    // chars is ~75 tokens — leaves headroom over the 50-tok target.
+    expect(body.length).toBeLessThan(300);
   });
 });
 
