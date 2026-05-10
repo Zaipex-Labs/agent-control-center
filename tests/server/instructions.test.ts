@@ -2,7 +2,10 @@
 // Licensed under the Apache License, Version 2.0
 // See LICENSE file for details.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdirSync, writeFileSync, rmSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { buildInstructions } from '../../src/server/index.js';
 import { buildSaveResumePrompt } from '../../src/broker/handlers.js';
 
@@ -83,6 +86,67 @@ describe('buildInstructions [M-1b]', () => {
     // Cap so future-edits don't regress to a verbose paragraph. 300
     // chars is ~75 tokens — leaves headroom over the 50-tok target.
     expect(body.length).toBeLessThan(300);
+  });
+
+  // FASE B-1 (v0.3.0): no projectId → no skills section in the prompt.
+  it('omits the "## Project skills" section when projectId is not passed', () => {
+    expect(prompt).not.toContain('## Project skills');
+  });
+});
+
+// FASE B-1 (v0.3.0): when projectId IS passed, buildInstructions
+// appends the skills section. Tests run against a tmp ACC_HOME so they
+// don't pollute the user's real ~/.zaipex-acc/.
+describe('buildInstructions · skills loading [B-1]', () => {
+  let tmpHome: string;
+  let prevHome: string | undefined;
+
+  beforeEach(() => {
+    tmpHome = mkdtempSync(join(tmpdir(), 'acc-skills-instr-'));
+    prevHome = process.env['ACC_HOME'];
+    process.env['ACC_HOME'] = tmpHome;
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    if (prevHome != null) process.env['ACC_HOME'] = prevHome;
+    else delete process.env['ACC_HOME'];
+    rmSync(tmpHome, { recursive: true, force: true });
+    vi.resetModules();
+  });
+
+  function seed(projectId: string, filename: string, content: string): void {
+    const dir = join(tmpHome, 'projects', projectId, 'skills');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, filename), content, 'utf8');
+  }
+
+  it('omits the skills section when there are no skill files', async () => {
+    const { buildInstructions } = await import('../../src/server/index.js');
+    const out = buildInstructions('Turing', 'backend', 'project-empty');
+    expect(out).not.toContain('## Project skills');
+  });
+
+  it('appends a "## Project skills" section with each file as a sub-heading', async () => {
+    seed('proj-x', 'use-esm.md', 'always use esm');
+    seed('proj-x', 'tests.md', 'tests live in tests/<area>/');
+    const { buildInstructions } = await import('../../src/server/index.js');
+    const out = buildInstructions('Turing', 'backend', 'proj-x');
+    expect(out).toContain('## Project skills');
+    expect(out).toContain('### use-esm.md');
+    expect(out).toContain('always use esm');
+    expect(out).toContain('### tests.md');
+    expect(out).toContain('tests live in tests/<area>/');
+  });
+
+  it('skills are appended AFTER the rules section (G-mem stays the last G rule)', async () => {
+    seed('proj-x', 'a.md', 'rule one');
+    const { buildInstructions } = await import('../../src/server/index.js');
+    const out = buildInstructions('Turing', 'backend', 'proj-x');
+    const gmemIdx = out.indexOf('G-mem.');
+    const skillsIdx = out.indexOf('## Project skills');
+    expect(gmemIdx).toBeGreaterThan(0);
+    expect(skillsIdx).toBeGreaterThan(gmemIdx);
   });
 });
 

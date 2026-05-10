@@ -12,6 +12,7 @@ import { getGitRoot, getGitBranch, getTty, getDefaultName } from '../shared/util
 import { ensureBroker, brokerFetch } from './broker-client.js';
 import { pushMessage, writeInterruptFile } from './channel.js';
 import { registerTools, type AgentIdentity } from './tools.js';
+import { loadProjectSkills, formatSkillsSection } from '../shared/skills.js';
 import type {
   RegisterResponse,
   PollMessagesResponse,
@@ -53,7 +54,25 @@ function detectProject(gitRoot: string | null, cwd: string): string {
 // Exported for tests/server/instructions.test.ts so the snapshot
 // length and structural assertions (M-1b) can run without needing to
 // rebuild the whole server entry point.
-export function buildInstructions(name: string, role: string): string {
+//
+// projectId, when provided, triggers FASE B (v0.3.0) skills loading:
+// markdown files from ~/.zaipex-acc/projects/<id>/skills/ are appended
+// as a "## Project skills" section at the end of the prompt. The
+// skills loader is fault-tolerant — a missing dir or unreadable file
+// silently produces an empty section.
+export function buildInstructions(name: string, role: string, projectId?: string): string {
+  const base = buildBaseInstructions(name, role);
+  if (!projectId) return base;
+  const { skills, truncated } = loadProjectSkills(projectId);
+  if (truncated) {
+    process.stderr.write(
+      `[acc-server] project skills total exceeded ${8192} bytes — some files were skipped\n`,
+    );
+  }
+  return base + formatSkillsSection(skills);
+}
+
+function buildBaseInstructions(name: string, role: string): string {
   return `You are ${name}, an agent with the role of ${role}, connected to the Agents Command Center (ACC).
 You work as part of a team — each agent has a name, a role, and collaborates on the same project.
 Always respond in the same language the user or other agents are using.
@@ -173,7 +192,7 @@ export async function main(): Promise<void> {
         experimental: { 'claude/channel': {} },
         tools: {},
       },
-      instructions: buildInstructions(agentName, role || 'general'),
+      instructions: buildInstructions(agentName, role || 'general', projectId),
     },
   );
 
