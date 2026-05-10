@@ -3,8 +3,8 @@
 // See LICENSE file for details.
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { readdirSync, readFileSync, existsSync, writeFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { readdirSync, readFileSync, existsSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
+import { join, resolve, sep } from 'node:path';
 import { execSync } from 'node:child_process';
 import { PROJECTS_DIR, ensureDirectories, techLeadCwd } from '../shared/config.js';
 import { generateId, getDefaultName } from '../shared/utils.js';
@@ -191,9 +191,18 @@ export function handleBrowse(query: string, res: ServerResponse): void {
   const home = process.env['HOME'] ?? '/';
   const raw = params.get('path') || home;
 
-  // Prevent path traversal outside resolved path
-  const resolved = join('/', raw).replace(/\.\./g, '');
-  const target = raw.startsWith('/') ? resolved : join(home, resolved);
+  // [S-NEW-5 / L-7] previously this did `.replace(/\.\./g, '')` which is a
+  // broken sanitizer (`....//` survives as `..//`) and didn't follow
+  // symlinks. Resolve the path (handling `..`, double slashes, `.`),
+  // then realpath so symlinks land at their actual target before we
+  // pass it to readdirSync.
+  const candidate = raw.startsWith('/') ? resolve(raw) : resolve(home, raw);
+  let target: string;
+  try {
+    target = realpathSync(candidate);
+  } catch {
+    return json(res, { path: candidate, folders: [], error: 'Cannot read directory' }, 400);
+  }
 
   try {
     const entries = readdirSync(target, { withFileTypes: true });

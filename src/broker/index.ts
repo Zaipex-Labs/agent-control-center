@@ -4,8 +4,8 @@
 
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse, Server } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { join, extname, dirname } from 'node:path';
+import { readFile, realpath } from 'node:fs/promises';
+import { join, extname, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ACC_HOST, ACC_PORT, CLEANUP_INTERVAL_MS } from '../shared/config.js';
 import { t, getLang } from '../shared/i18n/index.js';
@@ -240,33 +240,51 @@ export function createBrokerServer(): Server {
 
     // Static file serving for dashboard (SPA fallback)
     if (method === 'GET') {
-      const safePath = pathOnly.replace(/\.\./g, '');
-      const filePath = safePath === '/' ? '/index.html' : safePath;
+      // [S-NEW-5 / L-7] resolve the requested path and require it to
+      // live under DASHBOARD_DIR after symlinks resolve. The previous
+      // `safePath.replace(/\.\./g, '')` left `....//` intact (`....//`
+      // → `..//`) and didn't catch symlinks at all.
+      const filePath = pathOnly === '/' ? '/index.html' : pathOnly;
       const fullPath = join(DASHBOARD_DIR, filePath);
-
+      const dashboardBase = await realpath(DASHBOARD_DIR).catch(() => DASHBOARD_DIR);
+      let resolved: string | null = null;
       try {
-        const content = await readFile(fullPath);
-        const ext = extname(filePath);
-        const headers: Record<string, string> = {
-          'Content-Type': MIME_TYPES[ext] ?? 'application/octet-stream',
-        };
-        // Vite hashed assets get long cache
-        if (safePath.startsWith('/assets/')) {
-          headers['Cache-Control'] = 'public, max-age=31536000, immutable';
-        }
-        res.writeHead(200, headers);
-        res.end(content);
-        return;
+        resolved = await realpath(fullPath);
       } catch {
-        // File not found — SPA fallback to index.html
+        // Fall through — handled by the SPA fallback below.
+      }
+      const insideDashboard =
+        resolved !== null &&
+        (resolved === dashboardBase || resolved.startsWith(dashboardBase + sep));
+
+      if (insideDashboard) {
         try {
-          const indexContent = await readFile(join(DASHBOARD_DIR, 'index.html'));
-          res.writeHead(200, { 'Content-Type': 'text/html' });
-          res.end(indexContent);
+          const content = await readFile(resolved!);
+          const ext = extname(filePath);
+          const headers: Record<string, string> = {
+            'Content-Type': MIME_TYPES[ext] ?? 'application/octet-stream',
+          };
+          // Vite hashed assets get long cache
+          if (pathOnly.startsWith('/assets/')) {
+            headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+          }
+          res.writeHead(200, headers);
+          res.end(content);
           return;
         } catch {
-          // Dashboard not built yet
+          // Fall through to SPA fallback.
         }
+      }
+
+      // SPA fallback — index.html. Always served from inside DASHBOARD_DIR
+      // (no traversal possible) so it doesn't need the realpath dance.
+      try {
+        const indexContent = await readFile(join(DASHBOARD_DIR, 'index.html'));
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(indexContent);
+        return;
+      } catch {
+        // Dashboard not built yet
       }
     }
 
