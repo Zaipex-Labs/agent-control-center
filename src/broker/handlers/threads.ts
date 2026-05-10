@@ -13,14 +13,6 @@ import { generateId } from '../../shared/utils.js';
 import { broadcast } from '../websocket.js';
 import { deleteBlobFile } from '../blobs.js';
 import { releaseBlobRefsForThread } from '../blob-refs.js';
-import type {
-  CreateThreadRequest,
-  ThreadListRequest,
-  ThreadGetRequest,
-  ThreadUpdateRequest,
-  ThreadSearchRequest,
-  ThreadSummaryRequest,
-} from '../../shared/types.js';
 import {
   insertThread,
   selectThreadsByProject,
@@ -32,13 +24,18 @@ import {
   searchMessagesInThreads,
   selectLogByThread,
 } from '../database.js';
-import { json, error, assertProjectMembership } from './_helpers.js';
+import { json, error, assertProjectMembership, parseBodyOrError } from './_helpers.js';
+import {
+  createThreadSchema,
+  listThreadsSchema,
+  threadIdSchema,
+  updateThreadSchema,
+  searchThreadsSchema,
+} from './_schemas.js';
 
 export function handleCreateThread(body: unknown, res: ServerResponse): void {
-  const b = body as CreateThreadRequest;
-  if (!b.project_id || !b.created_by) {
-    return error(res, 'Missing required fields: project_id, created_by');
-  }
+  const b = parseBodyOrError(createThreadSchema, body, res);
+  if (!b) return;
 
   const now = new Date().toISOString();
   const id = generateId();
@@ -61,10 +58,8 @@ export function handleCreateThread(body: unknown, res: ServerResponse): void {
 }
 
 export function handleListThreads(body: unknown, res: ServerResponse): void {
-  const b = body as ThreadListRequest;
-  if (!b.project_id) {
-    return error(res, 'Missing required field: project_id');
-  }
+  const b = parseBodyOrError(listThreadsSchema, body, res);
+  if (!b) return;
 
   const threads = selectThreadsByProject(b.project_id, b.status ?? undefined);
   // Attach the list of roles that participated in each thread so the
@@ -78,14 +73,12 @@ export function handleListThreads(body: unknown, res: ServerResponse): void {
 }
 
 export function handleGetThread(body: unknown, res: ServerResponse): void {
-  const b = body as ThreadGetRequest & { peer_id?: string };
   // [S-NEW-8] previously this allowed thread_id alone, then queried with
   // project_id=''. Since generateId() yields ~32 bits of entropy, that
   // path was brute-forceable on a local broker. Require both ids and
   // a member peer.
-  if (!b.thread_id || !b.project_id) {
-    return error(res, 'Missing required fields: project_id, thread_id');
-  }
+  const b = parseBodyOrError(threadIdSchema, body, res);
+  if (!b) return;
   if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
   const thread = selectThreadById(b.project_id, b.thread_id);
@@ -95,11 +88,9 @@ export function handleGetThread(body: unknown, res: ServerResponse): void {
 }
 
 export function handleUpdateThread(body: unknown, res: ServerResponse): void {
-  const b = body as ThreadUpdateRequest & { peer_id?: string };
   // [S-NEW-8] same brute-force scope as handleGetThread.
-  if (!b.thread_id || !b.project_id) {
-    return error(res, 'Missing required fields: project_id, thread_id');
-  }
+  const b = parseBodyOrError(updateThreadSchema, body, res);
+  if (!b) return;
   if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
   const updated = updateThread(b.project_id, b.thread_id, {
@@ -123,10 +114,8 @@ export function handleUpdateThread(body: unknown, res: ServerResponse): void {
 // so the team history is preserved even after the thread disappears from
 // the sidebar.
 export function handleDeleteThread(body: unknown, res: ServerResponse): void {
-  const b = body as { project_id?: string; thread_id?: string; peer_id?: string };
-  if (!b.project_id || !b.thread_id) {
-    return error(res, 'Missing required fields: project_id, thread_id');
-  }
+  const b = parseBodyOrError(threadIdSchema, body, res);
+  if (!b) return;
   // [S-NEW-3] gate cross-project deletion the same way as messaging.
   if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
@@ -150,10 +139,8 @@ export function handleDeleteThread(body: unknown, res: ServerResponse): void {
 }
 
 export function handleSearchThreads(body: unknown, res: ServerResponse): void {
-  const b = body as ThreadSearchRequest;
-  if (!b.project_id || !b.query) {
-    return error(res, 'Missing required fields: project_id, query');
-  }
+  const b = parseBodyOrError(searchThreadsSchema, body, res);
+  if (!b) return;
 
   const threads = searchThreads(b.project_id, b.query, b.limit);
   const messages = searchMessagesInThreads(b.project_id, b.query, b.limit ?? 50);
@@ -161,13 +148,11 @@ export function handleSearchThreads(body: unknown, res: ServerResponse): void {
 }
 
 export function handleThreadSummary(body: unknown, res: ServerResponse): void {
-  const b = body as ThreadSummaryRequest & { project_id?: string; peer_id?: string };
   // [S-NEW-3] previously thread_id alone was enough; the summary leaks
   // the last 10 messages of any thread cross-project. Require
   // project_id + member peer like every other thread endpoint.
-  if (!b.thread_id || !b.project_id) {
-    return error(res, 'Missing required fields: project_id, thread_id');
-  }
+  const b = parseBodyOrError(threadIdSchema, body, res);
+  if (!b) return;
   if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
   const entries = selectLogByThread(b.thread_id, 10);

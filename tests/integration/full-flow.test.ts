@@ -81,7 +81,7 @@ function post<T>(path: string, body: unknown): Promise<{ status: number; data: T
   });
 }
 
-function get<T>(path: string): Promise<{ status: number; data: T }> {
+function _get<T>(path: string): Promise<{ status: number; data: T }> {
   return new Promise((resolve, reject) => {
     const url = new URL(path, baseUrl);
     import('node:http').then(http => {

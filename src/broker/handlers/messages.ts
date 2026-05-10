@@ -26,7 +26,7 @@ import {
   selectPeersByRole,
   insertMessage,
   selectUndelivered,
-  markDelivered,
+  consumeUndelivered,
   insertLogEntry,
   selectHistory,
   selectThreadById,
@@ -329,28 +329,31 @@ export function handlePollMessages(body: unknown, res: ServerResponse): void {
   const b = parseBodyOrError(pollMessagesSchema, body, res);
   if (!b) return;
 
-  const all = selectUndelivered(b.id);
-  const now = Date.now();
-  const expired: number[] = [];
-  const fresh: typeof all = [];
-
-  for (const msg of all) {
-    if (now - new Date(msg.sent_at).getTime() > MESSAGE_TTL_MS) {
-      expired.push(msg.id);
-    } else {
-      fresh.push(msg);
-    }
+  // FU-A (v0.3.1) peek/consume split. peek=true returns rows without
+  // marking them delivered — used by manual_catch_up so an agent can
+  // re-read its undelivered queue without yanking it out from under the
+  // server's channel-push path. Default (consume) wraps SELECT+UPDATE
+  // in a transaction so two concurrent consumers can't both claim the
+  // same row IDs. Expired-message GC only runs on the consume path:
+  // peek is meant to be read-only.
+  if (b.peek) {
+    const all = selectUndelivered(b.id);
+    const now = Date.now();
+    const fresh = all.filter(m =>
+      now - new Date(m.sent_at).getTime() <= MESSAGE_TTL_MS,
+    );
+    json(res, { messages: fresh });
+    return;
   }
 
-  // Mark expired messages as delivered silently
-  if (expired.length > 0) {
-    markDelivered(expired);
-  }
-
-  // Mark fresh messages as delivered
-  if (fresh.length > 0) {
-    markDelivered(fresh.map(m => m.id));
-  }
+  // consumeUndelivered already marked every selected row delivered=1
+  // inside its transaction. We still partition by TTL so the agent
+  // doesn't get handed messages older than MESSAGE_TTL_MS; the
+  // dropped ones stay marked delivered, which is the intended behavior
+  // (old, never-pushed messages are gone for good).
+  const all = consumeUndelivered(b.id);
+  const cutoff = Date.now() - MESSAGE_TTL_MS;
+  const fresh = all.filter(m => new Date(m.sent_at).getTime() >= cutoff);
 
   json(res, { messages: fresh });
 }

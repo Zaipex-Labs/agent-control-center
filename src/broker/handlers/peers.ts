@@ -11,15 +11,7 @@ import { generateId, getDefaultName } from '../../shared/utils.js';
 import { ARCHITECT_ROLE } from '../../shared/names.js';
 import { broadcast } from '../websocket.js';
 import { issueToken as issueCsrfToken } from '../csrf-tokens.js';
-import type {
-  RegisterRequest,
-  HeartbeatRequest,
-  UnregisterRequest,
-  SetSummaryRequest,
-  SetRoleRequest,
-  ListPeersRequest,
-  Peer,
-} from '../../shared/types.js';
+import type { Peer } from '../../shared/types.js';
 import {
   insertPeer,
   updateLastSeen,
@@ -34,7 +26,16 @@ import {
   countPeers,
   countPendingMessages,
 } from '../database.js';
-import { json, error, validateIdentifiers } from './_helpers.js';
+import { json, error, validateIdentifiers, parseBodyOrError } from './_helpers.js';
+import {
+  registerSchema,
+  heartbeatSchema,
+  unregisterSchema,
+  setSummarySchema,
+  setRoleSchema,
+  csrfIssueSchema,
+  listPeersSchema,
+} from './_schemas.js';
 
 // ── Health ─────────────────────────────────────────────────────
 
@@ -49,10 +50,8 @@ export function handleHealth(res: ServerResponse): void {
 // ── Peer registration & lifecycle ─────────────────────────────
 
 export function handleRegister(body: unknown, res: ServerResponse): void {
-  const b = body as RegisterRequest;
-  if (!b.project_id || !b.cwd || b.pid == null) {
-    return error(res, 'Missing required fields: project_id, cwd, pid');
-  }
+  const b = parseBodyOrError(registerSchema, body, res);
+  if (!b) return;
 
   if (!validateIdentifiers(res,
     { name: 'project_id', value: b.project_id },
@@ -104,8 +103,8 @@ export function handleRegister(body: unknown, res: ServerResponse): void {
 }
 
 export function handleHeartbeat(body: unknown, res: ServerResponse): void {
-  const b = body as HeartbeatRequest;
-  if (!b.id) return error(res, 'Missing required field: id');
+  const b = parseBodyOrError(heartbeatSchema, body, res);
+  if (!b) return;
 
   const peer = selectPeerById(b.id);
   if (!peer) return error(res, `Peer not found: ${b.id}`, 404);
@@ -115,8 +114,8 @@ export function handleHeartbeat(body: unknown, res: ServerResponse): void {
 }
 
 export function handleUnregister(body: unknown, res: ServerResponse): void {
-  const b = body as UnregisterRequest;
-  if (!b.id) return error(res, 'Missing required field: id');
+  const b = parseBodyOrError(unregisterSchema, body, res);
+  if (!b) return;
 
   const peer = selectPeerById(b.id);
   deletePeer(b.id);
@@ -125,8 +124,8 @@ export function handleUnregister(body: unknown, res: ServerResponse): void {
 }
 
 export function handleSetSummary(body: unknown, res: ServerResponse): void {
-  const b = body as SetSummaryRequest;
-  if (!b.id || b.summary == null) return error(res, 'Missing required fields: id, summary');
+  const b = parseBodyOrError(setSummarySchema, body, res);
+  if (!b) return;
 
   const peer = selectPeerById(b.id);
   if (!peer) return error(res, `Peer not found: ${b.id}`, 404);
@@ -143,10 +142,8 @@ export function handleSetSummary(body: unknown, res: ServerResponse): void {
 // read the dashboard's localStorage and therefore have no peer_id to
 // trade for a token.
 export function handleCsrfIssue(body: unknown, res: ServerResponse): void {
-  const b = body as { peer_id?: string; project_id?: string; role?: string };
-  if (!b.peer_id || !b.project_id || !b.role) {
-    return error(res, 'Missing required fields: peer_id, project_id, role');
-  }
+  const b = parseBodyOrError(csrfIssueSchema, body, res);
+  if (!b) return;
   if (!validateIdentifiers(res, { name: 'role', value: b.role })) return;
 
   // Membership check: the requester must be a peer registered in this
@@ -173,8 +170,8 @@ export function handleCsrfIssue(body: unknown, res: ServerResponse): void {
 }
 
 export function handleSetRole(body: unknown, res: ServerResponse): void {
-  const b = body as SetRoleRequest;
-  if (!b.id || b.role == null) return error(res, 'Missing required fields: id, role');
+  const b = parseBodyOrError(setRoleSchema, body, res);
+  if (!b) return;
 
   // [QW-3 / S-NEW-4 / M-5 v0.2.1 / L-5 v0.2.1] — handleSetRole used to
   // accept any string. A peer that registered as 'qa' could call
@@ -203,7 +200,8 @@ export function handleSetRole(body: unknown, res: ServerResponse): void {
 }
 
 export function handleListPeers(body: unknown, res: ServerResponse): void {
-  const b = body as ListPeersRequest;
+  const b = parseBodyOrError(listPeersSchema, body, res);
+  if (!b) return;
   const scope = b.scope ?? 'project';
 
   if (!b.project_id && scope !== 'machine') {
@@ -217,14 +215,18 @@ export function handleListPeers(body: unknown, res: ServerResponse): void {
       peers = selectAllPeers();
       break;
     case 'directory':
-      peers = b.cwd ? selectPeersByCwd(b.project_id, b.cwd) : selectPeersByProject(b.project_id);
+      peers = b.cwd && b.project_id
+        ? selectPeersByCwd(b.project_id, b.cwd)
+        : selectPeersByProject(b.project_id ?? '');
       break;
     case 'repo':
-      peers = b.git_root ? selectPeersByGitRoot(b.project_id, b.git_root) : selectPeersByProject(b.project_id);
+      peers = b.git_root && b.project_id
+        ? selectPeersByGitRoot(b.project_id, b.git_root)
+        : selectPeersByProject(b.project_id ?? '');
       break;
     case 'project':
     default:
-      peers = selectPeersByProject(b.project_id);
+      peers = selectPeersByProject(b.project_id ?? '');
       break;
   }
 

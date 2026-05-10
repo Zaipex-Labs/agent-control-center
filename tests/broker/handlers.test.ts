@@ -449,6 +449,93 @@ describe('handlePollMessages', () => {
     handlePollMessages({}, res);
     expect(result.statusCode).toBe(400);
   });
+
+  // ── FU-A (v0.3.1): peek/consume split ─────────────────────────
+  describe('peek mode [FU-A]', () => {
+    it('peek=true returns rows without marking them delivered', () => {
+      insertPeer(makePeer({ id: 'pf' }));
+      insertPeer(makePeer({ id: 'pt' }));
+      const { res: sendRes } = createMockRes();
+      handleSendMessage({
+        project_id: 'proj', from_id: 'pf', to_id: 'pt', text: 'hello',
+      }, sendRes);
+
+      // First peek — sees the row.
+      const { res: r1, result: rs1 } = createMockRes();
+      handlePollMessages({ id: 'pt', peek: true }, r1);
+      expect((rs1.body as { messages: unknown[] }).messages).toHaveLength(1);
+
+      // Second peek — sees the same row (not marked delivered).
+      const { res: r2, result: rs2 } = createMockRes();
+      handlePollMessages({ id: 'pt', peek: true }, r2);
+      expect((rs2.body as { messages: unknown[] }).messages).toHaveLength(1);
+
+      // Now consume — drains the queue.
+      const { res: r3, result: rs3 } = createMockRes();
+      handlePollMessages({ id: 'pt' }, r3);
+      expect((rs3.body as { messages: unknown[] }).messages).toHaveLength(1);
+
+      // Subsequent peek — empty (the consume marked them delivered).
+      const { res: r4, result: rs4 } = createMockRes();
+      handlePollMessages({ id: 'pt', peek: true }, r4);
+      expect((rs4.body as { messages: unknown[] }).messages).toHaveLength(0);
+    });
+
+    it('consume is atomic — two consume calls do not duplicate row delivery', () => {
+      insertPeer(makePeer({ id: 'cf' }));
+      insertPeer(makePeer({ id: 'ct' }));
+      // Send 5 messages.
+      for (let i = 0; i < 5; i++) {
+        const { res } = createMockRes();
+        handleSendMessage({
+          project_id: 'proj', from_id: 'cf', to_id: 'ct', text: `m${i}`,
+        }, res);
+      }
+
+      // Two back-to-back consumes (the in-process serialization
+      // means they run sequentially; the second one observing the
+      // first one's UPDATE is what `consumeUndelivered`'s transaction
+      // pins down).
+      const { res: r1, result: rs1 } = createMockRes();
+      handlePollMessages({ id: 'ct' }, r1);
+      const first = (rs1.body as { messages: { id: number }[] }).messages;
+      const { res: r2, result: rs2 } = createMockRes();
+      handlePollMessages({ id: 'ct' }, r2);
+      const second = (rs2.body as { messages: { id: number }[] }).messages;
+
+      // Each row id appears in exactly one of the two responses.
+      const ids1 = new Set(first.map(m => m.id));
+      const ids2 = new Set(second.map(m => m.id));
+      const overlap = [...ids1].filter(x => ids2.has(x));
+      expect(overlap).toEqual([]);
+      // And together they cover all 5 (no leaks, no double-counts).
+      expect(ids1.size + ids2.size).toBe(5);
+    });
+
+    it('peek + consume in series — peek leaks no state', () => {
+      insertPeer(makePeer({ id: 'mf' }));
+      insertPeer(makePeer({ id: 'mt' }));
+      const { res: sendRes } = createMockRes();
+      handleSendMessage({
+        project_id: 'proj', from_id: 'mf', to_id: 'mt', text: 'race',
+      }, sendRes);
+
+      // Peek first — sees the row.
+      const { res: rpeek, result: rspeek } = createMockRes();
+      handlePollMessages({ id: 'mt', peek: true }, rpeek);
+      expect((rspeek.body as { messages: unknown[] }).messages).toHaveLength(1);
+
+      // Then consume — also sees the row (peek did NOT consume it).
+      const { res: rcons, result: rscons } = createMockRes();
+      handlePollMessages({ id: 'mt' }, rcons);
+      expect((rscons.body as { messages: unknown[] }).messages).toHaveLength(1);
+
+      // Second consume — empty (the first consume drained it).
+      const { res: rcons2, result: rscons2 } = createMockRes();
+      handlePollMessages({ id: 'mt' }, rcons2);
+      expect((rscons2.body as { messages: unknown[] }).messages).toHaveLength(0);
+    });
+  });
 });
 
 // ── GetHistory ─────────────────────────────────────────────────

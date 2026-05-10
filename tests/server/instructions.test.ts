@@ -28,9 +28,11 @@ import { buildSaveResumePrompt } from '../../src/broker/handlers.js';
 describe('buildInstructions [M-1 / C-2 aggressive]', () => {
   const prompt = buildInstructions('Turing', 'backend');
 
-  it('renders the agent name and role', () => {
-    expect(prompt).toContain('You are Turing');
-    expect(prompt).toContain(', backend.');
+  it('renders the agent name and role inside markdown backticks (FU-H fence)', () => {
+    expect(prompt).toContain('You are `Turing`');
+    expect(prompt).toContain(', `backend`.');
+    // and the trailing self-reference is also fenced
+    expect(prompt).toContain('you are `Turing`.');
   });
 
   it('stays under the 3500-character budget (~875 tokens at 4 chars/tok)', () => {
@@ -108,6 +110,23 @@ describe('buildInstructions [M-1 / C-2 aggressive]', () => {
   // FASE B-1 (v0.3.0): no projectId → no skills section in the prompt.
   it('omits the "## Project skills" section when projectId is not passed', () => {
     expect(prompt).not.toContain('## Project skills');
+  });
+
+  // FU-H (v0.3.1): defense-in-depth fence on ${name}/${role}. The
+  // primary guard is assertSafeIdentifier on the broker side; this
+  // test pins the prompt-side wrapping so a future regression there
+  // can't silently let injection bytes land verbatim. We exercise the
+  // shape, not the validator — buildInstructions is allowed to render
+  // whatever string the caller passes, but it must wrap it.
+  it('FU-H: name and role land inside `…` even if exotic chars slip past the validator', () => {
+    const out = buildInstructions('weird name', 'weird role');
+    // Both occurrences of name (header + tail self-reference) are fenced.
+    const fencedHeader = out.indexOf('You are `weird name`, `weird role`.');
+    expect(fencedHeader).toBeGreaterThan(-1);
+    expect(out).toContain('you are `weird name`.');
+    // And there is no un-fenced raw occurrence ("You are weird name" without
+    // the leading backtick).
+    expect(out).not.toMatch(/You are weird name(?!`)/);
   });
 });
 

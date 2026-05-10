@@ -7,7 +7,6 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { initDatabase } from '../../src/broker/database.js';
 
 // End-to-end round-trip at broker level:
 // upload blob → register peers → send message with attachment →

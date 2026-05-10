@@ -10,7 +10,6 @@ import type { Duplex } from 'node:stream';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
-import { resolveEntryPoint } from '../shared/utils.js';
 import { selectPeersByProject, getSharedState, deleteSharedState } from './database.js';
 import { broadcast } from './websocket.js';
 import { isAllowedOrigin, rejectUpgrade } from './origin.js';
@@ -178,11 +177,6 @@ function processKey(projectId: string, role: string): string {
   return `${projectId}:${role}`;
 }
 
-function getServerEntryPath(): string {
-  const thisDir = dirname(fileURLToPath(import.meta.url));
-  return resolveEntryPoint(thisDir, '..', 'server', 'index.ts');
-}
-
 export function spawnWebAgent(projectId: string, role: string, cwd: string, name?: string, model?: string): ChildProcess {
   const key = processKey(projectId, role);
 
@@ -193,8 +187,6 @@ export function spawnWebAgent(projectId: string, role: string, cwd: string, name
     agentProcesses.delete(key);
   }
 
-  const serverPath = getServerEntryPath();
-  const runner = serverPath.endsWith('.ts') ? 'npx' : 'node';
   const mcpName = 'zaipex-acc';
 
   const claudeArgs = [

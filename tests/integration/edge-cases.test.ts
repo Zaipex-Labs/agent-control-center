@@ -115,11 +115,15 @@ afterAll(async () => {
 
 describe('edge cases: registration errors', () => {
   it('register with empty project_id returns 400', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string }>('/api/register', {
+    const { status, data } = await post<{ ok: boolean; error: string; code?: string }>('/api/register', {
       pid: process.pid, cwd: '/tmp/test', role: 'test', project_id: '',
     });
     expect(status).toBe(400);
-    expect(data.error).toContain('Missing required fields');
+    // FU-D (v0.3.1): zod migration moved the error from
+    // "Missing required fields..." to INVALID_BODY with a
+    // per-field issue. Pin the shape, not the wording.
+    expect(data.error).toBeTruthy();
+    expect(data.code).toBe('INVALID_BODY');
   });
 
   it('register with empty cwd returns 400', async () => {
@@ -243,11 +247,13 @@ describe('edge cases: threads', () => {
   });
 
   it('thread search with empty query returns 400', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string }>('/api/threads/search', {
+    const { status, data } = await post<{ ok: boolean; error: string; code?: string }>('/api/threads/search', {
       project_id: 'ec-thread3',
     });
     expect(status).toBe(400);
-    expect(data.error).toContain('Missing required fields');
+    // FU-D (v0.3.1): zod INVALID_BODY shape (was: "Missing required fields...").
+    expect(data.error).toBeTruthy();
+    expect(data.code).toBe('INVALID_BODY');
   });
 
   it('thread summary with no messages returns "(no messages yet)"', async () => {
@@ -305,9 +311,11 @@ describe('edge cases: shared state', () => {
 
 describe('edge cases: body validation', () => {
   it('empty body to /register returns error about missing fields', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string }>('/api/register', {});
+    const { status, data } = await post<{ ok: boolean; error: string; code?: string }>('/api/register', {});
     expect(status).toBe(400);
-    expect(data.error).toContain('Missing required fields');
+    // FU-D (v0.3.1): zod INVALID_BODY shape (was: "Missing required fields...").
+    expect(data.error).toBeTruthy();
+    expect(data.code).toBe('INVALID_BODY');
   });
 
   it('body with extra fields to /register succeeds and ignores extras', async () => {
@@ -329,9 +337,11 @@ describe('edge cases: body validation', () => {
   });
 
   it('empty body to /threads/create returns error about missing fields', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string }>('/api/threads/create', {});
+    const { status, data } = await post<{ ok: boolean; error: string; code?: string }>('/api/threads/create', {});
     expect(status).toBe(400);
-    expect(data.error).toContain('Missing required fields');
+    // FU-D (v0.3.1): zod INVALID_BODY shape (was: "Missing required fields...").
+    expect(data.error).toBeTruthy();
+    expect(data.code).toBe('INVALID_BODY');
   });
 });
 

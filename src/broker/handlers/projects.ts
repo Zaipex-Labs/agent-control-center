@@ -33,7 +33,17 @@ import {
   deleteProjectData,
   listProjectIdsInDb,
 } from '../database.js';
-import { json, error, assertProjectMembership } from './_helpers.js';
+import { json, error, assertProjectMembership, parseBodyOrError } from './_helpers.js';
+import {
+  createProjectSchema,
+  addAgentSchema,
+  updateProjectSchema,
+  projectUpSchema,
+  projectDownSchema,
+  deleteProjectSchema,
+  saveResumeSchema,
+  listModifiedFilesSchema,
+} from './_schemas.js';
 
 // Keep this here (not in _helpers.ts) so it's colocated with the
 // project handlers that use it. Test imports use `from
@@ -259,8 +269,8 @@ function ensureArchitect(projectName: string, agents: AgentConfig[]): AgentConfi
 }
 
 export function handleCreateProject(body: unknown, res: ServerResponse): void {
-  const b = body as { name?: string; description?: string };
-  if (!b.name) return error(res, 'Missing required field: name');
+  const b = parseBodyOrError(createProjectSchema, body, res);
+  if (!b) return;
 
   // [C-1] — name flows into a filesystem path (PROJECTS_DIR/<name>.json),
   // into the tech-lead dir (TECHLEAD/<name>/), and later into tmux session
@@ -286,8 +296,8 @@ export function handleCreateProject(body: unknown, res: ServerResponse): void {
 }
 
 export function handleAddAgent(body: unknown, res: ServerResponse): void {
-  const b = body as { project_id?: string; role?: string; cwd?: string; name?: string; instructions?: string };
-  if (!b.project_id || !b.role || !b.cwd) return error(res, 'Missing required fields: project_id, role, cwd');
+  const b = parseBodyOrError(addAgentSchema, body, res);
+  if (!b) return;
 
   // [H-3] — role/name flow into tmux window names and session targets.
   // Without validation a role like `$(touch /tmp/pwn)` would run a shell
@@ -322,13 +332,8 @@ export function handleAddAgent(body: unknown, res: ServerResponse): void {
 }
 
 export function handleUpdateProject(body: unknown, res: ServerResponse): void {
-  const b = body as {
-    project_id?: string;
-    description?: string;
-    agents?: Array<{ role: string; cwd: string; name?: string; instructions?: string; avatar?: string; model?: string }>;
-  };
-  if (!b.project_id) return error(res, 'Missing required field: project_id');
-  if (!Array.isArray(b.agents)) return error(res, 'Missing required field: agents (array)');
+  const b = parseBodyOrError(updateProjectSchema, body, res);
+  if (!b) return;
 
   const configPath = join(PROJECTS_DIR, `${b.project_id}.json`);
   if (!existsSync(configPath)) return error(res, `Project not found: ${b.project_id}`, 404);
@@ -389,8 +394,8 @@ export function handleUpdateProject(body: unknown, res: ServerResponse): void {
 }
 
 export function handleProjectUp(body: unknown, res: ServerResponse): void {
-  const b = body as { project_id?: string };
-  if (!b.project_id) return error(res, 'Missing required field: project_id');
+  const b = parseBodyOrError(projectUpSchema, body, res);
+  if (!b) return;
 
   const configPath = join(PROJECTS_DIR, `${b.project_id}.json`);
   if (!existsSync(configPath)) return error(res, `Project not found: ${b.project_id}`, 404);
@@ -492,8 +497,8 @@ export function handleProjectUp(body: unknown, res: ServerResponse): void {
 // files. The dashboard merges this list with shared_state notes client
 // side.
 export async function handleListModifiedFiles(body: unknown, res: ServerResponse): Promise<void> {
-  const b = body as { project_id?: string; peer_id?: string };
-  if (!b.project_id) return error(res, 'Missing required field: project_id');
+  const b = parseBodyOrError(listModifiedFilesSchema, body, res);
+  if (!b) return;
   // [S-NEW-3] cross-project leak guard. The earlier H-1 fix only covered
   // /api/send-message and /api/send-to-role. Without this, a peer in
   // project A could ask for the modified-files list of project B by
@@ -596,8 +601,8 @@ export function buildSaveResumePrompt(role: string, now: string, kind: 'periodic
 }
 
 export function handleSaveResume(body: unknown, res: ServerResponse): void {
-  const b = body as { project_id?: string; peer_id?: string };
-  if (!b.project_id) return error(res, 'Missing required field: project_id');
+  const b = parseBodyOrError(saveResumeSchema, body, res);
+  if (!b) return;
   // [S-NEW-3] save-resume writes shared_state for every live agent in
   // the project, so leaking it cross-project would let A force B to
   // emit a resume snapshot. Same gate as H-1.
@@ -703,8 +708,8 @@ function captureResumeSnapshots(projectId: string, peers: Peer[]): void {
 }
 
 export async function handleProjectDown(body: unknown, res: ServerResponse): Promise<void> {
-  const b = body as { project_id?: string };
-  if (!b.project_id) return error(res, 'Missing required field: project_id');
+  const b = parseBodyOrError(projectDownSchema, body, res);
+  if (!b) return;
 
   const peers = selectPeersByProject(b.project_id);
 
@@ -769,8 +774,8 @@ export async function handleProjectDown(body: unknown, res: ServerResponse): Pro
 // because silently dropping a config while agents are still attached would
 // leave orphaned processes. The caller must shut the team down first.
 export function handleDeleteProject(body: unknown, res: ServerResponse): void {
-  const b = body as { project_id?: string };
-  if (!b.project_id) return error(res, 'Missing required field: project_id');
+  const b = parseBodyOrError(deleteProjectSchema, body, res);
+  if (!b) return;
 
   const configPath = join(PROJECTS_DIR, `${b.project_id}.json`);
   if (!existsSync(configPath)) return error(res, `Project not found: ${b.project_id}`, 404);

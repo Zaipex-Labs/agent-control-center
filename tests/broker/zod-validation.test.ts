@@ -26,6 +26,29 @@ import {
   handleSharedList,
   handleSharedDelete,
   handleDecisionsRecall,
+  // FU-D (v0.3.1) extended coverage:
+  handleRegister,
+  handleHeartbeat,
+  handleUnregister,
+  handleSetSummary,
+  handleSetRole,
+  handleCsrfIssue,
+  handleListPeers,
+  handleCreateThread,
+  handleListThreads,
+  handleGetThread,
+  handleUpdateThread,
+  handleDeleteThread,
+  handleSearchThreads,
+  handleThreadSummary,
+  handleCreateProject,
+  handleAddAgent,
+  handleUpdateProject,
+  handleProjectUp,
+  handleProjectDown,
+  handleSaveResume,
+  handleListModifiedFiles,
+  handleDeleteProject,
 } from '../../src/broker/handlers.js';
 import type { Peer } from '../../src/shared/types.js';
 
@@ -207,6 +230,177 @@ describe('zod validation · decisions/recall', () => {
       project_id: 'proj', peer_id: 'p1', query: 'esm', limit: 'foo',
     }, res);
     expectInvalidBody(result, 'limit');
+  });
+});
+
+// ── FU-D (v0.3.1): extended zod coverage on peers/threads/projects ──
+//
+// One test per migrated handler — exercise the "missing required" path
+// and pin the INVALID_BODY shape. The handlers' deeper behavior
+// (membership gating, identifier safety, etc.) is covered by the
+// existing handler / integration suites.
+
+describe('zod validation · peers handlers [FU-D]', () => {
+  it('register: missing project_id → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleRegister({ pid: 1, cwd: '/tmp', role: 'backend' }, res);
+    expectInvalidBody(result, 'project_id');
+  });
+
+  it('register: pid as string is rejected', () => {
+    const { res, result } = createMockRes();
+    handleRegister({ pid: '42', cwd: '/tmp', role: 'backend', project_id: 'proj' }, res);
+    expectInvalidBody(result, 'pid');
+  });
+
+  it('heartbeat: missing id → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleHeartbeat({}, res);
+    expectInvalidBody(result, 'id');
+  });
+
+  it('unregister: missing id → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleUnregister({}, res);
+    expectInvalidBody(result, 'id');
+  });
+
+  it('set-summary: missing summary → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleSetSummary({ id: 'p1' }, res);
+    expectInvalidBody(result, 'summary');
+  });
+
+  it('set-role: missing role → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleSetRole({ id: 'p1' }, res);
+    expectInvalidBody(result, 'role');
+  });
+
+  it('csrf/issue: missing peer_id → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleCsrfIssue({ project_id: 'proj', role: 'backend' }, res);
+    expectInvalidBody(result, 'peer_id');
+  });
+
+  it('list-peers: scope=machine works without project_id (200 path)', () => {
+    const { res, result } = createMockRes();
+    handleListPeers({ scope: 'machine' }, res);
+    // Should NOT return INVALID_BODY — list-peers allows omitting
+    // project_id when scope is 'machine'.
+    expect(result.statusCode).not.toBe(400);
+  });
+
+  it('list-peers: invalid scope value rejected', () => {
+    const { res, result } = createMockRes();
+    handleListPeers({ project_id: 'proj', scope: 'nope' }, res);
+    expectInvalidBody(result, 'scope');
+  });
+});
+
+describe('zod validation · threads handlers [FU-D]', () => {
+  it('threads/create: missing created_by → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleCreateThread({ project_id: 'proj' }, res);
+    expectInvalidBody(result, 'created_by');
+  });
+
+  it('threads/list: missing project_id → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleListThreads({}, res);
+    expectInvalidBody(result, 'project_id');
+  });
+
+  it('threads/list: invalid status value rejected', () => {
+    const { res, result } = createMockRes();
+    handleListThreads({ project_id: 'proj', status: 'frozen' }, res);
+    expectInvalidBody(result, 'status');
+  });
+
+  it('threads/get: missing thread_id → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleGetThread({ project_id: 'proj' }, res);
+    expectInvalidBody(result, 'thread_id');
+  });
+
+  it('threads/update: missing thread_id → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleUpdateThread({ project_id: 'proj' }, res);
+    expectInvalidBody(result, 'thread_id');
+  });
+
+  it('threads/delete: missing thread_id → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleDeleteThread({ project_id: 'proj' }, res);
+    expectInvalidBody(result, 'thread_id');
+  });
+
+  it('threads/search: missing query → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleSearchThreads({ project_id: 'proj' }, res);
+    expectInvalidBody(result, 'query');
+  });
+
+  it('threads/summary: missing thread_id → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleThreadSummary({ project_id: 'proj' }, res);
+    expectInvalidBody(result, 'thread_id');
+  });
+});
+
+describe('zod validation · projects handlers [FU-D]', () => {
+  it('project/create: missing name → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleCreateProject({}, res);
+    expectInvalidBody(result, 'name');
+  });
+
+  it('project/add-agent: missing cwd → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleAddAgent({ project_id: 'proj', role: 'backend' }, res);
+    expectInvalidBody(result, 'cwd');
+  });
+
+  it('project/update: missing agents array → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleUpdateProject({ project_id: 'proj' }, res);
+    expectInvalidBody(result, 'agents');
+  });
+
+  it('project/update: agents must be array (object rejected)', () => {
+    const { res, result } = createMockRes();
+    handleUpdateProject({ project_id: 'proj', agents: { role: 'x', cwd: '/y' } }, res);
+    expectInvalidBody(result, 'agents');
+  });
+
+  it('project/up: missing project_id → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleProjectUp({}, res);
+    expectInvalidBody(result, 'project_id');
+  });
+
+  it('project/down: missing project_id → INVALID_BODY', async () => {
+    const { res, result } = createMockRes();
+    await handleProjectDown({}, res);
+    expectInvalidBody(result, 'project_id');
+  });
+
+  it('project/save-resume: missing project_id → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleSaveResume({}, res);
+    expectInvalidBody(result, 'project_id');
+  });
+
+  it('project/modified-files: missing project_id → INVALID_BODY', async () => {
+    const { res, result } = createMockRes();
+    await handleListModifiedFiles({}, res);
+    expectInvalidBody(result, 'project_id');
+  });
+
+  it('project/delete: missing project_id → INVALID_BODY', () => {
+    const { res, result } = createMockRes();
+    handleDeleteProject({}, res);
+    expectInvalidBody(result, 'project_id');
   });
 });
 

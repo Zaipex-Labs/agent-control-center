@@ -219,13 +219,15 @@ describe('send_to_role', () => {
 });
 
 // FASE D-2 (v0.3.0): renamed from check_messages.
+// FU-A (v0.3.1): now invokes /api/poll-messages with peek=true so it
+// reads the queue without consuming it.
 describe('manual_catch_up', () => {
-  it('calls /api/poll-messages with this agent id', async () => {
+  it('calls /api/poll-messages with this agent id and peek=true', async () => {
     nextResponse = { messages: [] };
     const tools = setup();
     await tools.get('manual_catch_up')!.handler({});
     expect(brokerCalls[0]!.path).toBe('/api/poll-messages');
-    expect(brokerCalls[0]!.body).toEqual({ id: 'agent-1' });
+    expect(brokerCalls[0]!.body).toEqual({ id: 'agent-1', peek: true });
   });
 
   it('description warns "normally not needed"', () => {

@@ -7,12 +7,7 @@ import type {
   MessageType,
   Peer,
   Message,
-  LogEntry,
-  SharedStateEntry,
-  AgentConfig,
   ProjectConfig,
-  RegisterRequest,
-  RegisterResponse,
   HealthResponse,
 } from '../../src/shared/types.js';
 

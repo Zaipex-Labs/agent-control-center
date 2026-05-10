@@ -285,6 +285,36 @@ export function markDelivered(ids: number[]): void {
   getDb().prepare(`UPDATE messages SET delivered = 1 WHERE id IN (${placeholders})`).run(...ids);
 }
 
+// FU-A (v0.3.1): atomic SELECT + UPDATE for the consume path. Two
+// concurrent /api/poll-messages calls used to race because they each
+// ran SELECT separately and then UPDATE separately — both saw the
+// same delivered=0 rows and both returned them. The UPDATE is
+// idempotent at the SQL level (delivered=0→1 either way), but the
+// SELECT side leaked duplicate messages to the agent. Wrapping the
+// pair in `db.transaction(...)` serializes them: the second
+// transaction's SELECT sees delivered=1 for the rows the first
+// already claimed, so it returns the disjoint set.
+//
+// Callers:
+//   - The MCP server's 1-second polling loop uses this (consume).
+//   - manual_catch_up uses selectUndelivered directly (peek), so the
+//     agent can re-read its undelivered queue without marking.
+export function consumeUndelivered(toId: string): Message[] {
+  return getDb().transaction(() => {
+    const rows = getDb().prepare(
+      'SELECT * FROM messages WHERE to_id = ? AND delivered = 0 ORDER BY id ASC',
+    ).all(toId) as Message[];
+    if (rows.length > 0) {
+      const ids = rows.map(r => r.id);
+      const placeholders = ids.map(() => '?').join(',');
+      getDb().prepare(
+        `UPDATE messages SET delivered = 1 WHERE id IN (${placeholders}) AND delivered = 0`,
+      ).run(...ids);
+    }
+    return rows;
+  })();
+}
+
 export function countPendingMessages(): number {
   return (getDb().prepare('SELECT COUNT(*) as count FROM messages WHERE delivered = 0').get() as { count: number }).count;
 }

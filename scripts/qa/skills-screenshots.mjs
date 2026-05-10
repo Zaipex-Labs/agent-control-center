@@ -7,7 +7,7 @@
 // Re-seeds skills if they were deleted by previous runs.
 
 import puppeteer from 'puppeteer';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const BROKER = 'http://127.0.0.1:7910';
@@ -30,11 +30,19 @@ async function api(path, body) {
 // ones). Re-register before EACH api call too — the broker's
 // cleanStalePeers (every 30s) can evict between puppeteer ticks if the
 // browser launch + first page load is slow on cold boot.
+//
+// FU-E (v0.3.1): every freshPeer() leaves a row behind in the broker
+// DB (handleRegister de-dupes only by same project_id + same
+// dashboard agent_type at the moment of registration; older rows in
+// stalePeers state stick around until the next sweep). Track every
+// id we hand out so teardown can call /api/unregister on each.
+const createdPeers = [];
 async function freshPeer() {
   const reg = await api('/api/register', {
     project_id: PROJECT, pid: 1, cwd: '/', role: 'user',
     name: 'Dashboard', agent_type: 'dashboard',
   });
+  createdPeers.push(reg.id);
   return reg.id;
 }
 let peerId = await freshPeer();
@@ -117,6 +125,21 @@ try {
   console.log('captured: skills-modal-editor.png');
 } finally {
   await browser.close();
+
+  // FU-E (v0.3.1): unregister every peer id we created so the broker
+  // does not accumulate dead Dashboard rows across repeated QA runs.
+  // Best-effort — if unregister 404s (peer was already evicted by the
+  // 30s cleanStalePeers sweep) we ignore and move on.
+  let removed = 0;
+  for (const id of createdPeers) {
+    try {
+      await api('/api/unregister', { id });
+      removed += 1;
+    } catch {
+      // swallow — peer already gone, broker down, etc.
+    }
+  }
+  console.log(`teardown: unregistered ${removed}/${createdPeers.length} peers`);
 }
 
 console.log(`\nAll screenshots written to ${OUT_DIR}/`);
