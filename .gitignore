@@ -14,6 +14,7 @@ zaipex-acc-design.md
 
 # v0.2.5+ audit deliverables — kept local, not in GitHub
 docs/audits/v0.2.5-robustez/
+docs/audits/v0.3.0-team-memory/
 
 # Claude Code local config
 .claude/
