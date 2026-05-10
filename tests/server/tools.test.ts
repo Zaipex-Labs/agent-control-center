@@ -244,7 +244,7 @@ describe('get_history', () => {
 });
 
 describe('shared state tools', () => {
-  it('set_shared posts namespace/key/value + peer_id', async () => {
+  it('set_shared posts namespace/key/value + peer_id (string passthrough)', async () => {
     const tools = setup();
     await tools.get('set_shared')!.handler({
       namespace: 'contracts',
@@ -260,6 +260,32 @@ describe('shared state tools', () => {
       peer_id: 'agent-1',
     });
   });
+
+  // [M-3] set_shared accepts an object directly. The tool is responsible
+  // for JSON-encoding so the agent doesn't have to remember to call
+  // JSON.stringify() in every callsite.
+  it('set_shared JSON-encodes when value is an object', async () => {
+    const tools = setup();
+    await tools.get('set_shared')!.handler({
+      namespace: 'resume',
+      key: 'backend',
+      value: {
+        summary: 'wiring auth',
+        next_steps: ['ship JWT'],
+        open_questions: [],
+        updated_at: '2026-05-09T00:00:00.000Z',
+      },
+    });
+    const body = brokerCalls[0]!.body as { value: string };
+    expect(typeof body.value).toBe('string');
+    const parsed = JSON.parse(body.value);
+    expect(parsed.summary).toBe('wiring auth');
+    expect(parsed.next_steps).toEqual(['ship JWT']);
+  });
+
+  // The schema-level zod rejection (numbers/null/arrays for `value`)
+  // is enforced by the MCP SDK before the handler runs in production,
+  // not by this fake-mcp test rig — no need to assert that here.
 
   it('get_shared queries /api/shared/get', async () => {
     nextResponse = { value: 'v', updated_by: 'agent-1', updated_at: 'now' };

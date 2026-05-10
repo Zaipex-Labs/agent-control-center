@@ -184,18 +184,28 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
 
   mcp.tool(
     'set_shared',
-    'Set a key-value pair in shared state. Namespace groups related keys (e.g. "contracts", "config").',
+    'Set a key-value pair in shared state. Namespace groups related keys (e.g. "contracts", "config", "files", "resume"). `value` accepts either a string OR an object — objects are JSON-encoded automatically so you do not need to call JSON.stringify yourself.',
     {
       namespace: z.string(),
       key: z.string(),
-      value: z.string(),
+      // [M-3] Accept either a raw string or an object. Several rules
+      // in the system prompt instruct the agent to publish structured
+      // data (resume snapshots, file metadata, contracts) — forcing
+      // the agent to JSON.stringify ahead of time was a foot-gun:
+      // either the agent forgot and shipped an object that the SDK
+      // refused, or it stringified twice and broke downstream
+      // consumers.
+      value: z.union([z.string(), z.record(z.unknown())]),
     },
     async (args) => {
+      const value = typeof args.value === 'string'
+        ? args.value
+        : JSON.stringify(args.value);
       const resp = await brokerFetch<OkResponse>('/api/shared/set', {
         project_id: identity.project_id,
         namespace: args.namespace,
         key: args.key,
-        value: args.value,
+        value,
         peer_id: identity.id,
       });
       return {
