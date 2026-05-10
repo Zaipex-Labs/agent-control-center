@@ -4,13 +4,14 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readdirSync, readFileSync, existsSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
+import { readdir as readdirAsync, readFile as readFileAsync } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import { execSync } from 'node:child_process';
 import { PROJECTS_DIR, ensureDirectories, techLeadCwd } from '../shared/config.js';
 import { generateId, getDefaultName } from '../shared/utils.js';
 import { ARCHITECT_ROLE, ARCHITECT_DEFAULT_INSTRUCTIONS } from '../shared/names.js';
 import { mkdirSync } from 'node:fs';
-import { registerMcpServer, killTmuxSession, hasTmuxSession as hasTmuxSess } from '../cli/spawn.js';
+import { registerMcpServer, killTmuxSession, hasTmuxSession as hasTmuxSess, listTmuxSessions } from '../cli/spawn.js';
 import { spawnWebAgent, killAllWebAgents, getWebAgent } from './terminal.js';
 import { gitModifiedFiles } from './files.js';
 import { tmuxNotify, tmuxInjectWithContext } from './tmux.js';
@@ -293,24 +294,44 @@ export function migrateLegacyProjects(): void {
   }
 }
 
-export function handleListProjects(res: ServerResponse): void {
+export async function handleListProjects(res: ServerResponse): Promise<void> {
   ensureDirectories();
   try {
-    const projects = readdirSync(PROJECTS_DIR)
-      .filter(f => f.endsWith('.json'))
-      .map(f => {
-        const config = JSON.parse(readFileSync(join(PROJECTS_DIR, f), 'utf-8'));
+    // [P-2] async dir + per-config reads + a single batched tmux call.
+    // Pre-v0.2.5 each refresh did:
+    //   1. readdirSync → blocks the event loop
+    //   2. readFileSync per project → N more blocking ops
+    //   3. tmux has-session per project → N forks
+    // Now each phase fires concurrently and never holds the loop.
+    const files = (await readdirAsync(PROJECTS_DIR)).filter(f => f.endsWith('.json'));
+    const [configs, tmuxSessions] = await Promise.all([
+      Promise.all(files.map(async f => {
+        const raw = await readFileAsync(join(PROJECTS_DIR, f), 'utf-8');
+        return JSON.parse(raw) as { name: string };
+      })),
+      listTmuxSessions(),
+    ]);
+    const projects = configs
+      .map(config => {
         const allPeers = selectPeersByProject(config.name);
-        // Filter out zombie peers (process dead) and dashboard peers
         const livePeers = allPeers.filter(p => {
           if (p.agent_type === 'dashboard') return false;
           try { process.kill(p.pid, 0); return true; } catch { return false; }
         });
-        return { ...config, active_peers: livePeers.length, peers: livePeers, tmux_running: hasTmuxSess(config.name) };
+        return {
+          ...config,
+          active_peers: livePeers.length,
+          peers: livePeers,
+          tmux_running: tmuxSessions.has(`acc-${config.name}`),
+        };
       })
-      .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
+      .sort((a, b) => a.name.localeCompare(b.name));
     json(res, { projects });
-  } catch {
+  } catch (e) {
+    // Surface the failure on stderr so a broken PROJECTS_DIR (permissions,
+    // bad JSON in a config file) doesn't silently disappear behind an
+    // empty list. Caller still gets the safe fallback.
+    console.error('[broker:list-projects]', e instanceof Error ? e.message : String(e));
     json(res, { projects: [] });
   }
 }

@@ -2,12 +2,15 @@
 // Licensed under the Apache License, Version 2.0
 // See LICENSE file for details.
 
-import { execFileSync, spawn as cpSpawn } from 'node:child_process';
+import { execFileSync, execFile, spawn as cpSpawn } from 'node:child_process';
+import { promisify } from 'node:util';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AgentConfig } from '../shared/types.js';
 import { resolveEntryPoint, getDefaultName } from '../shared/utils.js';
 import { assertSafeIdentifier } from '../shared/validate.js';
+
+const execFileAsync = promisify(execFile);
 
 export type SpawnStrategy = 'tmux' | 'windows-terminal' | 'fallback';
 
@@ -340,6 +343,28 @@ export function hasTmuxSession(projectName: string): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+// [P-2] Batched alternative to N × hasTmuxSession() forks. Returns the
+// set of `acc-<project>` session names tmux currently knows about. Used
+// by handleListProjects so a 5-project dashboard refresh fires ONE
+// `tmux list-sessions` instead of five `tmux has-session` calls.
+//
+// Returns an empty set when tmux is missing OR when there are no live
+// sessions — both cases land in execFile rejecting (tmux exits 1 with
+// "no server running" / ENOENT). Either way the caller treats every
+// project as "tmux not running".
+export async function listTmuxSessions(): Promise<Set<string>> {
+  try {
+    const { stdout } = await execFileAsync(
+      'tmux',
+      ['list-sessions', '-F', '#{session_name}'],
+      { encoding: 'utf-8', timeout: 1500 },
+    );
+    return new Set(stdout.split('\n').map(s => s.trim()).filter(Boolean));
+  } catch {
+    return new Set();
   }
 }
 

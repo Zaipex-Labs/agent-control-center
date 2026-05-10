@@ -174,7 +174,10 @@ export function createBrokerServer(): Server {
     }
 
     if (method === 'GET' && url === '/api/projects') {
-      return handleListProjects(res);
+      // [P-2] now async; await so any thrown error is caught here
+      // rather than becoming an unhandled rejection.
+      await handleListProjects(res);
+      return;
     }
 
     if (method === 'GET' && url === '/api/lang') {
