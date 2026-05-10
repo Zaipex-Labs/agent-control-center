@@ -142,6 +142,37 @@ code, pre {
   }
 }
 
+/* [UX-2] Mobile reflow at 390px-class viewports.
+ *
+ * Project cards on the Teams page stop trying to fit the office
+ * illustration alongside the info column — it gets hidden, info goes
+ * full width. Stops badge truncation ("INACTIVO" → "IM") and overflow.
+ *
+ * ProjectPage's top nav stacks the title + action buttons below the
+ * back link with reduced padding so the controls don't fight the
+ * project name for horizontal space.
+ */
+@media (max-width: 768px) {
+  .project-card-illustration {
+    display: none !important;
+  }
+  .project-card-info {
+    width: 100%;
+    padding: 20px !important;
+  }
+  .project-page-nav {
+    flex-wrap: wrap;
+    height: auto !important;
+    padding: 8px 12px !important;
+    gap: 8px;
+  }
+  .project-page-nav-actions {
+    flex-wrap: wrap;
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+}
+
 /* ── Teams home card keyframes ── */
 @keyframes acc-bpulse {
   0%, 100% { opacity: 1; }

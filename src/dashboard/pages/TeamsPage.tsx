@@ -89,7 +89,7 @@ function ProjectCard({ project, onClick, onPowerUp, onShutdown, onEdit, onDelete
   const badgeLabel = bootInProgress ? t('dash.starting') : displayActive ? t('dash.active') : t('dash.inactive');
 
   return (
-    <div onClick={onClick} style={{
+    <div onClick={onClick} className="project-card" style={{
       display: 'flex', borderRadius: 16, overflow: 'hidden',
       border: '1px solid #DDD5C8', borderLeft: `4px solid ${accent}`,
       background: '#FAF7F1', cursor: 'pointer',
@@ -99,7 +99,7 @@ function ProjectCard({ project, onClick, onPowerUp, onShutdown, onEdit, onDelete
     onMouseLeave={e => { e.currentTarget.style.borderColor = '#DDD5C8'; e.currentTarget.style.borderLeftColor = accent; }}
     >
       {/* Left panel: info */}
-      <div style={{
+      <div className="project-card-info" style={{
         flex: '1 1 0', padding: '32px 40px',
         display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
         minWidth: 0, position: 'relative',
@@ -352,6 +352,7 @@ function ProjectCard({ project, onClick, onPowerUp, onShutdown, onEdit, onDelete
 
       {/* Right panel: office illustration — proportional width that grows with the card */}
       <div
+        className="project-card-illustration"
         style={{
           flex: '0 0 42%', minWidth: 320, alignSelf: 'stretch',
           position: 'relative', overflow: 'hidden',

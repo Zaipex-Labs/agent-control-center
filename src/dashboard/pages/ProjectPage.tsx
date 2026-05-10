@@ -344,7 +344,7 @@ export default function ProjectPage() {
       overflow: 'hidden',
     }}>
       {/* ── Top nav ── */}
-      <nav style={{
+      <nav className="project-page-nav" style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '10px 20px', height: 52,
         background: 'var(--z-navy-deep)',
@@ -372,7 +372,7 @@ export default function ProjectPage() {
           {projectId}
         </span>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="project-page-nav-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{
             fontFamily: 'var(--font-mono)', fontSize: 10,
             padding: '4px 10px', borderRadius: 12, letterSpacing: 0.5,
