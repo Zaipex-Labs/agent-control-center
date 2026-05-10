@@ -126,6 +126,7 @@ export async function main(): Promise<void> {
   const tty = getTty();
   const role = process.env['ACC_ROLE'] ?? '';
   const envName = process.env['ACC_NAME'] ?? '';
+  const envAvatar = process.env['ACC_AVATAR'] ?? '';
 
   // Ensure broker is running
   log(t('server.ensuringBroker'));
@@ -148,6 +149,7 @@ export async function main(): Promise<void> {
     agent_type: 'claude-code',
     summary: '',
     project_id: projectId,
+    avatar: envAvatar || undefined,
   });
   const agentName = reg.name;
   log(t('server.registered', { name: agentName, id: reg.id, role: role || '(none)' }));

@@ -30,6 +30,7 @@ export function initDatabase(dbPath?: string): Database.Database {
       git_branch TEXT,
       tty TEXT,
       summary TEXT NOT NULL DEFAULT '',
+      avatar TEXT,
       registered_at TEXT NOT NULL,
       last_seen TEXT NOT NULL
     );
@@ -127,6 +128,13 @@ function migrateSchema(database: Database.Database): void {
     database.exec('ALTER TABLE message_log ADD COLUMN thread_id TEXT');
   }
   database.exec('CREATE INDEX IF NOT EXISTS idx_log_thread ON message_log(thread_id)');
+
+  // PRE-2 (v0.3.0): peers.avatar — dicebear:<seed> or data:image/... or NULL.
+  // Dashboard already supports the on-disk shape; broker now persists it.
+  const peerCols = database.prepare("PRAGMA table_info(peers)").all() as { name: string }[];
+  if (!peerCols.some(c => c.name === 'avatar')) {
+    database.exec('ALTER TABLE peers ADD COLUMN avatar TEXT');
+  }
 }
 
 export function getDb(): Database.Database {
@@ -170,9 +178,15 @@ export function closeDatabase(): void {
 
 export function insertPeer(peer: Peer): void {
   getDb().prepare(`
-    INSERT INTO peers (id, project_id, pid, name, role, agent_type, cwd, git_root, git_branch, tty, summary, registered_at, last_seen)
-    VALUES (@id, @project_id, @pid, @name, @role, @agent_type, @cwd, @git_root, @git_branch, @tty, @summary, @registered_at, @last_seen)
-  `).run(peer);
+    INSERT INTO peers (id, project_id, pid, name, role, agent_type, cwd, git_root, git_branch, tty, summary, avatar, registered_at, last_seen)
+    VALUES (@id, @project_id, @pid, @name, @role, @agent_type, @cwd, @git_root, @git_branch, @tty, @summary, @avatar, @registered_at, @last_seen)
+  `).run({ ...peer, avatar: peer.avatar ?? null });
+}
+
+// PRE-2 (v0.3.0): allow the dashboard to update an agent's avatar after the
+// fact (avatar picker UI). Idempotent — passing null/undefined clears it.
+export function updatePeerAvatar(id: string, avatar: string | null): void {
+  getDb().prepare('UPDATE peers SET avatar = ? WHERE id = ?').run(avatar, id);
 }
 
 export function updateLastSeen(id: string, now: string): void {

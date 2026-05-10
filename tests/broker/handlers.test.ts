@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import type { ServerResponse } from 'node:http';
-import { initDatabase, insertPeer } from '../../src/broker/database.js';
+import { initDatabase, insertPeer, selectPeerById } from '../../src/broker/database.js';
 import {
   handleHealth,
   handleRegister,
@@ -102,6 +102,42 @@ describe('handleRegister', () => {
     handleRegister({}, res);
     expect(result.statusCode).toBe(400);
     expect((result.body as { ok: boolean }).ok).toBe(false);
+  });
+
+  // PRE-2 (v0.3.0): avatar persistence. Read-back uses selectPeerById
+  // (DB) instead of handleListPeers because the latter filters by
+  // process.kill(pid, 0) liveness — synthetic test pids would be filtered.
+  it('persists avatar when provided in register body', () => {
+    const { res, result } = createMockRes();
+    handleRegister({
+      pid: process.pid, cwd: '/app', role: 'backend', name: 'Turing',
+      project_id: 'proj', avatar: 'dicebear:custom-seed-7',
+    }, res);
+    expect(result.statusCode).toBe(200);
+    const id = (result.body as { id: string }).id;
+    expect(selectPeerById(id)!.avatar).toBe('dicebear:custom-seed-7');
+  });
+
+  it('defaults avatar to dicebear:<role>-<name> when omitted', () => {
+    const { res, result } = createMockRes();
+    handleRegister({
+      pid: process.pid, cwd: '/app', role: 'backend', name: 'Turing',
+      project_id: 'proj',
+    }, res);
+    expect(result.statusCode).toBe(200);
+    const id = (result.body as { id: string }).id;
+    expect(selectPeerById(id)!.avatar).toBe('dicebear:backend-Turing');
+  });
+
+  it('treats empty avatar as omitted (uses default)', () => {
+    const { res, result } = createMockRes();
+    handleRegister({
+      pid: process.pid, cwd: '/app', role: 'qa', name: 'Lovelace',
+      project_id: 'proj', avatar: '',
+    }, res);
+    expect(result.statusCode).toBe(200);
+    const id = (result.body as { id: string }).id;
+    expect(selectPeerById(id)!.avatar).toBe('dicebear:qa-Lovelace');
   });
 });
 

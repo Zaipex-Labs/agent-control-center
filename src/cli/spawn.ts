@@ -79,6 +79,7 @@ function buildAgentEnv(projectName: string, agent: AgentConfig): NodeJS.ProcessE
     ACC_PROJECT: projectName,
     ACC_ROLE: agent.role,
     ...(agent.name ? { ACC_NAME: agent.name } : {}),
+    ...(agent.avatar ? { ACC_AVATAR: agent.avatar } : {}),
   };
 }
 
@@ -101,6 +102,9 @@ function buildTmuxEnvExports(projectName: string, agent: AgentConfig): string {
   let exports = `ACC_PROJECT=${shellEscape(projectName)} ACC_ROLE=${shellEscape(agent.role)}`;
   if (agent.name) {
     exports += ` ACC_NAME=${shellEscape(agent.name)}`;
+  }
+  if (agent.avatar) {
+    exports += ` ACC_AVATAR=${shellEscape(agent.avatar)}`;
   }
   return exports;
 }

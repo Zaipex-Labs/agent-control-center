@@ -42,6 +42,10 @@ export interface Peer {
   git_branch: string | null;
   tty: string | null;
   summary: string;
+  // Optional. Format is either `dicebear:<seed>` (generated bottts svg) or
+  // `data:image/...` (user-uploaded). Empty/undefined falls back to a
+  // deterministic seed derived from `name` at render time.
+  avatar?: string;
   registered_at: string;
   last_seen: string;
 }
@@ -92,6 +96,7 @@ export interface AgentConfig {
   agent_cmd: string;
   agent_args: string[];
   instructions: string;
+  avatar?: string;
 }
 
 export interface ProjectConfig {
@@ -116,6 +121,7 @@ export interface RegisterRequest {
   agent_type?: string;
   summary?: string;
   project_id: string;
+  avatar?: string;
 }
 
 export interface RegisterResponse {

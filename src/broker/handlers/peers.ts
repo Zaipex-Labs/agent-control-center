@@ -63,6 +63,12 @@ export function handleRegister(body: unknown, res: ServerResponse): void {
   const id = generateId();
   const role = b.role ?? '';
   const name = b.name || getDefaultName(role);
+  // PRE-2 (v0.3.0): default to a deterministic dicebear seed so reconnects
+  // produce the same avatar without the dashboard storing per-machine state.
+  // The dashboard's resolveAvatarSrc() understands `dicebear:<seed>` and
+  // `data:...` (uploads). Empty seed would also fall back to `name` at
+  // render time, but persisting the default makes it visible in the API.
+  const avatar = b.avatar && b.avatar.length > 0 ? b.avatar : `dicebear:${role}-${name}`;
   const peer: Peer = {
     id,
     project_id: b.project_id,
@@ -75,6 +81,7 @@ export function handleRegister(body: unknown, res: ServerResponse): void {
     git_branch: b.git_branch ?? null,
     tty: b.tty ?? null,
     summary: b.summary ?? '',
+    avatar,
     registered_at: now,
     last_seen: now,
   };

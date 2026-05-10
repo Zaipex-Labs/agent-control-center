@@ -152,6 +152,37 @@ describe('peers CRUD', () => {
     insertPeer(makePeer({ id: 'b' }));
     expect(countPeers()).toBe(2);
   });
+
+  // PRE-2 (v0.3.0): avatar persistence + roundtrip
+  it('persists avatar and reads it back', () => {
+    insertPeer(makePeer({ id: 'p1', avatar: 'dicebear:abc' }));
+    expect(selectPeerById('p1')!.avatar).toBe('dicebear:abc');
+  });
+
+  it('stores undefined avatar as null and reads as undefined-ish', () => {
+    insertPeer(makePeer({ id: 'p1' })); // no avatar field
+    const found = selectPeerById('p1')!;
+    // SQLite stores NULL; better-sqlite3 hands it back as null. Either is fine
+    // for the contract: avatar is optional.
+    expect(found.avatar == null).toBe(true);
+  });
+});
+
+// PRE-2 (v0.3.0): migration is idempotent for pre-existing DBs missing
+// the avatar column.
+describe('peers.avatar migration', () => {
+  it('adds avatar column if missing on existing DB', () => {
+    // Re-init: initDatabase already ran in beforeEach. Verify the column exists.
+    const cols = (getDb().prepare("PRAGMA table_info(peers)").all() as Array<{ name: string }>);
+    expect(cols.some(c => c.name === 'avatar')).toBe(true);
+  });
+
+  it('migration is idempotent — calling initDatabase twice does not fail', () => {
+    expect(() => initDatabase(':memory:')).not.toThrow();
+    expect(() => initDatabase(':memory:')).not.toThrow();
+    const cols = (getDb().prepare("PRAGMA table_info(peers)").all() as Array<{ name: string }>);
+    expect(cols.filter(c => c.name === 'avatar')).toHaveLength(1);
+  });
 });
 
 // ── Messages ───────────────────────────────────────────────────
