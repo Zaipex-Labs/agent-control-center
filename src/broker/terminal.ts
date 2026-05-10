@@ -572,26 +572,28 @@ export function handleTerminalUpgrade(req: IncomingMessage, socket: Duplex, head
     log(`piping ws to process ${key} pid=${proc.pid}`);
     terminalClients.add(ws);
 
+    // [S-NEW-10] Drop outbound frames once the WS send buffer exceeds
+    // 1MB. Without this, a stuck client (paused tab, slow link) would
+    // accumulate process stdout in memory until the heap blew out.
+    const WS_SEND_BACKPRESSURE_LIMIT = 1024 * 1024; // 1 MB
+    const sendIfBufferOK = (data: Buffer) => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      if (ws.bufferedAmount > WS_SEND_BACKPRESSURE_LIMIT) return;
+      ws.send(data);
+    };
+
     // Send buffered output first
     const buf = outputBuffers.get(key);
     if (buf) {
       for (const chunk of buf) {
-        ws.send(chunk);
+        sendIfBufferOK(chunk);
       }
     }
 
     // Process stdout → WebSocket
-    const onStdout = (data: Buffer) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
-      }
-    };
+    const onStdout = (data: Buffer) => sendIfBufferOK(data);
 
-    const onStderr = (data: Buffer) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
-      }
-    };
+    const onStderr = (data: Buffer) => sendIfBufferOK(data);
 
     proc.stdout?.on('data', onStdout);
     proc.stderr?.on('data', onStderr);
@@ -604,10 +606,38 @@ export function handleTerminalUpgrade(req: IncomingMessage, socket: Duplex, head
     };
     proc.on('exit', onExit);
 
+    // [S-NEW-10] Token bucket on stdin so a misbehaving (or hijacked)
+    // client cannot flood the agent with input. 16 KB/s sustained, 64
+    // KB burst capacity — well above human typing / paste rate but
+    // tight enough that a flood gets choked off in <1s.
+    const STDIN_REFILL_BYTES_PER_SEC = 16 * 1024;
+    const STDIN_BURST_CAPACITY = 64 * 1024;
+    let stdinTokens = STDIN_BURST_CAPACITY;
+    let stdinLastRefill = Date.now();
+    const refillStdinTokens = (): void => {
+      const now = Date.now();
+      const elapsedSec = (now - stdinLastRefill) / 1000;
+      stdinLastRefill = now;
+      stdinTokens = Math.min(
+        STDIN_BURST_CAPACITY,
+        stdinTokens + elapsedSec * STDIN_REFILL_BYTES_PER_SEC,
+      );
+    };
+
     // WebSocket → process stdin
     ws.on('message', (raw: Buffer | string) => {
       if (!proc.stdin?.writable) return;
-      proc.stdin.write(raw.toString());
+      const text = typeof raw === 'string' ? raw : raw.toString();
+      const cost = Buffer.byteLength(text);
+      refillStdinTokens();
+      if (stdinTokens < cost) {
+        // Bucket empty — drop this frame silently. We don't close the
+        // socket because legitimate paste-of-a-large-blob just needs
+        // to wait for refill.
+        return;
+      }
+      stdinTokens -= cost;
+      proc.stdin.write(text);
     });
 
     // Cleanup on WebSocket close
