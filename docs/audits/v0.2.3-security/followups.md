@@ -102,3 +102,36 @@ robustness, but should at least log the failure.
 
 - **Fix**: replace the empty catch with `console.error('[broker:db]
   wal_checkpoint failed', e)`.
+
+---
+
+## F-6 · `mobile-teams.png` first-card "mostly white screen + Z" — same UX-2 bug, different fixtures · *Info / not a regression*
+
+Reviewing `docs/audits/v0.2.3-security/screenshots/teams-mobile.png`
+the first card looks dramatically different from the v0.2.2 baseline
+(`docs/audits/qa-out/mobile-teams.png` as it stood at commit
+`2eb033f`): the v0.2.3 capture shows mostly the office illustration
+with a sleep "Zzz" overlay, while v0.2.2 showed two monitors on a
+desk.
+
+This is **not** a v0.2.3 regression. Both screenshots exhibit the
+same UX-2 mobile-reflow bug: the project card is not narrow-aware,
+the office illustration consumes ~60% of the card width, the
+"INACTIVO" badge truncates to "IM", and the "última actividad" text
+is cut off. The visual difference between the two PNGs is purely
+fixture-dependent:
+
+  - v0.2.2 fuzz QA used the user's real local broker, where
+    `zaipex-sass` (3+ agents) was the first card → 3-monitor desk
+    illustration variant.
+  - v0.2.3 fuzz QA seeds a fresh broker with `empty-project` (1
+    agent — architect only) → "sleeping office" illustration variant
+    (TV + Zzz, the empty-state asset).
+
+The dashboard renders different illustrations based on the project's
+agent count; with one agent it shows the "asleep" asset and that's
+what the user sees as "mostly white screen + Z".
+
+- **Tracker**: subsumed by **UX-2** in v0.2.2 audit §8 (still open,
+  v0.2.4 backlog). The mobile-reflow fix lands there.
+- **No code change for v0.2.3.**

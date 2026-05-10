@@ -27,7 +27,15 @@ const browser = await puppeteer.launch({
 
 const page = await browser.newPage();
 
+// `inFuzz` is flipped to true while the fuzz section is running so
+// the listeners below stop pushing intentional 4xx into
+// failedRequests / consoleErrors. The fuzz results have their own
+// `findings.fuzz[]` array; reporting them again as "page errors"
+// would just be noise.
+let inFuzz = false;
+
 page.on('console', (msg) => {
+  if (inFuzz) return;
   if (msg.type() === 'error' || msg.type() === 'warning') {
     findings.consoleErrors.push({
       type: msg.type(),
@@ -46,6 +54,7 @@ page.on('pageerror', (err) => {
 });
 
 page.on('requestfailed', (req) => {
+  if (inFuzz) return;
   findings.failedRequests.push({
     url: req.url(),
     method: req.method(),
@@ -55,6 +64,7 @@ page.on('requestfailed', (req) => {
 });
 
 page.on('response', (res) => {
+  if (inFuzz) return;
   const status = res.status();
   if (status >= 400) {
     findings.failedRequests.push({
@@ -196,6 +206,12 @@ if (projects[0]) {
 // const is undefined. Pass BASE as the first argument so the browser
 // gets a real value and the QA report stops being littered with
 // "BASE is not defined" errors.
+//
+// [F-1 follow-up] — paths in the fuzz callsites must match the real
+// broker routes (see src/broker/index.ts:60-90). The previous
+// audit-qa.mjs targeted /api/create-project which doesn't exist;
+// every fuzz response was just the dispatcher's "Not found" 404.
+inFuzz = true;
 const fuzz = [];
 const t = async (base, path, init) => {
   try {
@@ -219,34 +235,35 @@ fuzz.push(
   await page.evaluate(t, BASE, '/api/blobs/notahash', undefined)
 );
 fuzz.push(
-  await page.evaluate(t, BASE, '/api/create-project', {
+  await page.evaluate(t, BASE, '/api/project/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: '../../etc/pwned' }),
   })
 );
 fuzz.push(
-  await page.evaluate(t, BASE, '/api/create-project', {
+  await page.evaluate(t, BASE, '/api/project/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: 'a; rm -rf /' }),
   })
 );
 fuzz.push(
-  await page.evaluate(t, BASE, '/api/create-project', {
+  await page.evaluate(t, BASE, '/api/project/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: 'not json',
   })
 );
 fuzz.push(
-  await page.evaluate(t, BASE, '/api/create-project', {
+  await page.evaluate(t, BASE, '/api/project/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: 'x'.repeat(1000) }),
   })
 );
 findings.fuzz = fuzz;
+inFuzz = false;
 
 // 7. Check for broker binding (must be 127.0.0.1 only)
 findings.notes.push(

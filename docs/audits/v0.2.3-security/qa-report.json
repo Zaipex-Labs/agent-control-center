@@ -1,83 +1,69 @@
 {
-  "consoleErrors": [
-    {
-      "type": "error",
-      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-      "url": "http://127.0.0.1:7919/"
-    },
-    {
-      "type": "error",
-      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
-      "url": "http://127.0.0.1:7919/"
-    },
-    {
-      "type": "error",
-      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
-      "url": "http://127.0.0.1:7919/"
-    },
-    {
-      "type": "error",
-      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
-      "url": "http://127.0.0.1:7919/"
-    },
-    {
-      "type": "error",
-      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
-      "url": "http://127.0.0.1:7919/"
-    }
-  ],
+  "consoleErrors": [],
   "pageErrors": [],
-  "failedRequests": [
-    {
-      "url": "http://127.0.0.1:7919/api/blobs/0000000000000000000000000000000000000000000000000000000000000000",
-      "method": "GET",
-      "status": 401,
-      "page": "http://127.0.0.1:7919/"
-    },
-    {
-      "url": "http://127.0.0.1:7919/api/create-project",
-      "method": "POST",
-      "status": 404,
-      "page": "http://127.0.0.1:7919/"
-    },
-    {
-      "url": "http://127.0.0.1:7919/api/create-project",
-      "method": "POST",
-      "status": 404,
-      "page": "http://127.0.0.1:7919/"
-    },
-    {
-      "url": "http://127.0.0.1:7919/api/create-project",
-      "method": "POST",
-      "status": 404,
-      "page": "http://127.0.0.1:7919/"
-    },
-    {
-      "url": "http://127.0.0.1:7919/api/create-project",
-      "method": "POST",
-      "status": 404,
-      "page": "http://127.0.0.1:7919/"
-    }
-  ],
+  "failedRequests": [],
   "metrics": {
     "teams": {
-      "ms": 1000,
+      "ms": 993,
       "url": "http://127.0.0.1:7919/"
     },
+    "project-demo": {
+      "ms": 1126,
+      "url": "http://127.0.0.1:7919/demo"
+    },
+    "project-empty-project": {
+      "ms": 961,
+      "url": "http://127.0.0.1:7919/empty-project"
+    },
+    "history": {
+      "ms": 1160,
+      "url": "http://127.0.0.1:7919/demo/history"
+    },
     "mobile-teams": {
-      "ms": 1019,
+      "ms": 954,
       "url": "http://127.0.0.1:7919/"
+    },
+    "mobile-project": {
+      "ms": 711,
+      "url": "http://127.0.0.1:7919/demo"
+    },
+    "a11yQuick": {
+      "buttons": 6,
+      "links": 0,
+      "inputs": 0,
+      "images": 0,
+      "imagesWithoutAlt": 0,
+      "buttonsWithoutLabel": 0,
+      "headingsH1": 0,
+      "langAttr": "en",
+      "title": "Zaipex ACC — Agents Command Center",
+      "meta": {}
+    },
+    "externalResources": [
+      "https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=DM+Serif+Display&family=JetBrains+Mono:wght@400;500;600&display=swap",
+      "https://fonts.gstatic.com/s/dmsans/v17/rP2Hp2ywxg089UriCZOIHTWEBlw.woff2",
+      "https://fonts.gstatic.com/s/dmserifdisplay/v17/-nFnOHM81r4j6k0gjAW3mujVU2B2G_Bx0vrx52g.woff2",
+      "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwgknk-4.woff2"
+    ],
+    "bundle": {
+      "jsCount": 1,
+      "jsBytes": 0,
+      "jsDecoded": 483365,
+      "cssCount": 2,
+      "cssBytes": 0,
+      "total": 24
     }
   },
   "notes": [
-    "projects discovered: []",
+    "projects discovered: [\"demo\",\"empty-project\"]",
+    "composer candidates on project page: 0",
     "broker host check: connecting via http://127.0.0.1:7919 succeeded; verify 0.0.0.0 with separate socket test if needed"
   ],
   "fuzz": [
     {
       "path": "/api/projects",
       "status": 200,
-      "body": "{\"projects\":[]}"
+      "body": "{\"projects\":[{\"name\":\"demo\",\"description\":\"\",\"created_at\":\"2026-05-10T02:44:21.827Z\",\"agents\":[{\"role\":\"arquitectura\",\"c"
     },
     {
       "path": "/api/blobs/0000000000000000000000000000000000000000000000000000000000000000",
@@ -90,24 +76,24 @@
       "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, "
     },
     {
-      "path": "/api/create-project",
-      "status": 404,
-      "body": "{\"ok\":false,\"error\":\"Not found\"}"
+      "path": "/api/project/create",
+      "status": 400,
+      "body": "{\"ok\":false,\"error\":\"Invalid name: contains \\\"..\\\"\"}"
     },
     {
-      "path": "/api/create-project",
-      "status": 404,
-      "body": "{\"ok\":false,\"error\":\"Not found\"}"
+      "path": "/api/project/create",
+      "status": 400,
+      "body": "{\"ok\":false,\"error\":\"Invalid name: only [a-zA-Z0-9_.-] allowed (1-64 chars)\"}"
     },
     {
-      "path": "/api/create-project",
-      "status": 404,
-      "body": "{\"ok\":false,\"error\":\"Not found\"}"
+      "path": "/api/project/create",
+      "status": 400,
+      "body": "{\"ok\":false,\"error\":\"Invalid JSON body\"}"
     },
     {
-      "path": "/api/create-project",
-      "status": 404,
-      "body": "{\"ok\":false,\"error\":\"Not found\"}"
+      "path": "/api/project/create",
+      "status": 400,
+      "body": "{\"ok\":false,\"error\":\"Invalid name: too long (1000 > 64)\"}"
     }
   ]
 }
