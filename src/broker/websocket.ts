@@ -5,6 +5,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
+import { isAllowedOrigin, rejectUpgrade } from './origin.js';
 
 export type BrokerEvent =
   | 'peer:connected'
@@ -26,6 +27,11 @@ const clients = new Set<WsClient>();
 const wss = new WebSocketServer({ noServer: true });
 
 export function handleEventsUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, projectId: string | null): void {
+  if (!isAllowedOrigin(req)) {
+    console.error(`[broker:ws] rejecting /ws upgrade from origin=${JSON.stringify(req.headers.origin)} remote=${req.socket.remoteAddress}`);
+    rejectUpgrade(socket, 403, 'Forbidden');
+    return;
+  }
   wss.handleUpgrade(req, socket, head, (ws) => {
     const client: WsClient = { ws, projectId };
     clients.add(client);

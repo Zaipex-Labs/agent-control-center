@@ -13,6 +13,7 @@ import { existsSync } from 'node:fs';
 import { resolveEntryPoint } from '../shared/utils.js';
 import { selectPeersByProject, getSharedState, deleteSharedState } from './database.js';
 import { broadcast } from './websocket.js';
+import { isAllowedOrigin, rejectUpgrade } from './origin.js';
 
 // Locate a usable python3 binary. When the broker is launched via nohup /
 // launchd the PATH can lose /usr/local/bin or /opt/homebrew/bin, and
@@ -464,17 +465,30 @@ export function getWebAgent(projectId: string, role: string): ChildProcess | und
 }
 
 export function handleTerminalUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, role: string, projectId: string): void {
+  // Origin check before the handshake. WebSockets are not subject to
+  // CORS preflight, so a webpage on an external origin can otherwise
+  // open a hijacking WS to ws://127.0.0.1/ws/terminal/<role> and pipe
+  // bytes into the agent's stdin (S-NEW-2 / WS-hijack RCE).
+  if (!isAllowedOrigin(req)) {
+    log(`reject /ws/terminal upgrade: origin=${JSON.stringify(req.headers.origin)} remote=${req.socket.remoteAddress}`);
+    rejectUpgrade(socket, 403, 'Forbidden');
+    return;
+  }
+
+  // Defense-in-depth: also refuse the handshake when no agent is alive
+  // for this (project, role). The previous code accepted the WS first
+  // and then closed with 1011, which still exposed handshake success
+  // to a probing attacker.
+  const key = processKey(projectId, role);
+  const proc = agentProcesses.get(key);
+  if (!proc || proc.killed) {
+    log(`reject /ws/terminal upgrade: no active process for ${key}`);
+    rejectUpgrade(socket, 503, 'Agent not running');
+    return;
+  }
+
   wss.handleUpgrade(req, socket, head, (ws) => {
-    const key = processKey(projectId, role);
     log(`ws connect for ${key}`);
-
-    const proc = agentProcesses.get(key);
-    if (!proc || proc.killed) {
-      log(`no active process for ${key}`);
-      ws.close(1011, 'Agent not running');
-      return;
-    }
-
     log(`piping ws to process ${key} pid=${proc.pid}`);
 
     // Send buffered output first
