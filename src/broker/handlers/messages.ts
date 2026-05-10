@@ -3,9 +3,13 @@
 // See LICENSE file for details.
 
 // Message-flow handlers: send-message, send-to-role, poll-messages,
-// get-history. The two send paths are heavy duplicates of each other
-// today (Q-2 in the v0.2.2 audit) — Q-1 (this commit) is a pure split,
-// Q-2 (next commit) extracts the shared resolveMessageDelivery helper.
+// get-history. Pre-v0.2.5 the two send paths were 95% duplicates
+// (Q-2 in the v0.2.2 audit). v0.2.5 lifts the shared steps —
+// attachment validation, metadata serialization, thread inheritance,
+// per-target write + log + blob_ref, tmux notify, broadcast — into
+// a small set of helpers. Each handler now owns only the parts that
+// actually differ: target resolution and the wire-shape of its
+// response.
 
 import type { ServerResponse } from 'node:http';
 import { broadcast } from '../websocket.js';
@@ -19,6 +23,7 @@ import type {
   PollMessagesRequest,
   GetHistoryRequest,
   MessageType,
+  Peer,
 } from '../../shared/types.js';
 import {
   selectPeerById,
@@ -42,9 +47,175 @@ import {
 } from './_helpers.js';
 
 const MESSAGE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const FIVE_MINUTES_MS = 5 * 60 * 1000;
+
+// ── Shared helpers (Q-2 dedup) ────────────────────────────────
+
+// Returns false and writes a 4xx response if attachment list is bad.
+// The two send handlers used to inline this loop — keep it here so
+// adding a new validation rule (e.g. per-mime cap) lands in one place.
+function validateAttachments(incoming: Attachment[], res: ServerResponse): boolean {
+  if (incoming.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: false,
+      error: `Too many attachments (max ${MAX_ATTACHMENTS_PER_MESSAGE} per message)`,
+      code: 'TOO_MANY_ATTACHMENTS',
+    }));
+    return false;
+  }
+  for (const att of incoming) {
+    if (!getBlob(att.hash)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        ok: false,
+        error: 'Attachment blob not found on server',
+        code: 'BLOB_NOT_FOUND',
+        hash: att.hash,
+      }));
+      return false;
+    }
+  }
+  return true;
+}
+
+// Merge attachment descriptors into the existing JSON metadata so a
+// `topic` (or any future metadata key) survives alongside them.
+function buildMetadata(incoming: Attachment[], existingRaw: string | null | undefined): string | null {
+  if (incoming.length === 0) return existingRaw ?? null;
+  let existingObj: Record<string, unknown> = {};
+  if (existingRaw) {
+    try { existingObj = JSON.parse(existingRaw) as Record<string, unknown>; } catch { /* ignore */ }
+  }
+  return serializeAttachments(incoming, existingObj);
+}
+
+// Auto-inherit thread_id when the caller didn't supply one. First try
+// the user's most recent message in the project, then fall back to the
+// last message that was sent TO this peer (so an agent's reply lands
+// in the same thread as the question that prompted it). Both windows
+// are 5 minutes — older history is treated as a separate conversation.
+function inheritThreadId(
+  projectId: string,
+  fromId: string,
+  providedThreadId: string | null | undefined,
+  contextLabel: string,
+): string | null {
+  if (providedThreadId) return providedThreadId;
+  const recentHistory = selectHistory(projectId, { limit: 30 });
+  const cutoff = Date.now() - FIVE_MINUTES_MS;
+  const userMsg = recentHistory.find(m =>
+    m.from_role === 'user' &&
+    m.thread_id &&
+    new Date(m.sent_at).getTime() > cutoff,
+  );
+  if (userMsg?.thread_id) {
+    console.error(`[broker:${contextLabel}] inherited thread_id=${userMsg.thread_id} from user message`);
+    return userMsg.thread_id;
+  }
+  const receivedMsg = recentHistory.find(m =>
+    m.to_id === fromId &&
+    m.thread_id &&
+    new Date(m.sent_at).getTime() > cutoff,
+  );
+  if (receivedMsg?.thread_id) {
+    console.error(`[broker:${contextLabel}] inherited thread_id=${receivedMsg.thread_id} from received message`);
+    return receivedMsg.thread_id;
+  }
+  return null;
+}
+
+// Precompute the (thread name, last-10-messages summary) tuple once so
+// per-target tmux injection doesn't redo the query on every iteration.
+function loadThreadContext(
+  projectId: string,
+  threadId: string | null,
+): { name: string; summary: string } | null {
+  if (!threadId) return null;
+  const thread = selectThreadById(projectId, threadId);
+  if (!thread) return null;
+  const entries = selectLogByThread(threadId, 10);
+  const summary = entries.reverse().map(e => `${e.from_role || e.from_id}: ${e.text}`).join(' | ');
+  return { name: thread.name, summary: summary || '(sin mensajes)' };
+}
+
+// Per-target write loop shared by both send paths. For each target:
+//   1. Insert into messages (real per-recipient rows so polling works).
+//   2. Insert into message_log (the audit/history table).
+//   3. Register one blob_ref per attachment so cleanup can release the
+//      bytes when this specific message is dropped.
+//   4. Best-effort tmux notify, deduped per role so a 3-backend
+//      broadcast only triggers one send-keys per pane.
+function writeMessagesToTargets(
+  projectId: string,
+  fromPeer: Peer,
+  targets: Peer[],
+  text: string,
+  type: MessageType,
+  metadata: string | null,
+  threadId: string | null,
+  incoming: Attachment[],
+  now: string,
+  threadContext: { name: string; summary: string } | null,
+  contextLabel: string,
+): void {
+  const injectedRoles = new Set<string>();
+
+  for (const target of targets) {
+    if (contextLabel === 'send-to-role') {
+      console.error(`[broker:send-to-role] inserting message: from=${fromPeer.id} to=${target.id} (${target.role})`);
+    }
+    const messageId = insertMessage(projectId, fromPeer.id, target.id, type, text, metadata, now, threadId);
+    insertLogEntry(
+      projectId, fromPeer.id, fromPeer.role, target.id, target.role,
+      type, text, metadata, now, fromPeer.id, threadId,
+    );
+    for (const att of incoming) addBlobRef(att.hash, projectId, messageId);
+
+    // Best-effort tmux notify — once per role/window.
+    if (target.role && !injectedRoles.has(target.role)) {
+      if (threadId && threadContext) {
+        tmuxInjectWithContext(projectId, target.role, threadContext.name, threadContext.summary, fromPeer.name, fromPeer.role);
+      } else {
+        tmuxNotify(projectId, target.role, fromPeer.name, fromPeer.role);
+      }
+      injectedRoles.add(target.role);
+    }
+  }
+}
+
+// Final shared steps: touch the thread row's updated_at, fan out the
+// `message:new` ws event, and reply with `{ ok: true, ... }` shaped
+// the way the caller wants. Caller passes the response shape so each
+// handler keeps its own wire contract (`{ ok }` vs `{ ok, sent_to }`).
+function finalizeDelivery(
+  projectId: string,
+  fromPeer: Peer,
+  toRole: string,
+  text: string,
+  type: MessageType,
+  metadata: string | null,
+  threadId: string | null,
+  responseBody: Record<string, unknown>,
+  res: ServerResponse,
+): void {
+  if (threadId) touchThread(projectId, threadId);
+  broadcast('message:new', {
+    thread_id: threadId,
+    from_name: fromPeer.name,
+    from_role: fromPeer.role,
+    to_role: toRole,
+    text,
+    type,
+    metadata,
+  }, projectId);
+  json(res, responseBody);
+}
+
+// ── Handlers ──────────────────────────────────────────────────
 
 export async function handleSendMessage(body: unknown, res: ServerResponse): Promise<void> {
-  const b = body as SendMessageRequest;
+  const b = body as SendMessageRequest & { attachments?: Attachment[] };
   if (!b.project_id || !b.from_id || !b.to_id || !b.text) {
     return error(res, 'Missing required fields: project_id, from_id, to_id, text');
   }
@@ -62,7 +233,6 @@ export async function handleSendMessage(body: unknown, res: ServerResponse): Pro
   // [H-1] — both peers must belong to the body's project_id. Without this,
   // a local attacker who knows a peer_id in project B could send messages
   // (with attachments) to that peer while claiming to be in project A.
-  // SECURITY.md lists cross-project bypasses as a vulnerability.
   if (fromPeer.project_id !== b.project_id || toPeer.project_id !== b.project_id) {
     res.writeHead(403, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
@@ -73,126 +243,27 @@ export async function handleSendMessage(body: unknown, res: ServerResponse): Pro
     return;
   }
 
+  const incoming = b.attachments ?? [];
+  if (!validateAttachments(incoming, res)) return;
+
   const type: MessageType = b.type ?? 'message';
   const now = new Date().toISOString();
-
-  // Attachments: validate every referenced blob is on disk before writing
-  // the message. If any is missing, return a structured 404 so the
-  // dashboard can decide to re-upload. The blob_refs rows are inserted
-  // AFTER insertMessage so we have a real message_id.
-  const incoming = (b as SendMessageRequest & { attachments?: Attachment[] }).attachments ?? [];
-  if (incoming.length > MAX_ATTACHMENTS_PER_MESSAGE) {
-    res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      ok: false,
-      error: `Too many attachments (max ${MAX_ATTACHMENTS_PER_MESSAGE} per message)`,
-      code: 'TOO_MANY_ATTACHMENTS',
-    }));
-    return;
-  }
-  for (const att of incoming) {
-    if (!getBlob(att.hash)) {
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        ok: false,
-        error: 'Attachment blob not found on server',
-        code: 'BLOB_NOT_FOUND',
-        hash: att.hash,
-      }));
-      return;
-    }
-  }
-
-  // Merge incoming attachments into metadata so `topic` (and any other
-  // future metadata key) survives alongside them.
-  let metadata: string | null;
-  if (incoming.length > 0) {
-    let existingObj: Record<string, unknown> = {};
-    if (b.metadata) {
-      try { existingObj = JSON.parse(b.metadata) as Record<string, unknown>; } catch { /* ignore */ }
-    }
-    metadata = serializeAttachments(incoming, existingObj);
-  } else {
-    metadata = b.metadata ?? null;
-  }
-
-  let threadId = b.thread_id ?? null;
-
-  // Auto-inherit thread_id: first try user's original message, then any recent message
-  // sent TO this sender (so agent replies stay in the same thread as the question)
-  if (!threadId) {
-    const recentHistory = selectHistory(b.project_id, { limit: 30 });
-    const fiveMinAgo = Date.now() - 5 * 60 * 1000;
-    // 1. Try user's original message
-    const userMsg = recentHistory.find(m =>
-      m.from_role === 'user' &&
-      m.thread_id &&
-      new Date(m.sent_at).getTime() > fiveMinAgo
-    );
-    if (userMsg?.thread_id) {
-      threadId = userMsg.thread_id;
-      console.error(`[broker:send-message] inherited thread_id=${threadId} from user message`);
-    } else {
-      // 2. Try the last message received by this sender that has a thread_id
-      const receivedMsg = recentHistory.find(m =>
-        m.to_id === b.from_id &&
-        m.thread_id &&
-        new Date(m.sent_at).getTime() > fiveMinAgo
-      );
-      if (receivedMsg?.thread_id) {
-        threadId = receivedMsg.thread_id;
-        console.error(`[broker:send-message] inherited thread_id=${threadId} from received message`);
-      }
-    }
-  }
+  const metadata = buildMetadata(incoming, b.metadata);
+  const threadId = inheritThreadId(b.project_id, b.from_id, b.thread_id ?? null, 'send-message');
 
   console.error(`[broker:send-message] from=${b.from_id} (${fromPeer.role}) to=${b.to_id} (${toPeer.role}) thread=${threadId}`);
 
-  const messageId = insertMessage(b.project_id, b.from_id, b.to_id, type, b.text, metadata, now, threadId);
-  insertLogEntry(
-    b.project_id, b.from_id, fromPeer.role, b.to_id, toPeer.role,
-    type, b.text, metadata, now, fromPeer.id, threadId,
+  const threadContext = loadThreadContext(b.project_id, threadId);
+  writeMessagesToTargets(
+    b.project_id, fromPeer, [toPeer],
+    b.text, type, metadata, threadId, incoming, now,
+    threadContext, 'send-message',
   );
-
-  // Register one blob_ref per attachment so cleanup (project delete / GC)
-  // knows the blob is referenced by this specific message.
-  for (const att of incoming) {
-    addBlobRef(att.hash, b.project_id, messageId);
-  }
-
-  if (threadId) {
-    touchThread(b.project_id, threadId);
-  }
-
-  // Best-effort tmux notification to target pane
-  if (toPeer.role) {
-    if (threadId) {
-      const thread = selectThreadById(b.project_id, threadId);
-      if (thread) {
-        const entries = selectLogByThread(threadId, 10);
-        const summary = entries.reverse().map(e => `${e.from_role || e.from_id}: ${e.text}`).join(' | ');
-        tmuxInjectWithContext(b.project_id, toPeer.role, thread.name, summary || '(sin mensajes)', fromPeer.name, fromPeer.role);
-      }
-    } else {
-      tmuxNotify(b.project_id, toPeer.role, fromPeer.name, fromPeer.role);
-    }
-  }
-
-  broadcast('message:new', {
-    thread_id: threadId,
-    from_name: fromPeer.name,
-    from_role: fromPeer.role,
-    to_role: toPeer.role,
-    text: b.text,
-    type,
-    metadata,
-  }, b.project_id);
-
-  json(res, { ok: true });
+  finalizeDelivery(b.project_id, fromPeer, toPeer.role, b.text, type, metadata, threadId, { ok: true }, res);
 }
 
 export async function handleSendToRole(body: unknown, res: ServerResponse): Promise<void> {
-  const b = body as SendToRoleRequest;
+  const b = body as SendToRoleRequest & { attachments?: Attachment[] };
   if (!b.project_id || !b.from_id || !b.role || !b.text) {
     return error(res, 'Missing required fields: project_id, from_id, role, text');
   }
@@ -221,70 +292,13 @@ export async function handleSendToRole(body: unknown, res: ServerResponse): Prom
   }
 
   const targets = selectPeersByRole(b.project_id, b.role);
+  const incoming = b.attachments ?? [];
+  if (!validateAttachments(incoming, res)) return;
+
   const type: MessageType = b.type ?? 'message';
   const now = new Date().toISOString();
-
-  // Same attachments handling as handleSendMessage (see there for rationale).
-  const incoming = (b as SendToRoleRequest & { attachments?: Attachment[] }).attachments ?? [];
-  if (incoming.length > MAX_ATTACHMENTS_PER_MESSAGE) {
-    res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      ok: false,
-      error: `Too many attachments (max ${MAX_ATTACHMENTS_PER_MESSAGE} per message)`,
-      code: 'TOO_MANY_ATTACHMENTS',
-    }));
-    return;
-  }
-  for (const att of incoming) {
-    if (!getBlob(att.hash)) {
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        ok: false,
-        error: 'Attachment blob not found on server',
-        code: 'BLOB_NOT_FOUND',
-        hash: att.hash,
-      }));
-      return;
-    }
-  }
-
-  let metadata: string | null;
-  if (incoming.length > 0) {
-    let existingObj: Record<string, unknown> = {};
-    if (b.metadata) {
-      try { existingObj = JSON.parse(b.metadata) as Record<string, unknown>; } catch { /* ignore */ }
-    }
-    metadata = serializeAttachments(incoming, existingObj);
-  } else {
-    metadata = b.metadata ?? null;
-  }
-  let threadId = b.thread_id ?? null;
-
-  // Auto-inherit thread_id: first try user's original message, then any recent message
-  // sent TO this sender (so agent replies stay in the same thread as the question)
-  if (!threadId) {
-    const recentHistory = selectHistory(b.project_id, { limit: 30 });
-    const fiveMinAgo = Date.now() - 5 * 60 * 1000;
-    const userMsg = recentHistory.find(m =>
-      m.from_role === 'user' &&
-      m.thread_id &&
-      new Date(m.sent_at).getTime() > fiveMinAgo
-    );
-    if (userMsg?.thread_id) {
-      threadId = userMsg.thread_id;
-      console.error(`[broker:send-to-role] inherited thread_id=${threadId} from user message`);
-    } else {
-      const receivedMsg = recentHistory.find(m =>
-        m.to_id === b.from_id &&
-        m.thread_id &&
-        new Date(m.sent_at).getTime() > fiveMinAgo
-      );
-      if (receivedMsg?.thread_id) {
-        threadId = receivedMsg.thread_id;
-        console.error(`[broker:send-to-role] inherited thread_id=${threadId} from received message`);
-      }
-    }
-  }
+  const metadata = buildMetadata(incoming, b.metadata);
+  const threadId = inheritThreadId(b.project_id, b.from_id, b.thread_id ?? null, 'send-to-role');
 
   console.error(`[broker:send-to-role] from=${b.from_id} (role=${fromPeer.role}) target_role=${b.role} project=${b.project_id}`);
   console.error(`[broker:send-to-role] found ${targets.length} peer(s) with role "${b.role}":`);
@@ -292,55 +306,13 @@ export async function handleSendToRole(body: unknown, res: ServerResponse): Prom
     console.error(`[broker:send-to-role]   -> id=${target.id} role=${target.role} pid=${target.pid}`);
   }
 
-  // Precompute thread context for tmux injection
-  let threadContext: { name: string; summary: string } | null = null;
-  if (threadId) {
-    const thread = selectThreadById(b.project_id, threadId);
-    if (thread) {
-      const entries = selectLogByThread(threadId, 10);
-      const summary = entries.reverse().map(e => `${e.from_role || e.from_id}: ${e.text}`).join(' | ');
-      threadContext = { name: thread.name, summary: summary || '(sin mensajes)' };
-    }
-  }
-
-  // Track roles we've already injected into (avoid duplicate send-keys for same role)
-  const injectedRoles = new Set<string>();
-
-  for (const target of targets) {
-    console.error(`[broker:send-to-role] inserting message: from=${b.from_id} to=${target.id} (${target.role})`);
-    const messageId = insertMessage(b.project_id, b.from_id, target.id, type, b.text, metadata, now, threadId);
-    insertLogEntry(
-      b.project_id, b.from_id, fromPeer.role, target.id, target.role,
-      type, b.text, metadata, now, fromPeer.id, threadId,
-    );
-    for (const att of incoming) addBlobRef(att.hash, b.project_id, messageId);
-
-    // Best-effort tmux notification (once per role/window)
-    if (target.role && !injectedRoles.has(target.role)) {
-      if (threadId && threadContext) {
-        tmuxInjectWithContext(b.project_id, target.role, threadContext.name, threadContext.summary, fromPeer.name, fromPeer.role);
-      } else {
-        tmuxNotify(b.project_id, target.role, fromPeer.name, fromPeer.role);
-      }
-      injectedRoles.add(target.role);
-    }
-  }
-
-  if (threadId) {
-    touchThread(b.project_id, threadId);
-  }
-
-  broadcast('message:new', {
-    thread_id: threadId,
-    from_name: fromPeer.name,
-    from_role: fromPeer.role,
-    to_role: b.role,
-    text: b.text,
-    type,
-    metadata,
-  }, b.project_id);
-
-  json(res, { ok: true, sent_to: targets.length });
+  const threadContext = loadThreadContext(b.project_id, threadId);
+  writeMessagesToTargets(
+    b.project_id, fromPeer, targets,
+    b.text, type, metadata, threadId, incoming, now,
+    threadContext, 'send-to-role',
+  );
+  finalizeDelivery(b.project_id, fromPeer, b.role, b.text, type, metadata, threadId, { ok: true, sent_to: targets.length }, res);
 }
 
 export function handlePollMessages(body: unknown, res: ServerResponse): void {
