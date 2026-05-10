@@ -10,7 +10,6 @@ import {
   handleRegister,
   handleSendMessage,
   handleSendToRole,
-  handleSharedSet,
 } from '../../src/broker/handlers.js';
 import type { Peer } from '../../src/shared/types.js';
 

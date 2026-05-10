@@ -158,7 +158,7 @@ describe('messages with thread_id', () => {
     insertThread(makeThread({ id: 'mt1' }));
     insertMessage('proj', 'f', 't', 'message', 'hello', null, new Date().toISOString(), 'mt1');
 
-    const history = selectHistory('proj');
+    const _history = selectHistory('proj');
     // Messages table, not log — check via selectLogByThread after inserting to log
   });
 

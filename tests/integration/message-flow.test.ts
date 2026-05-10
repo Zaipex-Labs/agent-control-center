@@ -188,7 +188,7 @@ describe('message flow integration', () => {
   it('send-to-role skips sender even if same role', async () => {
     const projId = 'str-self';
     const a = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/sa', role: 'backend', project_id: projId });
-    const b = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/sb', role: 'backend', project_id: projId });
+    const _b = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/sb', role: 'backend', project_id: projId });
 
     // A sends to role "backend" — both A and B have that role
     const resp = await post<{ sent_to: number }>('/api/send-to-role', {

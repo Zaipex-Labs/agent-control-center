@@ -129,8 +129,8 @@ describe('peer lifecycle integration', () => {
     const projId = 'multi-peer';
 
     const a = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/ma', role: 'backend', project_id: projId });
-    const b = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/mb', role: 'frontend', project_id: projId });
-    const c = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/mc', role: 'qa', project_id: projId });
+    const _b = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/mb', role: 'frontend', project_id: projId });
+    const _c = await post<{ id: string }>('/api/register', { pid: process.pid, cwd: '/mc', role: 'qa', project_id: projId });
 
     const peers = await post<Array<{ id: string }>>('/api/list-peers', { project_id: projId });
     expect(peers.data).toHaveLength(3);

@@ -36,7 +36,7 @@ function timeAgo(dateStr: string): string {
   return t('dash.dAgo', { days });
 }
 
-function AgentBadge({ name, role, avatar }: { name: string; role: string; avatar?: string }) {
+function _AgentBadge({ name, role, avatar }: { name: string; role: string; avatar?: string }) {
   return (
     <Avatar
       avatar={avatar}
@@ -365,7 +365,7 @@ function ProjectCard({ project, onClick, onPowerUp, onShutdown, onEdit, onDelete
   );
 }
 
-function SidebarItem({ project, selected, onClick }: { project: Project; selected: boolean; onClick: () => void }) {
+function _SidebarItem({ project, selected, onClick }: { project: Project; selected: boolean; onClick: () => void }) {
   const active = project.active_peers > 0 || project.tmux_running === true;
   const count = project.agents.length;
   const countLabel = count === 1 ? '1 agente' : `${count} agentes`;
@@ -421,7 +421,7 @@ export default function TeamsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState('');
-  const [sortMode, setSortMode] = useState<'recent' | 'name' | 'status'>('recent');
+  const [sortMode, _setSortMode] = useState<'recent' | 'name' | 'status'>('recent');
   const [switchConfirm, setSwitchConfirm] = useState<{ current: string; next: string } | null>(null);
   const [editing, setEditing] = useState<Project | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -489,8 +489,6 @@ export default function TeamsPage() {
       setSelectedName((active ?? projects[0]).name);
     }
   }, [projects, selectedName]);
-
-  const selectedProject = projects.find(p => p.name === selectedName) ?? null;
 
   const handlePowerUp = async (name: string) => {
     // Enforce single-active invariant: if another project is already active,

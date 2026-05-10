@@ -45,7 +45,7 @@ function post<T>(path: string, body: unknown): Promise<{ status: number; data: T
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
     const url = new URL(path, baseUrl);
-    const req = import('node:http').then(http => {
+    const _req = import('node:http').then(http => {
       const r = http.request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } }, (res) => {
         const chunks: Buffer[] = [];
         res.on('data', (c: Buffer) => chunks.push(c));

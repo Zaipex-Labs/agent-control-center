@@ -6,7 +6,7 @@ import { Command } from 'commander';
 import { brokerFetch, isBrokerAlive } from '../../server/broker-client.js';
 import { killTmuxSession, hasTmuxSession } from '../spawn.js';
 import type { Peer } from '../../shared/types.js';
-import { success, err, dim, warn } from '../ui.js';
+import { success, dim, warn } from '../ui.js';
 import { t } from '../../shared/i18n/index.js';
 import chalk from 'chalk';
 

@@ -46,9 +46,9 @@ describe('handleBlobStats (dev-only)', () => {
   it('returns counts in dev: referenced + orphan blobs', () => {
     delete process.env['NODE_ENV'];
     const refd = storeBlob(Buffer.from('A'), 'text/plain', 'a.txt');
-    const orphan = storeBlob(Buffer.from('B'), 'text/plain', 'b.txt');
+    const _orphan = storeBlob(Buffer.from('B'), 'text/plain', 'b.txt');
     addBlobRef(refd.hash, 'proj-1', 1);
-    // orphan has no refs
+    // _orphan has no refs
 
     const { res, result } = createMockRes();
     handleBlobStats(res);

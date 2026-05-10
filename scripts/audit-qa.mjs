@@ -203,6 +203,7 @@ if (projects[0]) {
 
   // Check for external resource loads (privacy in a "local-only" tool)
   const externals = await page.evaluate(() => {
+    // eslint-disable-next-line no-undef -- evaluated in the browser page context
     const u = new URL(location.href);
     const sameHost = u.host;
     return performance
