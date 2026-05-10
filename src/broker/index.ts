@@ -19,6 +19,8 @@ import { isAllowedHost, isAllowedOrigin, isJsonContentType } from './origin.js';
 import { startTokenCleanup, stopTokenCleanup } from './csrf-tokens.js';
 import {
   parseBody,
+  BodyTooLargeError,
+  DEFAULT_MAX_BODY_SIZE,
   handleHealth,
   handleRegister,
   handleHeartbeat,
@@ -91,6 +93,22 @@ const POST_ROUTES: Record<string, PostHandler> = {
   '/api/project/save-resume': handleSaveResume,
   '/api/project/modified-files': handleListModifiedFiles,
   '/api/threads/delete': handleDeleteThread,
+};
+
+// [P-11] Per-route body caps. The previous global 1 MB ceiling was
+// 1000× larger than what /api/heartbeat or /api/poll-messages need
+// (their bodies are tiny JSON objects), making the broker more open
+// than necessary to slow-loris / large-body DoS. Routes that need
+// more (shared/set, send-message with attachments) keep the 1 MB
+// default. Anything not in this map uses DEFAULT_MAX_BODY_SIZE.
+const ROUTE_BODY_LIMITS: Record<string, number> = {
+  '/api/heartbeat': 1024,                  // ~24 bytes in practice
+  '/api/poll-messages': 4 * 1024,           // peer id + small filters
+  '/api/unregister': 1024,
+  '/api/set-summary': 16 * 1024,            // user-typed text, capped soft
+  '/api/set-role': 1024,
+  '/api/csrf/issue': 1024,
+  '/api/list-peers': 1024,
 };
 
 const MIME_TYPES: Record<string, string> = {
@@ -216,11 +234,24 @@ export function createBrokerServer(): Server {
           res.end(JSON.stringify({ ok: false, error: 'Content-Type must be application/json' }));
           return;
         }
+        // [P-11] per-route body cap; default for routes not in the
+        // map is the global 1 MB.
+        const bodyLimit = ROUTE_BODY_LIMITS[url] ?? DEFAULT_MAX_BODY_SIZE;
         try {
-          const body = await parseBody(req);
+          const body = await parseBody(req, bodyLimit);
           await handler(body, res);
           return;
-        } catch {
+        } catch (e) {
+          if (e instanceof BodyTooLargeError) {
+            res.writeHead(413, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              ok: false,
+              error: e.message,
+              code: 'BODY_TOO_LARGE',
+              limit: e.limit,
+            }));
+            return;
+          }
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'Invalid JSON body' }));
           return;

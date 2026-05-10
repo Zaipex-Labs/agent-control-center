@@ -95,22 +95,46 @@ function error(res: ServerResponse, message: string, status = 400): void {
   json(res, { ok: false, error: message }, status);
 }
 
-const MAX_BODY_SIZE = 1024 * 1024; // 1MB
+// [P-11] Default body cap. Used when a route doesn't have a specific
+// override in src/broker/index.ts:BODY_LIMITS. 1 MB is the right size
+// for /api/shared/set (configs / large attachments metadata) but is
+// 1000× too large for /api/heartbeat (a 24-byte JSON object). The
+// per-route map shrinks the default for the chatty short-payload
+// endpoints.
+export const DEFAULT_MAX_BODY_SIZE = 1024 * 1024; // 1 MB
 
-export function parseBody(req: IncomingMessage): Promise<unknown> {
+// Thrown by parseBody when a request body exceeds the per-route cap.
+// The HTTP dispatcher catches this and replies 413.
+export class BodyTooLargeError extends Error {
+  readonly limit: number;
+  constructor(limit: number) {
+    super(`Request body too large (> ${limit} bytes)`);
+    this.name = 'BodyTooLargeError';
+    this.limit = limit;
+  }
+}
+
+export function parseBody(req: IncomingMessage, maxSize: number = DEFAULT_MAX_BODY_SIZE): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let totalSize = 0;
+    let settled = false;
     req.on('data', (chunk: Buffer) => {
+      if (settled) return;
       totalSize += chunk.length;
-      if (totalSize > MAX_BODY_SIZE) {
-        req.destroy();
-        reject(new Error('Request body too large'));
+      if (totalSize > maxSize) {
+        // Don't destroy() the socket — the caller still needs to write
+        // the 413 response. Stop buffering and reject; ws/HTTP cleanup
+        // closes the connection for us when the response is sent.
+        settled = true;
+        reject(new BodyTooLargeError(maxSize));
         return;
       }
       chunks.push(chunk);
     });
     req.on('end', () => {
+      if (settled) return;
+      settled = true;
       try {
         const raw = Buffer.concat(chunks).toString();
         resolve(raw.length > 0 ? JSON.parse(raw) : {});
@@ -118,7 +142,11 @@ export function parseBody(req: IncomingMessage): Promise<unknown> {
         reject(err);
       }
     });
-    req.on('error', reject);
+    req.on('error', err => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    });
   });
 }
 
