@@ -138,8 +138,28 @@ export function getDb(): Database.Database {
 // broker shutdown path (QW-5).
 export function closeDatabase(): void {
   if (!db) return;
-  try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch { /* ignore */ }
-  try { db.close(); } catch { /* ignore */ }
+  try {
+    db.pragma('wal_checkpoint(TRUNCATE)');
+  } catch (e) {
+    // [F-5 v0.2.3] Log the failure instead of silently moving on. The
+    // pragma can fail under disk-full / locked / corrupt scenarios; if
+    // we proceed without checkpointing, the WAL is left fat and the
+    // next boot pays the cost. The shutdown still continues — we'd
+    // rather close the handle than hang on a wedged checkpoint.
+    console.error(
+      '[broker:db] wal_checkpoint(TRUNCATE) failed during close',
+      e instanceof Error ? e.message : String(e),
+    );
+  }
+  try { db.close(); } catch (e) {
+    // db.close() failing is rare but worth surfacing — if the handle
+    // is still alive after this, future getDb() callers see a stale
+    // pointer. Same "log + carry on" rule.
+    console.error(
+      '[broker:db] db.close() failed',
+      e instanceof Error ? e.message : String(e),
+    );
+  }
   // @ts-expect-error — leaving the var dangling is fine; subsequent
   // getDb() calls will throw, which is the desired behaviour after
   // shutdown.
