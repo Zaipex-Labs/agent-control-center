@@ -9,82 +9,99 @@ import { join } from 'node:path';
 import { buildInstructions } from '../../src/server/index.js';
 import { buildSaveResumePrompt } from '../../src/broker/handlers.js';
 
-// [M-1b] Snapshot + structural assertions for the system prompt the
-// MCP server hands every agent. Locks in the conservative compression
-// from §7-bis so a future refactor can't silently re-bloat it.
+// [M-1] Snapshot + structural assertions for the system prompt the
+// MCP server hands every agent. Locks in the FASE C-2 (v0.3.0)
+// aggressive compression from §7-bis so a future refactor can't
+// silently re-bloat it.
 //
-// Length cap is 6500 characters (~1625 tokens at 4 chars/tok). Real
-// measurements at the M-1b commit:
-//   - pre-M-1b system prompt:  7,685 chars / ~1,922 tokens
-//   - post-M-1b system prompt: 6,157 chars / ~1,540 tokens
-//   - delta: −1,528 chars / ~−382 tokens (≈ 20% recorte)
-// 6500 leaves a small margin while still failing if anyone re-adds a
-// rule the size of the deleted "## Your tools" list (~80 tok) or the
-// expanded G9 (~150 tok).
+// Length cap is 3500 characters (~875 tokens at 4 chars/tok). Real
+// measurements over time:
+//   pre-M-1b (v0.2.3):    7,685 chars / ~1,922 tok
+//   post-M-1b (v0.2.4):   6,157 chars / ~1,540 tok  (−382 tok / 20%)
+//   post-A-4 (v0.3.0):    6,424 chars / ~1,606 tok  (G-mem +67 tok)
+//   post-C-2 (this cut):  ~2,725 chars / ~681 tok  (−925 tok / ~58%)
+// 3500 leaves headroom over the post-C-2 measurement so per-rule
+// edits don't trip the budget, while still failing if anyone re-adds
+// a deleted section ("## Your team" intro, "## How you talk to
+// OTHER AGENTS" prefix, expanded G9 protocol body).
 
-describe('buildInstructions [M-1b]', () => {
+describe('buildInstructions [M-1 / C-2 aggressive]', () => {
   const prompt = buildInstructions('Turing', 'backend');
 
   it('renders the agent name and role', () => {
     expect(prompt).toContain('You are Turing');
-    expect(prompt).toContain('the role of backend');
+    expect(prompt).toContain(', backend.');
   });
 
-  it('stays under the 6500-character budget (~1625 tokens at 4 chars/tok)', () => {
-    expect(prompt.length).toBeLessThan(6500);
+  it('stays under the 3500-character budget (~875 tokens at 4 chars/tok)', () => {
+    // Anchor the post-C-2 size so a future creep is caught early.
+    expect(prompt.length).toBeLessThan(3500);
   });
 
   it('does NOT carry the "## Your tools" list (MCP host injects tool descs already)', () => {
     expect(prompt).not.toContain('## Your tools');
-    // Sanity: the bullets that used to follow the heading are also gone
     expect(prompt).not.toContain('list_peers / whoami:');
   });
 
-  it('A4 collapses agent-to-agent silence into a single rule that mentions "silent"', () => {
-    // The compression merges old A4 + G6. A4 is the surviving one.
-    const a4Match = prompt.match(/A4\.\s+([^]+?)\n\nA5\./);
-    expect(a4Match).not.toBeNull();
-    const a4 = a4Match![1];
-    expect(a4.toLowerCase()).toContain('silent');
+  it('does NOT carry the dropped "## How you talk to" prefix sections', () => {
+    // Pre-C-2 the prompt had three section headers ("## How you talk to
+    // OTHER AGENTS", "## How you talk to the USER", "## General
+    // behavior"). C-2 collapsed them into "## Behavior" + "## Protocol".
+    expect(prompt).not.toContain('## How you talk to');
+    expect(prompt).not.toContain('## Your team');
+    expect(prompt).not.toContain('## General behavior');
   });
 
-  it('G6 (the previous separate "coordination is silent" rule) is gone', () => {
-    expect(prompt).not.toMatch(/^G6\./m);
+  it('exposes the new "## Behavior" and "## Protocol" sections', () => {
+    expect(prompt).toContain('## Behavior');
+    expect(prompt).toContain('## Protocol');
   });
 
-  it('A2 anti-filler rule is language-agnostic (no Spanish-specific list)', () => {
-    // §7-bis: "fraseo lenguaje-agnóstico" — drop the "gracias / perfecto" list.
-    expect(prompt).toContain('A2.');
+  it('B2 collapses A5 + A6 + G2: agent-to-agent tasks are pre-authorized + silent', () => {
+    // C-2 merges the four rules that were the no-bounce / no-refuse /
+    // no-permission-asking cluster. The eval harness's
+    // agent-to-agent-task-receipt + vague-refusal-trigger scenarios
+    // gate this collapse — see scripts/eval/scenarios/.
+    const m = prompt.match(/B2\.\s+([^]+?)\n\nB3\./);
+    expect(m).not.toBeNull();
+    const body = m![1].toLowerCase();
+    expect(body).toContain('pre-authorized');
+    expect(body).toMatch(/never (bounce|refuse)/);
+    expect(body).toContain('not my area');
+  });
+
+  it('B3 collapses U4 + U4b: send_to_role + no intermediate filler', () => {
+    const m = prompt.match(/B3\.\s+([^]+?)\n\nB4\./);
+    expect(m).not.toBeNull();
+    const body = m![1].toLowerCase();
+    expect(body).toContain('send_to_role');
+    expect(body).toMatch(/(estoy consultando|let me ask|i'?ll check)/);
+  });
+
+  it('B1 anti-filler stays language-agnostic (no Spanish-only list)', () => {
+    expect(prompt).toContain('B1.');
     expect(prompt).not.toMatch(/no "gracias"/);
     expect(prompt).not.toMatch(/no "perfecto"/);
     expect(prompt.toLowerCase()).toContain('filler');
   });
 
-  it('G9 collapsed to a one-line pointer (protocol body now lives in the broker-injected message)', () => {
-    // G9 lives between G7 and G-mem now (post-A-4). Match its body up
-    // to the next blank line.
-    const g9Match = prompt.match(/G9\.\s+([^]+?)\n\n/);
-    expect(g9Match).not.toBeNull();
-    const g9Body = g9Match![1].trim();
-    // One short sentence — pre-M-1b version was ~5 lines, ~640 chars.
-    expect(g9Body.length).toBeLessThan(280);
-    // The literal "[system:save-resume]" trigger is still mentioned so
-    // the agent recognises it; the "set_shared(\"resume\", ...)" call
-    // and JSON shape MUST NOT be in the system prompt anymore.
-    expect(g9Body).toContain('[system:save-resume]');
-    expect(g9Body).not.toContain('set_shared("resume"');
-    expect(g9Body).not.toContain('next_steps');
+  it('P6 keeps the [system:save-resume] pointer (protocol body lives in the broker-injected message)', () => {
+    const m = prompt.match(/P6\.\s+([^]+?)\n\n/);
+    expect(m).not.toBeNull();
+    const body = m![1].trim();
+    expect(body.length).toBeLessThan(280);
+    expect(body).toContain('[system:save-resume]');
+    expect(body).not.toContain('set_shared("resume"');
+    expect(body).not.toContain('next_steps');
   });
 
-  // FASE A-4 (v0.3.0): G-mem
-  it('G-mem rule names both recall and remember and is concise (<300 chars)', () => {
-    const memMatch = prompt.match(/G-mem\.\s+([^]+?)\n`;|G-mem\.\s+([^]+?)$/);
-    expect(memMatch).not.toBeNull();
-    const body = (memMatch![1] ?? memMatch![2] ?? '').trim();
+  // FASE A-4 (v0.3.0): G-mem rebadged as P7 in the C-2 layout.
+  it('P7 (team memory) names both recall and remember and is concise (<300 chars)', () => {
+    const m = prompt.match(/P7\.\s+([^]+?)\n`;|P7\.\s+([^]+?)$/);
+    expect(m).not.toBeNull();
+    const body = (m![1] ?? m![2] ?? '').trim();
     expect(body).toContain('recall');
     expect(body).toContain('remember');
-    // Cap so future-edits don't regress to a verbose paragraph. 300
-    // chars is ~75 tokens — leaves headroom over the 50-tok target.
     expect(body.length).toBeLessThan(300);
   });
 
@@ -139,14 +156,15 @@ describe('buildInstructions · skills loading [B-1]', () => {
     expect(out).toContain('tests live in tests/<area>/');
   });
 
-  it('skills are appended AFTER the rules section (G-mem stays the last G rule)', async () => {
+  it('skills are appended AFTER the rules section (P7 stays the last protocol rule)', async () => {
     seed('proj-x', 'a.md', 'rule one');
     const { buildInstructions } = await import('../../src/server/index.js');
     const out = buildInstructions('Turing', 'backend', 'proj-x');
-    const gmemIdx = out.indexOf('G-mem.');
+    // Post-C-2 the team-memory rule moved from G-mem to P7.
+    const memIdx = out.indexOf('P7.');
     const skillsIdx = out.indexOf('## Project skills');
-    expect(gmemIdx).toBeGreaterThan(0);
-    expect(skillsIdx).toBeGreaterThan(gmemIdx);
+    expect(memIdx).toBeGreaterThan(0);
+    expect(skillsIdx).toBeGreaterThan(memIdx);
   });
 });
 

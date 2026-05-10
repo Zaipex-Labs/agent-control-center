@@ -160,7 +160,7 @@ async function resolveVariantPrompt(spec) {
 
 // ── runner ─────────────────────────────────────────────────────
 
-function runOnce(variantPrompt, triggerPrompt, timeoutMs = 90_000) {
+function runOnce(variantPrompt, triggerPrompt, timeoutMs = 180_000) {
   // Two trade-offs to be aware of:
   //   1. We do NOT pass --bare. --bare requires ANTHROPIC_API_KEY (OAuth
   //      is ignored), and the typical user runs the harness with their
