@@ -19,6 +19,7 @@ import { storeBlob, getBlob, deleteBlobFile, listBlobFilesOnDisk, MAX_BLOB_SIZE 
 import { addBlobRef, releaseBlobRefsForProject, getAllBlobRefCounts, blobBelongsToProject } from './blob-refs.js';
 import { serializeAttachments, type Attachment } from '../shared/attachments.js';
 import { assertSafeIdentifier } from '../shared/validate.js';
+import { issueToken as issueCsrfToken } from './csrf-tokens.js';
 import type {
   RegisterRequest,
   HeartbeatRequest,
@@ -677,6 +678,33 @@ export function handleListModifiedFiles(body: unknown, res: ServerResponse): voi
 //      message to each agent so they overwrite that entry with their own
 //      contextual summary on their next poll. If an agent is slow or down,
 //      the mechanical baseline stays as the effective snapshot.
+// [M-1a] Save-resume protocol — injected dynamically when the broker
+// triggers `[system:save-resume]`. Before this commit the protocol
+// (the literal `set_shared("resume", ...)` instruction with its JSON
+// shape) lived in the agent's system prompt as rule G9, eating ~175
+// tokens × every turn × every agent for a message that only fires at
+// shutdown / save-resume. By prepending the full protocol to the
+// trigger message itself, G9 in the system prompt can collapse to a
+// one-line pointer (~25 tokens), reclaiming ~150 tokens per agent
+// per turn (M-1b commits the system prompt change).
+//
+// `kind` distinguishes the two existing call sites:
+//   - 'periodic': /api/project/save-resume — user pressed "Save" while
+//     the team is alive. No shutdown urgency.
+//   - 'shutdown': /api/project/down — agents have ~3s before SIGTERM.
+// Exported for tests/server/instructions.test.ts (M-1b) so the E2E
+// "G9 trigger contains the protocol body end-to-end" assertion can
+// inspect the produced prompt without spinning up the full broker.
+export function buildSaveResumePrompt(role: string, now: string, kind: 'periodic' | 'shutdown'): string {
+  const intro = kind === 'shutdown'
+    ? 'The team is shutting down. Save a final resume snapshot now so you can resume next session.'
+    : 'Save your own resume snapshot so you can pick up where you left off next time.';
+  const urgency = kind === 'shutdown'
+    ? ' You have ~3 seconds before shutdown.'
+    : ' Just update shared_state and return to whatever you were doing before this message.';
+  return `[system:save-resume] ${intro} Call set_shared("resume", "${role}", JSON.stringify({ summary: "<1-2 sentences about what you were working on>", next_steps: ["<short bullet>", "<short bullet>"], open_questions: ["<optional>"], updated_at: "${now}" })). Do this silently — do NOT reply to the user.${urgency}`;
+}
+
 export function handleSaveResume(body: unknown, res: ServerResponse): void {
   const b = body as { project_id?: string };
   if (!b.project_id) return error(res, 'Missing required field: project_id');
@@ -702,7 +730,7 @@ export function handleSaveResume(body: unknown, res: ServerResponse): void {
   const now = new Date().toISOString();
 
   for (const peer of liveAgents) {
-    const promptText = `[system:save-resume] Save your own resume snapshot so you can pick up where you left off next time. Call set_shared("resume", "${peer.role}", JSON.stringify({ summary: "<1-2 sentences about what you were working on>", next_steps: ["<short bullet>", "<short bullet>"], open_questions: ["<optional>"], updated_at: "${now}" })). Do this silently — do NOT reply to the user. Just update shared_state and return to whatever you were doing before this message.`;
+    const promptText = buildSaveResumePrompt(peer.role, now, 'periodic');
     try {
       insertMessage(
         b.project_id,
@@ -803,7 +831,7 @@ export async function handleProjectDown(body: unknown, res: ServerResponse): Pro
   });
   const now = new Date().toISOString();
   for (const peer of liveAgents) {
-    const promptText = `[system:save-resume] The team is shutting down. Save a final resume snapshot now so you can resume next session. Call set_shared("resume", "${peer.role}", JSON.stringify({ summary: "<1-2 sentences about what you were working on>", next_steps: ["<short bullet>"], open_questions: ["<optional>"], updated_at: "${now}" })). Do this silently. You have ~3 seconds before shutdown.`;
+    const promptText = buildSaveResumePrompt(peer.role, now, 'shutdown');
     try {
       insertMessage(b.project_id, 'system', peer.id, 'notification', promptText, null, now, null);
       insertLogEntry(b.project_id, 'system', 'system', peer.id, peer.role, 'notification', promptText, null, now, 'system', null);
@@ -923,6 +951,43 @@ export function handleSetSummary(body: unknown, res: ServerResponse): void {
 
   updateSummary(b.id, b.summary);
   json(res, { ok: true });
+}
+
+// One-shot CSRF token for /ws/terminal/<role> [F-3]. Closes the residual
+// S-NEW-2 cross-port caveat: the Origin gate alone admits a malicious
+// dev server on http://127.0.0.1:<other-port> because its Origin matches
+// the localhost regex. Requiring a token bound to (project, role) and
+// keyed off a registered peer_id stops cross-port attackers, who cannot
+// read the dashboard's localStorage and therefore have no peer_id to
+// trade for a token.
+export function handleCsrfIssue(body: unknown, res: ServerResponse): void {
+  const b = body as { peer_id?: string; project_id?: string; role?: string };
+  if (!b.peer_id || !b.project_id || !b.role) {
+    return error(res, 'Missing required fields: peer_id, project_id, role');
+  }
+  if (!validateIdentifiers(res, { name: 'role', value: b.role })) return;
+
+  // Membership check: the requester must be a peer registered in this
+  // project. A cross-port attacker has no way to manufacture a peer_id
+  // because /api/register requires the same Origin gate AND the
+  // dashboard's persisted peer_id lives in its own origin's localStorage.
+  const peer = selectPeerById(b.peer_id);
+  if (!peer || peer.project_id !== b.project_id) {
+    return error(res, 'Forbidden', 403);
+  }
+
+  // Defense-in-depth: only emit a token if the target role actually
+  // exists as a live agent in this project. This avoids handing out
+  // tokens for ghost roles and keeps the failure mode aligned with the
+  // 503 already returned by handleTerminalUpgrade.
+  const peers = selectPeersByProject(b.project_id);
+  const target = peers.find(p => p.role === b.role && p.agent_type !== 'dashboard');
+  if (!target) {
+    return error(res, 'No agent found for role', 404);
+  }
+
+  const token = issueCsrfToken(b.project_id, b.role);
+  json(res, { ok: true, token });
 }
 
 export function handleSetRole(body: unknown, res: ServerResponse): void {

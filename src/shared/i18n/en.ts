@@ -290,7 +290,12 @@ export const en: Record<string, string> = {
   // ProjectPage
   'dash.teams': 'Teams',
   'dash.panel': 'Panel',
+  'dash.panelToggleShow': 'Show side panel',
+  'dash.panelToggleHide': 'Hide side panel',
   'dash.shutdown': 'Shut down team',
+  'dash.shutdownTooltip': 'Stops every agent and saves a resume snapshot',
+  'dash.saveDisabledHint': 'No unsaved changes',
+  'dash.saveResume': 'Save team resume',
   'dash.agentsActive': '{count} active agent',
   'dash.agentsActivePlural': '{count} active agents',
   'dash.threadNamePlaceholder': 'Thread name...',

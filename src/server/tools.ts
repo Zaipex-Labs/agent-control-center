@@ -135,8 +135,13 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
         metadata: args.metadata ? JSON.stringify(args.metadata) : undefined,
         attachments: args.attachments,
       });
+      // [M-7] Return consistent JSON shape with the rest of the MCP
+      // tools (every other write tool returns the broker's raw OK
+      // response). Previously this returned a free-form string
+      // ("Sent to 2 agent(s)") which forced agents to parse out the
+      // count when chaining calls.
       return {
-        content: [{ type: 'text', text: `Sent to ${resp.sent_to} agent(s)` }],
+        content: [{ type: 'text', text: JSON.stringify(resp) }],
       };
     },
   );
@@ -184,18 +189,28 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
 
   mcp.tool(
     'set_shared',
-    'Set a key-value pair in shared state. Namespace groups related keys (e.g. "contracts", "config").',
+    'Set a key-value pair in shared state. Namespace groups related keys (e.g. "contracts", "config", "files", "resume"). `value` accepts either a string OR an object — objects are JSON-encoded automatically so you do not need to call JSON.stringify yourself.',
     {
       namespace: z.string(),
       key: z.string(),
-      value: z.string(),
+      // [M-3] Accept either a raw string or an object. Several rules
+      // in the system prompt instruct the agent to publish structured
+      // data (resume snapshots, file metadata, contracts) — forcing
+      // the agent to JSON.stringify ahead of time was a foot-gun:
+      // either the agent forgot and shipped an object that the SDK
+      // refused, or it stringified twice and broke downstream
+      // consumers.
+      value: z.union([z.string(), z.record(z.string(), z.unknown())]),
     },
     async (args) => {
+      const value = typeof args.value === 'string'
+        ? args.value
+        : JSON.stringify(args.value);
       const resp = await brokerFetch<OkResponse>('/api/shared/set', {
         project_id: identity.project_id,
         namespace: args.namespace,
         key: args.key,
-        value: args.value,
+        value,
         peer_id: identity.id,
       });
       return {
@@ -236,6 +251,31 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
       });
       return {
         content: [{ type: 'text', text: JSON.stringify(resp.keys, null, 2) }],
+      };
+    },
+  );
+
+  // [M-4] Expose delete_shared so agents can clean up entries in
+  // namespaces that grow forever (e.g. "files" — the dashboard work-
+  // desk panel). The broker handler already exists
+  // (`handlers.ts:handleSharedDelete`) and is wired to /api/shared/delete;
+  // it just wasn't surfaced via MCP.
+  mcp.tool(
+    'delete_shared',
+    'Delete a key from shared state. Returns ok when the key was removed; missing keys return ok too (idempotent).',
+    {
+      namespace: z.string(),
+      key: z.string(),
+    },
+    async (args) => {
+      const resp = await brokerFetch<OkResponse>('/api/shared/delete', {
+        project_id: identity.project_id,
+        namespace: args.namespace,
+        key: args.key,
+        peer_id: identity.id,
+      });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(resp) }],
       };
     },
   );

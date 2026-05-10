@@ -110,6 +110,23 @@ export async function unregisterDashboard(id: string): Promise<void> {
   await apiFetch<{ ok: boolean }>('unregister', { id }).catch(() => {});
 }
 
+// One-shot CSRF token for /ws/terminal/<role> [F-3-B]. The token is
+// bound to (project_id, role), expires in 60s, and is consumed on the
+// next upgrade attempt. Returned token is carried via
+// Sec-WebSocket-Protocol when opening the WebSocket.
+export async function requestWsToken(
+  projectId: string,
+  role: string,
+  peerId: string,
+): Promise<string> {
+  const resp = await apiFetch<{ ok: boolean; token: string }>('csrf/issue', {
+    project_id: projectId,
+    role,
+    peer_id: peerId,
+  });
+  return resp.token;
+}
+
 // ── File browser ──────────────────────────────────────────────
 
 export interface BrowseEntry {

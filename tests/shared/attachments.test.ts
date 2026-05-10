@@ -56,13 +56,25 @@ describe('attachments helpers', () => {
     expect(humanSize(5 * 1024 * 1024)).toBe('5.0 MB');
   });
 
-  it('renderAttachmentFooter lists image+file with path+mime+size', () => {
+  // [M-6] Compact format — short hash (8 hex), no internal path leak,
+  // no MIME (the extension already implies it). Saves ~55 tokens per
+  // attachment in conversation history.
+  it('renderAttachmentFooter emits compact image entry (8-char hash + ext + size)', () => {
     const footer = renderAttachmentFooter([
-      att,
-      { hash: 'cafe', mime: 'application/pdf', name: 'spec.pdf', size: 12000 },
+      { hash: 'deadbeef0000aaaa', mime: 'image/png', name: 'shot.png', size: 4096 },
     ]);
-    expect(footer).toContain('[image: ~/.zaipex-acc/blobs/deadbeef.png · image/png · 4.0 KB]');
-    expect(footer).toContain('[file: ~/.zaipex-acc/blobs/cafe.pdf · application/pdf · 11.7 KB · spec.pdf]');
+    expect(footer).toContain('[image: deadbeef.png · 4.0 KB]');
+    // Must NOT leak the internal blob path
+    expect(footer).not.toContain('~/.zaipex-acc/blobs/');
+  });
+
+  it('renderAttachmentFooter emits compact file entry with original name', () => {
+    const footer = renderAttachmentFooter([
+      { hash: 'cafebabe1234', mime: 'application/pdf', name: 'spec.pdf', size: 12000 },
+    ]);
+    expect(footer).toContain('[file: cafebabe.pdf · 11.7 KB · spec.pdf]');
+    expect(footer).not.toContain('application/pdf');
+    expect(footer).not.toContain('~/.zaipex-acc/');
   });
 
   it('renderAttachmentFooter returns empty string for []', () => {

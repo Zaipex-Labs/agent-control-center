@@ -1,0 +1,11 @@
+$ curl -s -i http://127.0.0.1:7929/api/blobs/notahash | head -10
+HTTP/1.1 404 Not Found
+Content-Type: application/json
+
+{"ok":false,"error":"Not found","code":"NOT_FOUND"}
+
+$ curl -s -i http://127.0.0.1:7929/api/does-not-exist | head -10
+HTTP/1.1 404 Not Found
+Content-Type: application/json
+
+{"ok":false,"error":"Not found","code":"NOT_FOUND"}

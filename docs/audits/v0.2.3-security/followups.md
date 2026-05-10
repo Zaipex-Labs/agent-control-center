@@ -44,7 +44,7 @@ script `scripts/audit-qa.mjs` uses).
 
 ---
 
-## F-3 · Origin policy still admits same-machine cross-port WebSocket attacks · *Info / known limit*
+## F-3 · Origin policy still admits same-machine cross-port WebSocket attacks · *Info / known limit* · **CLOSED in v0.2.4** — see `docs/audits/v0.2.4-ux-tokens-and-f3/` (commits `40bc1db` / `ae0deb9` / `3f4cb54`)
 
 The Origin allowlist implemented for QW-2 follows the audit's stated
 policy (line 103): allow any `http(s)://(localhost|127.0.0.1|[::1])(:port)?`

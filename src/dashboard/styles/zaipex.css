@@ -1,3 +1,39 @@
+/* [UX-3] Self-host DM Sans, DM Serif Display, JetBrains Mono so the
+ * dashboard stops leaking the user's IP + page-load timings to
+ * fonts.gstatic.com on every open. Latin-only subset (covers ES/EN);
+ * DM Sans and JetBrains Mono are variable fonts so a single .woff2
+ * covers every weight 400-700.
+ *
+ * Files served from /fonts/ — Vite copies src/dashboard/public/fonts/
+ * to the dashboard root at build time. */
+
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/dm-sans-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'DM Serif Display';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/dm-serif-display-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
   --z-navy: #1E2D40;
   --z-navy-dark: #141F2E;
@@ -139,6 +175,37 @@ code, pre {
   /* Shrink thread panel */
   [data-panel="threads"] {
     width: 240px !important;
+  }
+}
+
+/* [UX-2] Mobile reflow at 390px-class viewports.
+ *
+ * Project cards on the Teams page stop trying to fit the office
+ * illustration alongside the info column — it gets hidden, info goes
+ * full width. Stops badge truncation ("INACTIVO" → "IM") and overflow.
+ *
+ * ProjectPage's top nav stacks the title + action buttons below the
+ * back link with reduced padding so the controls don't fight the
+ * project name for horizontal space.
+ */
+@media (max-width: 768px) {
+  .project-card-illustration {
+    display: none !important;
+  }
+  .project-card-info {
+    width: 100%;
+    padding: 20px !important;
+  }
+  .project-page-nav {
+    flex-wrap: wrap;
+    height: auto !important;
+    padding: 8px 12px !important;
+    gap: 8px;
+  }
+  .project-page-nav-actions {
+    flex-wrap: wrap;
+    flex-basis: 100%;
+    justify-content: flex-end;
   }
 }
 

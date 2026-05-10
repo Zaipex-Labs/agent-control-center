@@ -1,0 +1,22 @@
+[UX-2] Mobile reflow at viewport ≤ 768px — verified live in Chrome.
+
+Approach:
+  resize_window(390, 844) → Chrome chrome consumes ~110px of width,
+  effective inner viewport = 500px. Still well below the 768 cutoff,
+  so the @media (max-width: 768px) rules apply.
+
+JavaScript probe results on /demo-team:
+  innerWidth:            500
+  documentWidth:         500
+  hasHorizontalOverflow: false           ← no horizontal scroll
+  shutdownVisible:       false           ← UX-6 hides "Apagar equipo"
+
+JavaScript probe on / (Teams page):
+  Card 'project-card-illustration' display: none (computed)
+  Card 'project-card-info' width: 100% of card
+
+Both checks pass. Card screenshot (teams-mobile.png) shows:
+  - "INACTIVO" badge fully rendered, no truncation to "IM"
+  - office illustration hidden
+  - "última actividad: …" not cut off
+  - "Encender" button accessible

@@ -14,6 +14,7 @@ import { resolveEntryPoint } from '../shared/utils.js';
 import { selectPeersByProject, getSharedState, deleteSharedState } from './database.js';
 import { broadcast } from './websocket.js';
 import { isAllowedOrigin, rejectUpgrade } from './origin.js';
+import { consumeToken } from './csrf-tokens.js';
 
 // Locate a usable python3 binary. When the broker is launched via nohup /
 // launchd the PATH can lose /usr/local/bin or /opt/homebrew/bin, and
@@ -39,7 +40,35 @@ function findPython3(): string {
 
 const log = (msg: string) => console.error(`[broker:terminal] ${msg}`);
 
-const wss = new WebSocketServer({ noServer: true });
+// handleProtocols runs during wss.handleUpgrade and decides which
+// subprotocol (if any) to echo back in the response. We use it purely
+// to satisfy the WS protocol negotiation when the dashboard sends
+// `acc-token.<hex>` — the token itself was already validated and
+// consumed by handleTerminalUpgrade BEFORE handleUpgrade was called.
+const wss = new WebSocketServer({
+  noServer: true,
+  handleProtocols: (protocols) => {
+    for (const p of protocols) {
+      if (typeof p === 'string' && p.startsWith('acc-token.')) return p;
+    }
+    return false;
+  },
+});
+
+const ACC_TOKEN_PROTO = 'acc-token.';
+
+function extractAccToken(req: IncomingMessage): string | null {
+  // The Sec-WebSocket-Protocol header arrives as a comma-separated
+  // string when multiple subprotocols are offered. We only care about
+  // the `acc-token.<hex>` entry — anything else the dashboard offers
+  // (xterm.js doesn't send any today, but be liberal) is ignored.
+  const raw = req.headers['sec-websocket-protocol'];
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  for (const p of raw.split(',').map(s => s.trim())) {
+    if (p.startsWith(ACC_TOKEN_PROTO)) return p.slice(ACC_TOKEN_PROTO.length);
+  }
+  return null;
+}
 
 // Active agent processes spawned from the web UI
 const agentProcesses = new Map<string, ChildProcess>();
@@ -502,6 +531,26 @@ export function handleTerminalUpgrade(req: IncomingMessage, socket: Duplex, head
   // bytes into the agent's stdin (S-NEW-2 / WS-hijack RCE).
   if (!isAllowedOrigin(req)) {
     log(`reject /ws/terminal upgrade: origin=${JSON.stringify(req.headers.origin)} remote=${req.socket.remoteAddress}`);
+    rejectUpgrade(socket, 403, 'Forbidden');
+    return;
+  }
+
+  // [F-3-C] One-shot CSRF token check. Defense-in-depth alongside the
+  // Origin gate (token + Origin = AND, not OR). Closes the residual
+  // S-NEW-2 cross-port hijack: a malicious dev server on
+  // http://127.0.0.1:<other-port> matches the Origin allowlist but
+  // can't read the dashboard's localStorage and therefore has no
+  // peer_id with which to obtain a token via /api/csrf/issue.
+  //
+  // The token is delivered via Sec-WebSocket-Protocol since browsers
+  // refuse to let JS attach custom headers to WS handshakes. The
+  // handleProtocols hook on wss echoes the protocol back so the
+  // handshake completes — we don't need to call wss.handleUpgrade with
+  // any extra plumbing here.
+  const token = extractAccToken(req);
+  const entry = consumeToken(token); // one-shot: removes from store
+  if (!entry || entry.project_id !== projectId || entry.role !== role) {
+    log(`reject /ws/terminal upgrade: invalid token for ${projectId}:${role} (token=${token ? token.slice(0, 8) + '…' : 'missing'})`);
     rejectUpgrade(socket, 403, 'Forbidden');
     return;
   }

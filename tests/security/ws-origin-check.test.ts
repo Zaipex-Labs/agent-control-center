@@ -159,13 +159,15 @@ describe('/ws/terminal/:role end-to-end', () => {
     expect(r.upgradeStatus).toBe(403);
   });
 
-  it('rejects pre-handshake when no agent is running for that role', async () => {
-    // Origin is allowed (localhost), but no spawnWebAgent has been
-    // called → must 503, not handshake-then-1011.
+  it('rejects pre-handshake without an acc-token subprotocol [F-3-C]', async () => {
+    // After F-3-C the token gate runs BEFORE the proc-existence check,
+    // so an unauthenticated request always returns 403 — even when the
+    // role doesn't exist. This denies the cross-port attacker a way to
+    // distinguish "role exists" from "role missing" via 503-vs-403.
     const r = await tryWs('/ws/terminal/no-such-role?project=no-such-proj', {
       Origin: 'http://localhost:7899',
     });
     expect(r.opened).toBe(false);
-    expect(r.upgradeStatus).toBe(503);
+    expect(r.upgradeStatus).toBe(403);
   });
 });
