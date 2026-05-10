@@ -134,3 +134,159 @@ export const decisionsRecallSchema = z.object({
   // through the handler's Math.min(...).
   limit: z.number().int().min(1).max(10_000).optional(),
 });
+
+// ── Peers ─────────────────────────────────────────────────────
+//
+// FU-D (v0.3.1): extend zod coverage to peers/, threads/, projects/.
+// Schemas only validate input shape; identifier-character safety
+// (shell metachars, path traversal, NUL) stays in the handler via
+// validateIdentifiers, and project-membership gating stays in
+// assertProjectMembership. Response shapes are unchanged.
+
+// handleRegister accepts `role` as an optional field even though the
+// canonical RegisterRequest type marks it required — the handler
+// defaults missing role to '' and the dashboard register path can
+// legitimately omit it. Keep the schema permissive on role to preserve
+// today's behavior; assertSafeIdentifier still runs on non-empty values.
+export const registerSchema = z.object({
+  pid: z.number().int(),
+  cwd: z.string().min(1),
+  project_id: z.string().min(1),
+  role: z.string().optional(),
+  name: z.string().optional(),
+  agent_type: z.string().optional(),
+  git_root: z.string().optional().nullable(),
+  git_branch: z.string().optional().nullable(),
+  tty: z.string().optional().nullable(),
+  summary: z.string().optional(),
+  avatar: z.string().optional(),
+});
+
+export const heartbeatSchema = z.object({
+  id: z.string().min(1),
+});
+
+export const unregisterSchema = z.object({
+  id: z.string().min(1),
+});
+
+export const setSummarySchema = z.object({
+  id: z.string().min(1),
+  // Empty string is a legitimate "clear summary" call from the
+  // dashboard, so `.min(0)` (just type-check). The original handler
+  // used `b.summary == null` which excluded null/undefined but
+  // allowed empty strings.
+  summary: z.string(),
+});
+
+export const setRoleSchema = z.object({
+  id: z.string().min(1),
+  role: z.string().min(1),
+});
+
+export const csrfIssueSchema = z.object({
+  peer_id: z.string().min(1),
+  project_id: z.string().min(1),
+  role: z.string().min(1),
+});
+
+// scope='machine' is the only scope that doesn't need project_id.
+// Keep project_id optional in the schema; the handler enforces
+// "project_id required unless scope==='machine'" in its body.
+export const listPeersSchema = z.object({
+  project_id: z.string().optional(),
+  scope: z.enum(['project', 'machine', 'directory', 'repo']).optional(),
+  cwd: z.string().optional(),
+  git_root: z.string().optional(),
+  exclude_id: z.string().optional(),
+  role: z.string().optional(),
+});
+
+// ── Threads ───────────────────────────────────────────────────
+
+export const createThreadSchema = z.object({
+  project_id: z.string().min(1),
+  created_by: z.string().min(1),
+  // Name is optional — handler defaults to 'Hilo sin nombre'.
+  name: z.string().optional(),
+});
+
+export const listThreadsSchema = z.object({
+  project_id: z.string().min(1),
+  status: z.enum(['active', 'archived']).optional(),
+});
+
+export const threadIdSchema = z.object({
+  project_id: z.string().min(1),
+  thread_id: z.string().min(1),
+  peer_id: z.string().optional(),
+});
+
+export const updateThreadSchema = z.object({
+  project_id: z.string().min(1),
+  thread_id: z.string().min(1),
+  peer_id: z.string().optional(),
+  name: z.string().optional(),
+  status: z.enum(['active', 'archived']).optional(),
+  summary: z.string().optional(),
+});
+
+export const searchThreadsSchema = z.object({
+  project_id: z.string().min(1),
+  query: z.string().min(1),
+  limit: z.number().int().min(1).max(10_000).optional(),
+});
+
+// ── Projects ──────────────────────────────────────────────────
+
+export const createProjectSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+});
+
+export const addAgentSchema = z.object({
+  project_id: z.string().min(1),
+  role: z.string().min(1),
+  cwd: z.string().min(1),
+  name: z.string().optional(),
+  instructions: z.string().optional(),
+});
+
+// FU-D: shape for a single agent in updateProjectSchema. Mirrors the
+// inline ad-hoc cast in handleUpdateProject. The handler still enforces
+// duplicate roles + architect cwd quirks.
+const agentEntrySchema = z.object({
+  role: z.string(),
+  cwd: z.string(),
+  name: z.string().optional(),
+  instructions: z.string().optional(),
+  avatar: z.string().optional(),
+  model: z.string().optional(),
+});
+
+export const updateProjectSchema = z.object({
+  project_id: z.string().min(1),
+  description: z.string().optional(),
+  agents: z.array(agentEntrySchema),
+});
+
+// Shared shape for the family of endpoints that only need a project_id
+// in the body. Splitting into named exports keeps the test assertions
+// readable (and lets a future schema diverge per-route without a
+// shared-schema rename).
+const projectIdOnlyShape = {
+  project_id: z.string().min(1),
+};
+export const projectUpSchema = z.object(projectIdOnlyShape);
+export const projectDownSchema = z.object(projectIdOnlyShape);
+export const deleteProjectSchema = z.object(projectIdOnlyShape);
+
+// project_id + optional peer_id (peer_id is required-by-policy via
+// assertProjectMembership in the handler, not by zod — keep the zod
+// surface a pure shape check).
+const projectIdWithOptionalPeerShape = {
+  project_id: z.string().min(1),
+  peer_id: z.string().optional(),
+};
+export const saveResumeSchema = z.object(projectIdWithOptionalPeerShape);
+export const listModifiedFilesSchema = z.object(projectIdWithOptionalPeerShape);
