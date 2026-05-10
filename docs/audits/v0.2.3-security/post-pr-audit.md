@@ -1,7 +1,7 @@
 # Post-PR audit · v0.2.3 security quick-wins
 
-**Branch**: `fix/v0.2.3-security-quickwins` · **Commits**: 6 fixes + 1 baseline
-**Base**: `47ccc0e` (main, v0.2.2) · **Head**: `649a30e`
+**Branch**: `fix/v0.2.3-security-quickwins` · **Commits**: 6 fixes + 1 baseline + 2 review-cycle fixes + 1 docs
+**Base**: `47ccc0e` (main, v0.2.2) · **Head**: `b0ff7bd`
 **Date**: 2026-05-09
 
 This document closes the v0.2.3 PR loop: it lists each fix with
@@ -21,6 +21,8 @@ checkboxes in `docs/audits/v0.2.2-comprehensive-audit.md` move from
 | **QW-5** · graceful shutdown (P-12) | ✅ fixed | code: `src/broker/index.ts:267-308` (shutdownBroker, installLifecycleHandlers), `src/broker/database.ts:136-150` (closeDatabase), `src/broker/websocket.ts:43-49` (closeAllEventsClients), `src/broker/terminal.ts:464-477` (killAllWebAgentsEverywhere) · screenshot: `evidence/sigterm-clean.log` (broker logs SIGTERM → shutdown complete; WS client gets `code=1001 reason=Broker shutting down`) · tests: `tests/broker/lifecycle.test.ts` (5 cases) · commit `1099bc9` |
 | **h3-caveat** · shellEscape(target) in scheduleAgentInit | ✅ fixed | code: `src/cli/spawn.ts:205-211` (target now wrapped) · existing canary in `tests/security/add-agent-validation.test.ts` already protects upstream identifiers · commit `8380b53` |
 | **Q-22** · `BASE is not defined` in audit-qa.mjs | ✅ fixed | code: `scripts/audit-qa.mjs:200-247` (BASE passed to t() and call sites) · evidence: `qa-report.json` `fuzz[]` now contains real status codes/bodies, no error strings · commit `649a30e` |
+| **F-1** · audit-qa.mjs targeting `/api/create-project` (real route is `/api/project/create`) | ✅ fixed in this PR (review cycle) | code: `scripts/audit-qa.mjs` route paths + listener suppression during fuzz · evidence: `qa-report.json` `failedRequests: []`, `consoleErrors: []`, `pageErrors: []`, `fuzz[]` shows the real validation rejections (400 with `Invalid name: contains ".."`, `only [a-zA-Z0-9_.-]` etc.) · commit `cefbb62` |
+| **QW-5 close order** · terminals → agents → events → http → db | ✅ fixed in this PR (review cycle) | code: `src/broker/terminal.ts:67-70, 491, 535-543, 562-573` (terminalClients Set + closeAllTerminalClients), `src/broker/index.ts:285-330` (reordered shutdownBroker) · evidence: `evidence/sigterm-clean.log` shows `[broker:lifecycle] received SIGTERM — terminals → agents → events → http → db` · tests: `tests/broker/lifecycle.test.ts > shutdownBroker close order [QW-5 follow-up] > runs cleanup in the order: terminals → agents → events → db` (vi.spyOn-based explicit order assertion) · commit `b0ff7bd` |
 
 ### How to reproduce the active verification on a fresh checkout
 
@@ -56,7 +58,7 @@ QA_BASE=http://127.0.0.1:7919 node scripts/audit-qa.mjs
 ```
 $ npx vitest run
 Test Files   48 passed (48)
-     Tests  453 passed (453)
+     Tests  454 passed (454)
    Duration  ~1.2 s
 ```
 
@@ -65,7 +67,7 @@ Including the four files added/extended in this PR:
 - `tests/security/ws-origin-check.test.ts` — 9 new
 - `tests/security/http-origin-check.test.ts` — 12 new
 - `tests/security/add-agent-validation.test.ts` — 16 existing + 6 new (set_role)
-- `tests/broker/lifecycle.test.ts` — 5 new
+- `tests/broker/lifecycle.test.ts` — 6 new (5 baseline + 1 close-order assertion added during review)
 
 `npx tsc --noEmit` exits clean (0 errors).
 
@@ -80,17 +82,19 @@ and proposed fix.
 
 | ID | Severidad | Resumen | Tracker |
 |---|---|---|---|
-| F-1 | Bajo | `audit-qa.mjs` posts to `/api/create-project`, which doesn't exist (real route is `/api/project/create`) — fuzz isn't actually exercising the handler | followups.md §F-1 |
+| F-1 | Bajo | `audit-qa.mjs` posts to `/api/create-project`, which doesn't exist (real route is `/api/project/create`) — fuzz isn't actually exercising the handler | **resolved in this PR** (commit `cefbb62`) — followups.md §F-1 marked done |
 | F-2 | Info | Claude-in-Chrome extension still not connected; QA fell back to Puppeteer (already a v0.2.2 follow-up) | followups.md §F-2 |
 | F-3 | Info / known limit | Origin policy admits `127.0.0.1:<other-port>` — same-machine cross-port WS hijack remains open until per-connection token / dashboard X-Peer-Id flow exists | followups.md §F-3 |
 | F-4 | Bajo | `installLifecycleHandlers` is not idempotent — repeat calls accumulate signal listeners (benign today since only `main()` calls it once) | followups.md §F-4 |
 | F-5 | Info | `closeDatabase` swallows `wal_checkpoint` errors silently — should log them | followups.md §F-5 |
+| F-6 | Info / not a regression | `mobile-teams.png` first-card "white screen + Z" is a fixture artifact (different seeded projects → different empty-state illustration), not a v0.2.3 regression — same UX-2 bug from v0.2.2 | followups.md §F-6 (subsumed by UX-2 in v0.2.4) |
 
-- [ ] F-1 — fix audit-qa.mjs route paths
+- [x] F-1 — fix audit-qa.mjs route paths · **fixed in `cefbb62`**
 - [ ] F-2 — re-run QA inside Claude-in-Chrome extension
 - [ ] F-3 — per-connection WS token + dashboard subprotocol carry
 - [ ] F-4 — make installLifecycleHandlers idempotent
 - [ ] F-5 — log wal_checkpoint failures in closeDatabase
+- [ ] F-6 — UX-2 mobile reflow (subsumed by v0.2.4)
 
 ---
 
@@ -169,8 +173,12 @@ f9e949a  fix(security): QW-2 verifyClient on /ws and /ws/terminal — Origin che
 1099bc9  fix(security): QW-5 SIGTERM/SIGINT/uncaught handlers + graceful shutdown [P-12]
 8380b53  fix(security): h3-caveat shellEscape(target) in scheduleAgentInit
 649a30e  fix(qa): Q-22 BASE not defined in audit-qa.mjs fuzz()
+093913f  docs(audit): v0.2.3 post-PR audit + QA artifacts + main audit updates
+cefbb62  fix(qa): F-1 audit-qa.mjs uses real broker routes + suppresses fuzz noise   ← review cycle
+b0ff7bd  fix(security): order WS shutdown terminals→events→db [QW-5 follow-up]      ← review cycle
 ```
 
-Six fix commits + one baseline commit, no merges, all signed by the
-repo's author identity. None of them touch `main`; they live on
-`fix/v0.2.3-security-quickwins` awaiting review.
+Six original fix commits + one baseline + one initial post-PR doc +
+two review-cycle fixes (F-1 fully closed, QW-5 close order made
+explicit). All signed by the repo's author identity; none touch
+`main`.
