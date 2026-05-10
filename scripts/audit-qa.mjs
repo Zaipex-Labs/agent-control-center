@@ -190,50 +190,57 @@ if (projects[0]) {
 }
 
 // 6. Hammer the broker with bad inputs (lightweight fuzz)
+//
+// [Q-22] — page.evaluate() serialises the function to a string and
+// runs it inside the browser context, where the node-side `BASE`
+// const is undefined. Pass BASE as the first argument so the browser
+// gets a real value and the QA report stops being littered with
+// "BASE is not defined" errors.
 const fuzz = [];
-const t = async (path, init) => {
+const t = async (base, path, init) => {
   try {
-    const r = await fetch(`${BASE}${path}`, init);
+    const r = await fetch(`${base}${path}`, init);
     return { path, status: r.status, body: (await r.text()).slice(0, 120) };
   } catch (e) {
     return { path, error: e.message };
   }
 };
 
-fuzz.push(await page.evaluate(t, '/api/projects', undefined));
+fuzz.push(await page.evaluate(t, BASE, '/api/projects', undefined));
 fuzz.push(
   await page.evaluate(
     t,
+    BASE,
     '/api/blobs/0000000000000000000000000000000000000000000000000000000000000000',
     undefined
   )
 );
 fuzz.push(
-  await page.evaluate(t, '/api/blobs/notahash', undefined)
+  await page.evaluate(t, BASE, '/api/blobs/notahash', undefined)
 );
 fuzz.push(
-  await page.evaluate(t, '/api/create-project', {
+  await page.evaluate(t, BASE, '/api/create-project', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: '../../etc/pwned' }),
   })
 );
 fuzz.push(
-  await page.evaluate(t, '/api/create-project', {
+  await page.evaluate(t, BASE, '/api/create-project', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: 'a; rm -rf /' }),
   })
 );
 fuzz.push(
-  await page.evaluate(t, '/api/create-project', {
+  await page.evaluate(t, BASE, '/api/create-project', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: 'not json',
   })
 );
 fuzz.push(
-  await page.evaluate(t, '/api/create-project', {
+  await page.evaluate(t, BASE, '/api/create-project', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: 'x'.repeat(1000) }),
