@@ -50,7 +50,7 @@ export function tmuxNotify(
   // it's typed character-by-character, not interpreted as a shell
   // command until the pane's shell sees a newline. Even so, no shell
   // construction happens on the Node side with execFileSync.
-  const notification = `Tienes un nuevo mensaje de ${fromName} (${fromRole}). Usa check_messages para leerlo.`;
+  const notification = `Tienes un nuevo mensaje de ${fromName} (${fromRole}). Usa manual_catch_up para leerlo.`;
   try {
     execFileSync('tmux', ['send-keys', '-t', paneTarget, '-l', notification], {
       stdio: 'pipe', timeout: 3000,
@@ -96,7 +96,7 @@ export function tmuxInjectWithContext(
     // implementation used `sh -c "sleep 2 && tmux send-keys …"` which
     // forked a shell we no longer trust; setTimeout in Node achieves
     // the same delay without any shell involvement.
-    const notification = `[Hilo: ${threadName}] Resumen: ${summary}. Nuevo mensaje de ${fromName} (${fromRole}). Usa check_messages para leer el mensaje completo.`;
+    const notification = `[Hilo: ${threadName}] Resumen: ${summary}. Nuevo mensaje de ${fromName} (${fromRole}). Usa manual_catch_up para leer el mensaje completo.`;
     setTimeout(() => {
       try {
         execFileSync('tmux', ['send-keys', '-t', paneTarget, '-l', notification], {

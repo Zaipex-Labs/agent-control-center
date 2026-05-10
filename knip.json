@@ -1,0 +1,33 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/server/index.ts",
+    "src/broker/index.ts",
+    "src/cli/index.ts",
+    "src/dashboard/main.tsx",
+    "scripts/eval/agent-prompt-eval.mjs",
+    "scripts/bench/*.mjs",
+    "scripts/audit-qa.mjs",
+    "scripts/qa-v0.2.3.mjs",
+    "tests/**/*.test.ts"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx}",
+    "scripts/**/*.{js,mjs}",
+    "tests/**/*.ts"
+  ],
+  "ignore": [
+    "dist/**",
+    "docs/**",
+    "scripts/eval/scenarios/**",
+    "scripts/eval/variants/**"
+  ],
+  "ignoreDependencies": [
+    "puppeteer",
+    "@types/react-dom",
+    "@types/better-sqlite3",
+    "@types/ws",
+    "@vitejs/plugin-react"
+  ],
+  "ignoreExportsUsedInFile": true
+}

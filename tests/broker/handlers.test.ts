@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import type { ServerResponse } from 'node:http';
-import { initDatabase, insertPeer, selectPeerById } from '../../src/broker/database.js';
+import { initDatabase, insertPeer, selectPeerById, insertLogEntry } from '../../src/broker/database.js';
 import {
   handleHealth,
   handleRegister,
@@ -473,6 +473,97 @@ describe('handleGetHistory', () => {
     const { res, result } = createMockRes();
     handleGetHistory({}, res);
     expect(result.statusCode).toBe(400);
+  });
+
+  // FASE D-1 / M-5 (v0.3.0): default limit + clamp + before/after
+  describe('limit defaults and bounds', () => {
+    beforeEach(() => {
+      insertPeer(makePeer({ id: 'p1', project_id: 'proj', role: 'backend' }));
+      insertPeer(makePeer({ id: 'p2', project_id: 'proj', role: 'frontend' }));
+      // Seed 25 messages so we can prove clamping.
+      for (let i = 0; i < 25; i++) {
+        const { res } = createMockRes();
+        handleSendMessage({
+          project_id: 'proj', from_id: 'p1', to_id: 'p2', text: `msg ${i}`,
+        }, res);
+      }
+    });
+
+    it('defaults to 20 entries when no limit is passed', () => {
+      const { res, result } = createMockRes();
+      handleGetHistory({ project_id: 'proj', peer_id: 'p1' }, res);
+      expect((result.body as { messages: unknown[] }).messages).toHaveLength(20);
+    });
+
+    it('honors an explicit smaller limit', () => {
+      const { res, result } = createMockRes();
+      handleGetHistory({ project_id: 'proj', peer_id: 'p1', limit: 5 }, res);
+      expect((result.body as { messages: unknown[] }).messages).toHaveLength(5);
+    });
+
+    it('clamps over-budget limits to 100', () => {
+      // Seed enough to exceed 100 — 25 already + 76 more = 101 total.
+      for (let i = 0; i < 76; i++) {
+        const { res } = createMockRes();
+        handleSendMessage({
+          project_id: 'proj', from_id: 'p1', to_id: 'p2', text: `bulk ${i}`,
+        }, res);
+      }
+      const { res, result } = createMockRes();
+      handleGetHistory({ project_id: 'proj', peer_id: 'p1', limit: 999 }, res);
+      expect((result.body as { messages: unknown[] }).messages.length).toBeLessThanOrEqual(100);
+    });
+  });
+
+  describe('before / after pagination', () => {
+    beforeEach(() => {
+      insertPeer(makePeer({ id: 'pa', project_id: 'proj', role: 'backend' }));
+      insertPeer(makePeer({ id: 'pb', project_id: 'proj', role: 'frontend' }));
+    });
+
+    function seedAt(text: string, sentAt: string): void {
+      // Bypass handleSendMessage so we control sent_at exactly.
+      insertLogEntry('proj', 'pa', 'backend', 'pb', 'frontend', 'message', text, null, sentAt, 'sess', null);
+    }
+
+    it('returns only entries before the given timestamp', () => {
+      seedAt('A', '2026-05-01T10:00:00Z');
+      seedAt('B', '2026-05-02T10:00:00Z');
+      seedAt('C', '2026-05-03T10:00:00Z');
+      const { res, result } = createMockRes();
+      handleGetHistory({
+        project_id: 'proj', peer_id: 'pa', before: '2026-05-03T00:00:00Z',
+      }, res);
+      const texts = (result.body as { messages: Array<{ text: string }> }).messages.map(m => m.text);
+      expect(texts.sort()).toEqual(['A', 'B']);
+    });
+
+    it('returns only entries after the given timestamp', () => {
+      seedAt('A', '2026-05-01T10:00:00Z');
+      seedAt('B', '2026-05-02T10:00:00Z');
+      seedAt('C', '2026-05-03T10:00:00Z');
+      const { res, result } = createMockRes();
+      handleGetHistory({
+        project_id: 'proj', peer_id: 'pa', after: '2026-05-01T23:59:59Z',
+      }, res);
+      const texts = (result.body as { messages: Array<{ text: string }> }).messages.map(m => m.text);
+      expect(texts.sort()).toEqual(['B', 'C']);
+    });
+
+    it('combines before + after for a window query', () => {
+      seedAt('A', '2026-05-01T10:00:00Z');
+      seedAt('B', '2026-05-02T10:00:00Z');
+      seedAt('C', '2026-05-03T10:00:00Z');
+      seedAt('D', '2026-05-04T10:00:00Z');
+      const { res, result } = createMockRes();
+      handleGetHistory({
+        project_id: 'proj', peer_id: 'pa',
+        after: '2026-05-01T23:59:59Z',
+        before: '2026-05-04T00:00:00Z',
+      }, res);
+      const texts = (result.body as { messages: Array<{ text: string }> }).messages.map(m => m.text);
+      expect(texts.sort()).toEqual(['B', 'C']);
+    });
   });
 });
 

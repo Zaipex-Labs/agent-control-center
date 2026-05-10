@@ -312,7 +312,15 @@ export function insertLogEntry(
 
 export function selectHistory(
   projectId: string,
-  options?: { role?: string; type?: MessageType; limit?: number; session_id?: string; thread_id?: string },
+  options?: {
+    role?: string;
+    type?: MessageType | string;
+    limit?: number;
+    session_id?: string;
+    thread_id?: string;
+    before?: string;  // FASE D-1 (v0.3.0): sent_at < before
+    after?: string;   // FASE D-1 (v0.3.0): sent_at > after
+  },
 ): LogEntry[] {
   const conditions: string[] = ['project_id = ?'];
   const params: (string | number)[] = [projectId];
@@ -332,6 +340,14 @@ export function selectHistory(
   if (options?.thread_id) {
     conditions.push('thread_id = ?');
     params.push(options.thread_id);
+  }
+  if (options?.before) {
+    conditions.push('sent_at < ?');
+    params.push(options.before);
+  }
+  if (options?.after) {
+    conditions.push('sent_at > ?');
+    params.push(options.after);
   }
 
   const limit = options?.limit ?? 100;

@@ -17,13 +17,14 @@ import {
   selectPeerById,
   searchDecisions,
 } from '../database.js';
-import type {
-  SharedSetRequest,
-  SharedGetRequest,
-  SharedListRequest,
-  SharedDeleteRequest,
-} from '../../shared/types.js';
-import { json, error, assertProjectMembership } from './_helpers.js';
+import { json, assertProjectMembership, parseBodyOrError } from './_helpers.js';
+import {
+  sharedSetSchema,
+  sharedGetSchema,
+  sharedListSchema,
+  sharedDeleteSchema,
+  decisionsRecallSchema,
+} from './_schemas.js';
 
 // FASE A-1 (v0.3.0): the `decisions` namespace is reserved for Team
 // Memory. Writes to it auto-record author_role / author_peer_id /
@@ -32,16 +33,18 @@ import { json, error, assertProjectMembership } from './_helpers.js';
 export const DECISIONS_NAMESPACE = 'decisions';
 
 export function handleSharedSet(body: unknown, res: ServerResponse): void {
-  const b = body as SharedSetRequest;
-  if (!b.project_id || !b.namespace || !b.key || b.value == null || !b.peer_id) {
-    return error(res, 'Missing required fields: project_id, namespace, key, value, peer_id');
-  }
+  const b = parseBodyOrError(sharedSetSchema, body, res);
+  if (!b) return;
   // [S-NEW-3] peer_id was already required (used as updated_by) but
   // we never checked it actually belonged to project_id. A peer in A
   // could overwrite a config key in B otherwise.
   if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
   const now = new Date().toISOString();
+  // M-3 (v0.2.4): broker accepts string OR object — serialize to
+  // string at the persistence boundary so MCP callers don't have to
+  // JSON.stringify themselves.
+  const value = typeof b.value === 'string' ? b.value : JSON.stringify(b.value);
 
   if (b.namespace === DECISIONS_NAMESPACE) {
     // Write-through: stamp the author from the registered peer. If the
@@ -49,11 +52,11 @@ export function handleSharedSet(body: unknown, res: ServerResponse): void {
     // author_* / created_at — only updated_by / updated_at get bumped.
     const peer = selectPeerById(b.peer_id);
     setSharedStateWithMeta(
-      b.project_id, b.namespace, b.key, b.value, b.peer_id, now,
+      b.project_id, b.namespace, b.key, value, b.peer_id, now,
       { author_role: peer?.role ?? '', author_peer_id: b.peer_id },
     );
   } else {
-    setSharedState(b.project_id, b.namespace, b.key, b.value, b.peer_id, now);
+    setSharedState(b.project_id, b.namespace, b.key, value, b.peer_id, now);
   }
 
   broadcast('shared:updated', { namespace: b.namespace, key: b.key }, b.project_id);
@@ -61,10 +64,8 @@ export function handleSharedSet(body: unknown, res: ServerResponse): void {
 }
 
 export function handleSharedGet(body: unknown, res: ServerResponse): void {
-  const b = body as SharedGetRequest & { peer_id?: string };
-  if (!b.project_id || !b.namespace || !b.key) {
-    return error(res, 'Missing required fields: project_id, namespace, key');
-  }
+  const b = parseBodyOrError(sharedGetSchema, body, res);
+  if (!b) return;
   // [S-NEW-3] shared/get exposes secrets stored as values (db credentials,
   // contract specs). Without membership the read is open to any peer.
   if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
@@ -88,10 +89,8 @@ export function handleSharedGet(body: unknown, res: ServerResponse): void {
 }
 
 export function handleSharedList(body: unknown, res: ServerResponse): void {
-  const b = body as SharedListRequest & { peer_id?: string };
-  if (!b.project_id || !b.namespace) {
-    return error(res, 'Missing required fields: project_id, namespace');
-  }
+  const b = parseBodyOrError(sharedListSchema, body, res);
+  if (!b) return;
   // [S-NEW-3] enumerating keys leaks the namespace's structure even if
   // values stay opaque — gate with the same membership check.
   if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
@@ -107,14 +106,11 @@ export const RECALL_DEFAULT_LIMIT = 5;
 export const RECALL_MAX_LIMIT = 20;
 
 export function handleDecisionsRecall(body: unknown, res: ServerResponse): void {
-  const b = body as { project_id?: string; peer_id?: string; query?: string; limit?: number };
-  if (!b.project_id || !b.peer_id || !b.query) {
-    return error(res, 'Missing required fields: project_id, peer_id, query');
-  }
+  const b = parseBodyOrError(decisionsRecallSchema, body, res);
+  if (!b) return;
   if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
-  const requested = typeof b.limit === 'number' && b.limit > 0 ? b.limit : RECALL_DEFAULT_LIMIT;
-  const limit = Math.min(requested, RECALL_MAX_LIMIT);
+  const limit = Math.min(b.limit ?? RECALL_DEFAULT_LIMIT, RECALL_MAX_LIMIT);
 
   // Trim and bound the query — empty or single-char queries would
   // match nearly every row, which defeats the purpose. The handler
@@ -129,10 +125,8 @@ export function handleDecisionsRecall(body: unknown, res: ServerResponse): void 
 }
 
 export function handleSharedDelete(body: unknown, res: ServerResponse): void {
-  const b = body as SharedDeleteRequest;
-  if (!b.project_id || !b.namespace || !b.key || !b.peer_id) {
-    return error(res, 'Missing required fields: project_id, namespace, key, peer_id');
-  }
+  const b = parseBodyOrError(sharedDeleteSchema, body, res);
+  if (!b) return;
   // [S-NEW-3] a destructive op even more obviously needs membership.
   if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 

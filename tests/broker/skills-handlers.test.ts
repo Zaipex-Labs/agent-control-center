@@ -258,7 +258,7 @@ describe('handleSkillsSave', () => {
     const projDir = join(tmpHome, 'projects', 'proj', 'skills');
     let entries: string[] = [];
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
+       
       entries = require('node:fs').readdirSync(projDir);
     } catch { /* dir does not exist — also fine */ }
     expect(entries).toEqual([]);

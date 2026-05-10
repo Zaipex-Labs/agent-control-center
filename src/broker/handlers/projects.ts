@@ -11,7 +11,7 @@
 import type { ServerResponse } from 'node:http';
 import { readdirSync, readFileSync, existsSync, writeFileSync, rmSync, realpathSync, mkdirSync, unlinkSync } from 'node:fs';
 import { readdir as readdirAsync, readFile as readFileAsync } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
+import { join, resolve } from 'node:path';
 import { PROJECTS_DIR, ensureDirectories, techLeadCwd } from '../../shared/config.js';
 import { getDefaultName } from '../../shared/utils.js';
 import { ARCHITECT_ROLE, ARCHITECT_DEFAULT_INSTRUCTIONS } from '../../shared/names.js';

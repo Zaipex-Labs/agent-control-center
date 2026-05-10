@@ -8,6 +8,7 @@
 // per-route input validation, project-membership gating.
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { ZodType } from 'zod';
 import { assertSafeIdentifier } from '../../shared/validate.js';
 import { selectPeerById } from '../database.js';
 
@@ -115,6 +116,43 @@ export const MAX_TEXT_LENGTH = 100_000; // 100KB per message text
 // real-world ceiling (deepest cluster I've seen is 8 PNGs in one
 // review thread).
 export const MAX_ATTACHMENTS_PER_MESSAGE = 32;
+
+// FASE E-1 / Q-5 (v0.3.0): zod-backed body parser. Returns the
+// parsed body on success; on failure writes a structured 400
+//   { ok: false, error, code: 'INVALID_BODY', issues: [...] }
+// and returns null. Caller pattern:
+//
+//   const b = parseBodyOrError(sendMessageSchema, body, res);
+//   if (!b) return;
+//
+// `issues` is zod's per-field detail (path + message + code), useful
+// for the dashboard to surface "filename is required" vs a generic
+// "invalid body". Issue paths are joined with "." for readability.
+export function parseBodyOrError<T>(
+  schema: ZodType<T>,
+  body: unknown,
+  res: ServerResponse,
+): T | null {
+  const r = schema.safeParse(body);
+  if (r.success) return r.data;
+  const issues = r.error.issues.map(i => ({
+    path: i.path.join('.'),
+    message: i.message,
+    code: i.code,
+  }));
+  // Headline message: first issue, prefixed with its path so callers
+  // see a useful one-liner without unpacking `issues`.
+  const head = issues[0];
+  const headline = head?.path ? `${head.path}: ${head.message}` : (head?.message ?? 'Invalid body');
+  res.writeHead(400, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({
+    ok: false,
+    error: headline,
+    code: 'INVALID_BODY',
+    issues,
+  }));
+  return null;
+}
 
 // Back-compat wrapper around assertSafeIdentifier (src/shared/validate.ts).
 // Preserves the res-based callsite API so handlers can stay

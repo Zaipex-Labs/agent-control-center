@@ -78,7 +78,7 @@ describe('pushMessage', () => {
     };
 
     // The real McpServer has extra methods; cast is fine for this unit.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     await pushMessage(fakeMcp as any, msg, sender);
 
     expect(calls).toHaveLength(1);

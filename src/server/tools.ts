@@ -7,7 +7,6 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { brokerFetch } from './broker-client.js';
 import type {
   Peer,
-  MessageType,
   OkResponse,
   SendToRoleResponse,
   PollMessagesResponse,
@@ -81,14 +80,17 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
 
   mcp.tool(
     'send_message',
-    'Send a message to a specific agent by ID. Use list_peers to find IDs. Optionally pass thread_id, metadata with a short topic, or attachments (previously uploaded blobs identified by hash + mime + name + size) for images or files.',
+    // FASE C-3 / M-11 (v0.3.0): `type` accepts any string. Common
+    // values: "message" (default), "question", "response",
+    // "task_request", "task_complete", "contract_update",
+    // "notification". The dashboard renders unknown values with the
+    // generic message tag, so a custom string is safe — we just lose
+    // the per-type color chip in the UI.
+    'Send a message to a specific agent by ID. Use list_peers to find IDs. Optionally pass thread_id, metadata with a short topic, or attachments (previously uploaded blobs identified by hash + mime + name + size) for images or files. `type` is an optional string tag; common values: "message" (default), "question", "response", "task_request", "task_complete".',
     {
       to_id: z.string(),
       text: z.string(),
-      type: z.enum([
-        'message', 'question', 'response', 'contract_update',
-        'notification', 'task_request', 'task_complete',
-      ]).optional(),
+      type: z.string().optional(),
       thread_id: z.string().optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
       attachments: z.array(attachmentSchema).optional(),
@@ -112,14 +114,11 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
 
   mcp.tool(
     'send_to_role',
-    'Broadcast a message to all agents with a given role (e.g. "backend", "frontend"). No need to know their IDs. Optionally pass thread_id, metadata with a short topic, or attachments (previously uploaded blobs).',
+    'Broadcast a message to all agents with a given role (e.g. "backend", "frontend"). No need to know their IDs. Optionally pass thread_id, metadata with a short topic, or attachments (previously uploaded blobs). `type` is an optional string tag; common values: "message" (default), "question", "response", "task_request", "task_complete".',
     {
       role: z.string(),
       text: z.string(),
-      type: z.enum([
-        'message', 'question', 'response', 'contract_update',
-        'notification', 'task_request', 'task_complete',
-      ]).optional(),
+      type: z.string().optional(),
       thread_id: z.string().optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
       attachments: z.array(attachmentSchema).optional(),
@@ -146,9 +145,24 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
     },
   );
 
+  // FASE D-2 (v0.3.0): renamed from `check_messages` (M-2 / M-12 / M-14
+  // in audit §7). Reasoning:
+  //   - The MCP server's pushMessage() (src/server/channel.ts) already
+  //     polls every 1s and pushes new messages via the
+  //     `notifications/claude/channel` channel. In normal operation
+  //     check_messages always returned [] because the broker had
+  //     already delivered them.
+  //   - The old name + description ("Poll for new messages, mark as
+  //     delivered") encouraged agents to call it on every turn,
+  //     wasting a round-trip and a dedup race against the server poll.
+  //   - But it isn't dead: src/broker/tmux.ts uses it as a fallback
+  //     when channel push isn't available (tmux notification text says
+  //     "Usa <name> para leer el mensaje").
+  // Renamed to `manual_catch_up` so agents understand it's a fallback,
+  // not the primary delivery path.
   mcp.tool(
-    'check_messages',
-    'Poll for new messages sent to this agent. Returns and marks them as delivered.',
+    'manual_catch_up',
+    'Force-poll for messages addressed to this agent. Normally not needed — the broker pushes new messages automatically via the MCP channel. Use only when explicitly told (e.g. a tmux fallback notification said to call it) or when you suspect channel delivery is broken.',
     async () => {
       const resp = await brokerFetch<PollMessagesResponse>('/api/poll-messages', {
         id: identity.id,
@@ -161,15 +175,18 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
 
   mcp.tool(
     'get_history',
-    'Get conversation history for this project. Optionally filter by role, message type, thread_id, or limit.',
+    // FASE D-1 / M-5 (v0.3.0): default limit 20, max 100. Without
+    // these the agent could pull every log entry the project has
+    // ever produced into context. Pagination via before/after ISO
+    // timestamps lets the agent scroll back without re-fetching.
+    'Get conversation history for this project. Defaults to the most recent 20 entries (max 100). Optionally filter by role, message type (any string tag), thread_id, or limit. Paginate with `before` (ISO timestamp — returns entries strictly older than this) and `after` (strictly newer).',
     {
       role: z.string().optional(),
-      type: z.enum([
-        'message', 'question', 'response', 'contract_update',
-        'notification', 'task_request', 'task_complete',
-      ]).optional(),
-      limit: z.number().optional(),
+      type: z.string().optional(),
+      limit: z.number().int().min(1).max(100).optional(),
       thread_id: z.string().optional(),
+      before: z.string().optional(),
+      after: z.string().optional(),
     },
     async (args) => {
       const resp = await brokerFetch<GetHistoryResponse>('/api/get-history', {
@@ -179,6 +196,8 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
         type: args.type,
         limit: args.limit,
         thread_id: args.thread_id,
+        before: args.before,
+        after: args.after,
       });
       return {
         content: [{ type: 'text', text: JSON.stringify(resp.messages, null, 2) }],

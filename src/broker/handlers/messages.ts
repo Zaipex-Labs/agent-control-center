@@ -18,10 +18,6 @@ import { getBlob } from '../blobs.js';
 import { addBlobRef } from '../blob-refs.js';
 import { serializeAttachments, type Attachment } from '../../shared/attachments.js';
 import type {
-  SendMessageRequest,
-  SendToRoleRequest,
-  PollMessagesRequest,
-  GetHistoryRequest,
   MessageType,
   Peer,
 } from '../../shared/types.js';
@@ -42,9 +38,16 @@ import {
   error,
   validateIdentifiers,
   assertProjectMembership,
+  parseBodyOrError,
   MAX_TEXT_LENGTH,
   MAX_ATTACHMENTS_PER_MESSAGE,
 } from './_helpers.js';
+import {
+  sendMessageSchema,
+  sendToRoleSchema,
+  pollMessagesSchema,
+  getHistorySchema,
+} from './_schemas.js';
 
 const MESSAGE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
@@ -77,6 +80,14 @@ function validateAttachments(incoming: Attachment[], res: ServerResponse): boole
     }
   }
   return true;
+}
+
+// FASE E-1 (v0.3.0): zod schemas accept metadata as `string | object`
+// (mirroring set_shared.value via M-3). Normalize to the
+// JSON-string shape buildMetadata expects.
+function normalizeMetadata(meta: string | Record<string, unknown> | undefined): string | null {
+  if (meta == null) return null;
+  return typeof meta === 'string' ? meta : JSON.stringify(meta);
 }
 
 // Merge attachment descriptors into the existing JSON metadata so a
@@ -215,12 +226,10 @@ function finalizeDelivery(
 // ── Handlers ──────────────────────────────────────────────────
 
 export async function handleSendMessage(body: unknown, res: ServerResponse): Promise<void> {
-  const b = body as SendMessageRequest & { attachments?: Attachment[] };
-  if (!b.project_id || !b.from_id || !b.to_id || !b.text) {
-    return error(res, 'Missing required fields: project_id, from_id, to_id, text');
-  }
+  const b = parseBodyOrError(sendMessageSchema, body, res);
+  if (!b) return;
 
-  if (typeof b.text === 'string' && b.text.length > MAX_TEXT_LENGTH) {
+  if (b.text.length > MAX_TEXT_LENGTH) {
     return error(res, `Message text exceeds maximum length of ${MAX_TEXT_LENGTH} characters`);
   }
 
@@ -246,9 +255,12 @@ export async function handleSendMessage(body: unknown, res: ServerResponse): Pro
   const incoming = b.attachments ?? [];
   if (!validateAttachments(incoming, res)) return;
 
-  const type: MessageType = b.type ?? 'message';
+  const type: MessageType = (b.type ?? 'message') as MessageType;
   const now = new Date().toISOString();
-  const metadata = buildMetadata(incoming, b.metadata);
+  // M-3 (v0.2.4) parity: zod accepts metadata as string OR object;
+  // serialize to string for buildMetadata which speaks JSON-string.
+  const metadataStr = normalizeMetadata(b.metadata);
+  const metadata = buildMetadata(incoming, metadataStr);
   const threadId = inheritThreadId(b.project_id, b.from_id, b.thread_id ?? null, 'send-message');
 
   console.error(`[broker:send-message] from=${b.from_id} (${fromPeer.role}) to=${b.to_id} (${toPeer.role}) thread=${threadId}`);
@@ -263,14 +275,12 @@ export async function handleSendMessage(body: unknown, res: ServerResponse): Pro
 }
 
 export async function handleSendToRole(body: unknown, res: ServerResponse): Promise<void> {
-  const b = body as SendToRoleRequest & { attachments?: Attachment[] };
-  if (!b.project_id || !b.from_id || !b.role || !b.text) {
-    return error(res, 'Missing required fields: project_id, from_id, role, text');
-  }
+  const b = parseBodyOrError(sendToRoleSchema, body, res);
+  if (!b) return;
 
   if (!validateIdentifiers(res, { name: 'role', value: b.role })) return;
 
-  if (typeof b.text === 'string' && b.text.length > MAX_TEXT_LENGTH) {
+  if (b.text.length > MAX_TEXT_LENGTH) {
     return error(res, `Message text exceeds maximum length of ${MAX_TEXT_LENGTH} characters`);
   }
 
@@ -295,9 +305,9 @@ export async function handleSendToRole(body: unknown, res: ServerResponse): Prom
   const incoming = b.attachments ?? [];
   if (!validateAttachments(incoming, res)) return;
 
-  const type: MessageType = b.type ?? 'message';
+  const type: MessageType = (b.type ?? 'message') as MessageType;
   const now = new Date().toISOString();
-  const metadata = buildMetadata(incoming, b.metadata);
+  const metadata = buildMetadata(incoming, normalizeMetadata(b.metadata));
   const threadId = inheritThreadId(b.project_id, b.from_id, b.thread_id ?? null, 'send-to-role');
 
   console.error(`[broker:send-to-role] from=${b.from_id} (role=${fromPeer.role}) target_role=${b.role} project=${b.project_id}`);
@@ -316,8 +326,8 @@ export async function handleSendToRole(body: unknown, res: ServerResponse): Prom
 }
 
 export function handlePollMessages(body: unknown, res: ServerResponse): void {
-  const b = body as PollMessagesRequest;
-  if (!b.id) return error(res, 'Missing required field: id');
+  const b = parseBodyOrError(pollMessagesSchema, body, res);
+  if (!b) return;
 
   const all = selectUndelivered(b.id);
   const now = Date.now();
@@ -345,19 +355,30 @@ export function handlePollMessages(body: unknown, res: ServerResponse): void {
   json(res, { messages: fresh });
 }
 
+// FASE D-1 / M-5 (v0.3.0): default + max bounded so an agent can no
+// longer accidentally pull every log entry into context. The previous
+// default (100) was already enforced at selectHistory; surfacing it
+// here lets us also cap a request that asks for `limit: 99999`.
+export const HISTORY_DEFAULT_LIMIT = 20;
+export const HISTORY_MAX_LIMIT = 100;
+
 export function handleGetHistory(body: unknown, res: ServerResponse): void {
-  const b = body as GetHistoryRequest & { peer_id?: string };
-  if (!b.project_id) return error(res, 'Missing required field: project_id');
+  const b = parseBodyOrError(getHistorySchema, body, res);
+  if (!b) return;
   // [S-NEW-3] history can include arbitrary text + tool calls — any
   // cross-project read here is a full conversation leak.
   if (!assertProjectMembership(b.peer_id, b.project_id, res)) return;
 
+  const limit = Math.min(b.limit ?? HISTORY_DEFAULT_LIMIT, HISTORY_MAX_LIMIT);
+
   const messages = selectHistory(b.project_id, {
     role: b.role,
     type: b.type,
-    limit: b.limit,
+    limit,
     session_id: b.session_id,
     thread_id: b.thread_id,
+    before: b.before,
+    after: b.after,
   });
 
   json(res, { messages });

@@ -65,7 +65,7 @@ beforeEach(async () => {
 
 function setup() {
   const { mcp, tools } = createFakeMcp();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   registerTools(mcp as any, { ...identity });
   return tools;
 }
@@ -75,13 +75,13 @@ describe('registerTools — registration', () => {
     const tools = setup();
     const names = Array.from(tools.keys()).sort();
     expect(names).toEqual([
-      'check_messages',
       'delete_shared',
       'get_history',
       'get_shared',
       'get_thread_context',
       'list_peers',
       'list_shared',
+      'manual_catch_up',
       'recall',
       'remember',
       'send_message',
@@ -218,13 +218,20 @@ describe('send_to_role', () => {
   });
 });
 
-describe('check_messages', () => {
+// FASE D-2 (v0.3.0): renamed from check_messages.
+describe('manual_catch_up', () => {
   it('calls /api/poll-messages with this agent id', async () => {
     nextResponse = { messages: [] };
     const tools = setup();
-    await tools.get('check_messages')!.handler({});
+    await tools.get('manual_catch_up')!.handler({});
     expect(brokerCalls[0]!.path).toBe('/api/poll-messages');
     expect(brokerCalls[0]!.body).toEqual({ id: 'agent-1' });
+  });
+
+  it('description warns "normally not needed"', () => {
+    const tools = setup();
+    const t = tools.get('manual_catch_up')!;
+    expect(t.description.toLowerCase()).toContain('normally not needed');
   });
 });
 
@@ -245,6 +252,21 @@ describe('get_history', () => {
       type: 'question',
       limit: 10,
       thread_id: 'thr-2',
+    });
+  });
+
+  // FASE D-1 / M-5 (v0.3.0): pagination via before/after timestamps
+  it('forwards before / after ISO timestamps for pagination', async () => {
+    nextResponse = { messages: [] };
+    const tools = setup();
+    await tools.get('get_history')!.handler({
+      before: '2026-05-04T00:00:00Z',
+      after: '2026-05-01T00:00:00Z',
+    });
+    expect(brokerCalls[0]!.body).toMatchObject({
+      project_id: 'proj-x',
+      before: '2026-05-04T00:00:00Z',
+      after: '2026-05-01T00:00:00Z',
     });
   });
 });
