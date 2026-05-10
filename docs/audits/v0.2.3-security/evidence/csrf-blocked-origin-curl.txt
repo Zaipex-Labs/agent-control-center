@@ -1,0 +1,22 @@
+# curl repro of csrf-blocked-origin (verbatim, captured 2026-05-10)
+# command:
+#   curl -X POST http://127.0.0.1:7919/api/project/delete \
+#     -H 'Content-Type: application/json' \
+#     -H 'Origin: http://attacker.com' \
+#     -d '{"project_id":"demo"}' -i
+
+HTTP/1.1 403 Forbidden
+Content-Type: application/json
+Date: Sun, 10 May 2026 03:08:25 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+Transfer-Encoding: chunked
+
+{"ok":false,"error":"Forbidden origin"}
+
+# verification: 'demo' project still exists after the attack
+# (would not be present if the gate had failed)
+[
+  "demo",
+  "empty-project"
+]
