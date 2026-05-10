@@ -17,7 +17,8 @@ export function useWebSocket(projectId: string | undefined): UseWebSocketReturn 
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const retriesRef = useRef(0);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  // [Q-10] @types/react@19 removed the no-arg useRef overload.
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const connect = useCallback(() => {
     if (!projectId) return;

@@ -15,7 +15,8 @@ interface SearchBarProps {
 export default function SearchBar({ projectId, onResults }: SearchBarProps) {
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  // [Q-10] @types/react@19 removed the no-arg useRef overload.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const doSearch = useCallback(async (q: string) => {

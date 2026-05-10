@@ -38,7 +38,9 @@ export function useMessages(
   const [waitingFor, setWaitingFor] = useState<WaitingReply | null>(null);
   const [sendError, setSendError] = useState<SendError | null>(null);
   const [lastSend, setLastSend] = useState<{ toRole: string; text: string; type: MessageType } | null>(null);
-  const waitingTimeout = useRef<ReturnType<typeof setTimeout>>();
+  // [Q-10] @types/react@19 removed the no-arg useRef overload; pass an
+  // explicit `undefined` and widen the generic so undefined is allowed.
+  const waitingTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const { lastEvent } = useWebSocket(projectId);
 
   // Keep senderId in a ref so doSend can wait for it to be ready after a

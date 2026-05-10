@@ -20,7 +20,8 @@ export default function Terminal({ projectId, role, visible }: TerminalProps) {
   const termRef = useRef<XTerm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
+  // [Q-10] @types/react@19 removed the no-arg useRef overload.
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const retriesRef = useRef(0);
   const peerId = useCurrentPeerId();
 
