@@ -77,3 +77,10 @@ export {
   handleDeleteProject,
   buildSaveResumePrompt,
 } from './projects.js';
+
+export {
+  handleSkillsList,
+  handleSkillsGet,
+  handleSkillsSave,
+  handleSkillsDelete,
+} from './skills.js';
