@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import type { ServerResponse } from 'node:http';
-import { initDatabase, insertPeer } from '../../src/broker/database.js';
+import { initDatabase, insertPeer, selectPeerById } from '../../src/broker/database.js';
 import {
   handleHealth,
   handleRegister,
@@ -22,6 +22,7 @@ import {
   handleSharedGet,
   handleSharedList,
   handleSharedDelete,
+  handleDecisionsRecall,
 } from '../../src/broker/handlers.js';
 import type { Peer } from '../../src/shared/types.js';
 
@@ -102,6 +103,42 @@ describe('handleRegister', () => {
     handleRegister({}, res);
     expect(result.statusCode).toBe(400);
     expect((result.body as { ok: boolean }).ok).toBe(false);
+  });
+
+  // PRE-2 (v0.3.0): avatar persistence. Read-back uses selectPeerById
+  // (DB) instead of handleListPeers because the latter filters by
+  // process.kill(pid, 0) liveness — synthetic test pids would be filtered.
+  it('persists avatar when provided in register body', () => {
+    const { res, result } = createMockRes();
+    handleRegister({
+      pid: process.pid, cwd: '/app', role: 'backend', name: 'Turing',
+      project_id: 'proj', avatar: 'dicebear:custom-seed-7',
+    }, res);
+    expect(result.statusCode).toBe(200);
+    const id = (result.body as { id: string }).id;
+    expect(selectPeerById(id)!.avatar).toBe('dicebear:custom-seed-7');
+  });
+
+  it('defaults avatar to dicebear:<role>-<name> when omitted', () => {
+    const { res, result } = createMockRes();
+    handleRegister({
+      pid: process.pid, cwd: '/app', role: 'backend', name: 'Turing',
+      project_id: 'proj',
+    }, res);
+    expect(result.statusCode).toBe(200);
+    const id = (result.body as { id: string }).id;
+    expect(selectPeerById(id)!.avatar).toBe('dicebear:backend-Turing');
+  });
+
+  it('treats empty avatar as omitted (uses default)', () => {
+    const { res, result } = createMockRes();
+    handleRegister({
+      pid: process.pid, cwd: '/app', role: 'qa', name: 'Lovelace',
+      project_id: 'proj', avatar: '',
+    }, res);
+    expect(result.statusCode).toBe(200);
+    const id = (result.body as { id: string }).id;
+    expect(selectPeerById(id)!.avatar).toBe('dicebear:qa-Lovelace');
   });
 });
 
@@ -494,6 +531,154 @@ describe('handleSharedSet / Get / List / Delete', () => {
   it('set rejects missing fields', () => {
     const { res, result } = createMockRes();
     handleSharedSet({ project_id: 'proj' }, res);
+    expect(result.statusCode).toBe(400);
+  });
+});
+
+// FASE A-1 (v0.3.0): decisions namespace write-through
+describe('handleSharedSet · decisions namespace write-through', () => {
+  beforeEach(() => {
+    insertPeer(makePeer({ id: 'p-back', project_id: 'proj', role: 'backend', name: 'Turing' }));
+    insertPeer(makePeer({ id: 'p-front', project_id: 'proj', role: 'frontend', name: 'Lovelace' }));
+  });
+
+  it('first write stamps author_role + author_peer_id + created_at', () => {
+    const { res } = createMockRes();
+    handleSharedSet({
+      project_id: 'proj', namespace: 'decisions', key: 'use-esm', value: 'we use esm everywhere',
+      peer_id: 'p-back',
+    }, res);
+
+    const { res: getRes, result: getResult } = createMockRes();
+    handleSharedGet({
+      project_id: 'proj', namespace: 'decisions', key: 'use-esm', peer_id: 'p-back',
+    }, getRes);
+    const body = getResult.body as Record<string, unknown>;
+    expect(body.value).toBe('we use esm everywhere');
+    expect(body.author_role).toBe('backend');
+    expect(body.author_peer_id).toBe('p-back');
+    expect(typeof body.created_at).toBe('string');
+    expect(body.updated_by).toBe('p-back');
+  });
+
+  it('second write by another peer keeps original author_* + created_at, bumps updated_*', async () => {
+    const { res: r1 } = createMockRes();
+    handleSharedSet({
+      project_id: 'proj', namespace: 'decisions', key: 'use-esm', value: 'v1',
+      peer_id: 'p-back',
+    }, r1);
+
+    const { res: r1get, result: r1result } = createMockRes();
+    handleSharedGet({ project_id: 'proj', namespace: 'decisions', key: 'use-esm', peer_id: 'p-back' }, r1get);
+    const v1 = r1result.body as Record<string, unknown>;
+
+    // Force a measurable timestamp gap.
+    await new Promise(r => setTimeout(r, 10));
+
+    const { res: r2 } = createMockRes();
+    handleSharedSet({
+      project_id: 'proj', namespace: 'decisions', key: 'use-esm', value: 'v2',
+      peer_id: 'p-front',
+    }, r2);
+
+    const { res: r2get, result: r2result } = createMockRes();
+    handleSharedGet({ project_id: 'proj', namespace: 'decisions', key: 'use-esm', peer_id: 'p-back' }, r2get);
+    const v2 = r2result.body as Record<string, unknown>;
+
+    // value updated, author_* + created_at preserved, updated_* bumped.
+    expect(v2.value).toBe('v2');
+    expect(v2.author_role).toBe('backend');
+    expect(v2.author_peer_id).toBe('p-back');
+    expect(v2.created_at).toBe(v1.created_at);
+    expect(v2.updated_by).toBe('p-front');
+    expect(v2.updated_at).not.toBe(v1.updated_at);
+  });
+
+  it('non-decisions namespaces still work and do NOT carry author_* in response', () => {
+    const { res } = createMockRes();
+    handleSharedSet({
+      project_id: 'proj', namespace: 'config', key: 'port', value: '8080', peer_id: 'p-back',
+    }, res);
+
+    const { res: getRes, result: getResult } = createMockRes();
+    handleSharedGet({ project_id: 'proj', namespace: 'config', key: 'port', peer_id: 'p-back' }, getRes);
+    const body = getResult.body as Record<string, unknown>;
+    expect(body.value).toBe('8080');
+    expect(body.author_role).toBeUndefined();
+    expect(body.author_peer_id).toBeUndefined();
+    expect(body.created_at).toBeUndefined();
+  });
+});
+
+// FASE A-2 (v0.3.0): recall handler
+describe('handleDecisionsRecall', () => {
+  beforeEach(() => {
+    insertPeer(makePeer({ id: 'p-back', project_id: 'proj', role: 'backend', name: 'Turing' }));
+    insertPeer(makePeer({ id: 'p-other', project_id: 'other-proj', role: 'qa', name: 'Lovelace' }));
+    handleSharedSet({
+      project_id: 'proj', namespace: 'decisions', key: 'use-esm',
+      value: 'always esm modules', peer_id: 'p-back',
+    }, createMockRes().res);
+    handleSharedSet({
+      project_id: 'proj', namespace: 'decisions', key: 'auth-strategy',
+      value: 'jwt with rotation', peer_id: 'p-back',
+    }, createMockRes().res);
+    // Cross-project bait — should not surface in proj recalls.
+    handleSharedSet({
+      project_id: 'other-proj', namespace: 'decisions', key: 'use-esm',
+      value: 'esm in other project', peer_id: 'p-other',
+    }, createMockRes().res);
+  });
+
+  it('returns matches with author_role + score for the requesting project', () => {
+    const { res, result } = createMockRes();
+    handleDecisionsRecall({ project_id: 'proj', peer_id: 'p-back', query: 'esm' }, res);
+    expect(result.statusCode).toBe(200);
+    const body = result.body as { matches: Array<Record<string, unknown>> };
+    expect(body.matches).toHaveLength(1);
+    expect(body.matches[0].key).toBe('use-esm');
+    expect(body.matches[0].author_role).toBe('backend');
+    expect(typeof body.matches[0].score).toBe('number');
+  });
+
+  it('does not leak decisions from other projects (S-NEW-3 surface)', () => {
+    const { res, result } = createMockRes();
+    handleDecisionsRecall({ project_id: 'proj', peer_id: 'p-back', query: 'esm' }, res);
+    const body = result.body as { matches: Array<Record<string, unknown>> };
+    for (const m of body.matches) {
+      expect(m.value).not.toContain('other project');
+    }
+  });
+
+  it('rejects a peer not registered in project_id (cross-project)', () => {
+    const { res, result } = createMockRes();
+    handleDecisionsRecall({ project_id: 'proj', peer_id: 'p-other', query: 'esm' }, res);
+    expect(result.statusCode).toBe(403);
+  });
+
+  it('returns empty matches for queries shorter than 2 chars', () => {
+    const { res, result } = createMockRes();
+    handleDecisionsRecall({ project_id: 'proj', peer_id: 'p-back', query: 'a' }, res);
+    expect(result.statusCode).toBe(200);
+    expect((result.body as { matches: unknown[] }).matches).toHaveLength(0);
+  });
+
+  it('clamps limit to RECALL_MAX_LIMIT', () => {
+    // Seed 25 matches
+    for (let i = 0; i < 25; i++) {
+      handleSharedSet({
+        project_id: 'proj', namespace: 'decisions', key: `esm-${i}`,
+        value: `note esm ${i}`, peer_id: 'p-back',
+      }, createMockRes().res);
+    }
+    const { res, result } = createMockRes();
+    handleDecisionsRecall({ project_id: 'proj', peer_id: 'p-back', query: 'esm', limit: 999 }, res);
+    expect((result.body as { matches: unknown[] }).matches.length).toBeLessThanOrEqual(20);
+  });
+
+  it('rejects missing required fields', () => {
+    const { res, result } = createMockRes();
+    handleDecisionsRecall({ project_id: 'proj' }, res);
     expect(result.statusCode).toBe(400);
   });
 });

@@ -30,6 +30,7 @@ export function initDatabase(dbPath?: string): Database.Database {
       git_branch TEXT,
       tty TEXT,
       summary TEXT NOT NULL DEFAULT '',
+      avatar TEXT,
       registered_at TEXT NOT NULL,
       last_seen TEXT NOT NULL
     );
@@ -69,6 +70,9 @@ export function initDatabase(dbPath?: string): Database.Database {
       value TEXT NOT NULL,
       updated_by TEXT NOT NULL,
       updated_at TEXT NOT NULL,
+      author_role TEXT,
+      author_peer_id TEXT,
+      created_at TEXT,
       PRIMARY KEY (project_id, namespace, key)
     );
 
@@ -127,6 +131,27 @@ function migrateSchema(database: Database.Database): void {
     database.exec('ALTER TABLE message_log ADD COLUMN thread_id TEXT');
   }
   database.exec('CREATE INDEX IF NOT EXISTS idx_log_thread ON message_log(thread_id)');
+
+  // PRE-2 (v0.3.0): peers.avatar — dicebear:<seed> or data:image/... or NULL.
+  // Dashboard already supports the on-disk shape; broker now persists it.
+  const peerCols = database.prepare("PRAGMA table_info(peers)").all() as { name: string }[];
+  if (!peerCols.some(c => c.name === 'avatar')) {
+    database.exec('ALTER TABLE peers ADD COLUMN avatar TEXT');
+  }
+
+  // FASE A-1 (v0.3.0): shared_state author_* + created_at, populated
+  // only for the reserved `decisions` namespace (Team Memory).
+  // Idempotent — older DBs without these columns get them lazily.
+  const sharedCols = database.prepare("PRAGMA table_info(shared_state)").all() as { name: string }[];
+  if (!sharedCols.some(c => c.name === 'author_role')) {
+    database.exec('ALTER TABLE shared_state ADD COLUMN author_role TEXT');
+  }
+  if (!sharedCols.some(c => c.name === 'author_peer_id')) {
+    database.exec('ALTER TABLE shared_state ADD COLUMN author_peer_id TEXT');
+  }
+  if (!sharedCols.some(c => c.name === 'created_at')) {
+    database.exec('ALTER TABLE shared_state ADD COLUMN created_at TEXT');
+  }
 }
 
 export function getDb(): Database.Database {
@@ -170,9 +195,15 @@ export function closeDatabase(): void {
 
 export function insertPeer(peer: Peer): void {
   getDb().prepare(`
-    INSERT INTO peers (id, project_id, pid, name, role, agent_type, cwd, git_root, git_branch, tty, summary, registered_at, last_seen)
-    VALUES (@id, @project_id, @pid, @name, @role, @agent_type, @cwd, @git_root, @git_branch, @tty, @summary, @registered_at, @last_seen)
-  `).run(peer);
+    INSERT INTO peers (id, project_id, pid, name, role, agent_type, cwd, git_root, git_branch, tty, summary, avatar, registered_at, last_seen)
+    VALUES (@id, @project_id, @pid, @name, @role, @agent_type, @cwd, @git_root, @git_branch, @tty, @summary, @avatar, @registered_at, @last_seen)
+  `).run({ ...peer, avatar: peer.avatar ?? null });
+}
+
+// PRE-2 (v0.3.0): allow the dashboard to update an agent's avatar after the
+// fact (avatar picker UI). Idempotent — passing null/undefined clears it.
+export function updatePeerAvatar(id: string, avatar: string | null): void {
+  getDb().prepare('UPDATE peers SET avatar = ? WHERE id = ?').run(avatar, id);
 }
 
 export function updateLastSeen(id: string, now: string): void {
@@ -325,6 +356,90 @@ export function setSharedState(
     VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT (project_id, namespace, key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at
   `).run(projectId, namespace, key, value, peerId, now);
+}
+
+// FASE A-1 (v0.3.0): write-through for the `decisions` namespace.
+// On INSERT, all fields are written. On UPDATE, author_role /
+// author_peer_id / created_at are preserved (decisions track the
+// original author across edits — last editor lives in updated_by /
+// updated_at, same as every other namespace).
+export function setSharedStateWithMeta(
+  projectId: string,
+  namespace: string,
+  key: string,
+  value: string,
+  peerId: string,
+  now: string,
+  meta: { author_role: string; author_peer_id: string },
+): void {
+  getDb().prepare(`
+    INSERT INTO shared_state
+      (project_id, namespace, key, value, updated_by, updated_at, author_role, author_peer_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (project_id, namespace, key) DO UPDATE SET
+      value = excluded.value,
+      updated_by = excluded.updated_by,
+      updated_at = excluded.updated_at
+      -- author_role / author_peer_id / created_at intentionally NOT updated
+  `).run(
+    projectId, namespace, key, value, peerId, now,
+    meta.author_role, meta.author_peer_id, now,
+  );
+}
+
+// FASE A-2 (v0.3.0): fuzzy match over key + value within the
+// `decisions` namespace of one project. Lightweight scoring (substring
+// hit, length-normalized) — BM25 is overkill at this scale and the
+// query is interactive (n ~ 1k decisions, returns top-5).
+export interface DecisionMatch {
+  key: string;
+  value: string;
+  author_role: string | null;
+  author_peer_id: string | null;
+  created_at: string | null;
+  updated_at: string;
+  score: number;
+}
+
+export function searchDecisions(
+  projectId: string,
+  namespace: string,
+  query: string,
+  limit: number,
+): DecisionMatch[] {
+  // Two-step: SQL LIKE narrows to candidate rows, then the JS scorer
+  // ranks. We bound the candidate set so even pathological queries
+  // (single-char "a") don't fan out across 100k rows. 500 is well past
+  // any realistic use and still fits in one prepared-statement call.
+  const pattern = `%${query.replace(/[%_]/g, m => `\\${m}`)}%`;
+  const rows = getDb().prepare(`
+    SELECT key, value, author_role, author_peer_id, created_at, updated_at
+    FROM shared_state
+    WHERE project_id = ? AND namespace = ?
+      AND (key LIKE ? ESCAPE '\\' OR value LIKE ? ESCAPE '\\')
+    LIMIT 500
+  `).all(projectId, namespace, pattern, pattern) as Array<{
+    key: string; value: string;
+    author_role: string | null; author_peer_id: string | null;
+    created_at: string | null; updated_at: string;
+  }>;
+
+  const q = query.toLowerCase();
+  const scored: DecisionMatch[] = rows.map(r => {
+    const k = r.key.toLowerCase();
+    const v = r.value.toLowerCase();
+    // Key hits weigh more than value hits — keys are intentional handles
+    // ("use-esm", "auth-strategy"), values are prose.
+    const keyHit = k.includes(q) ? q.length / Math.max(k.length, 1) : 0;
+    const valHit = v.includes(q) ? q.length / Math.max(v.length, 1) : 0;
+    const score = keyHit * 2 + valHit;
+    return { ...r, score };
+  });
+
+  return scored
+    .filter(m => m.score > 0)
+    .sort((a, b) => b.score - a.score || b.updated_at.localeCompare(a.updated_at))
+    .slice(0, limit);
 }
 
 export function getSharedState(projectId: string, namespace: string, key: string): SharedStateEntry | undefined {

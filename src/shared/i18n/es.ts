@@ -382,4 +382,22 @@ export const es: Record<string, string> = {
   'dash.emptyFolder': 'Carpeta vac\u00eda',
   'dash.goUp': 'Subir un nivel',
   'dash.cannotReadDir': 'No se puede leer el directorio',
+
+  // Skills (B-3)
+  'dash.skills': 'Skills',
+  'dash.skillsTooltip': 'Skills del proyecto \u2014 archivos markdown inyectados en el prompt de cada agente al arrancar',
+  'dash.skillsTitle': 'Skills del proyecto',
+  'dash.skillsEmpty': 'A\u00fan no hay skills. Los skills son archivos markdown cortos describiendo convenciones del proyecto ("siempre ESM", "los tests viven en tests/<\u00e1rea>/"). Se a\u00f1aden al system prompt de cada agente al arrancar.',
+  'dash.skillsNew': 'Nuevo skill',
+  'dash.skillsFilenameLabel': 'Archivo (debe terminar en .md, solo alfanum\u00e9ricos + - + _)',
+  'dash.skillsFilenamePlaceholder': 'ej. use-esm.md',
+  'dash.skillsFilenameInvalid': 'Nombre inv\u00e1lido. Permitido: a-z A-Z 0-9 _ - terminado en .md',
+  'dash.skillsContentLabel': 'Contenido',
+  'dash.skillsContentPlaceholder': 'Usa m\u00f3dulos ESM siempre. Nunca CJS.',
+  'dash.skillsSizeUsed': '{used} / {budget} bytes usados',
+  'dash.skillsSizeOver': 'El total supera el cap de 8 KB \u2014 los agentes truncar\u00e1n al arrancar',
+  'dash.skillsDelete': 'Borrar',
+  'dash.skillsDeleteConfirm': '\u00bfBorrar "{filename}"?',
+  'dash.skillsCancel': 'Cancelar',
+  'dash.skillsClose': 'Cerrar',
 };

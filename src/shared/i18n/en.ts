@@ -382,4 +382,22 @@ export const en: Record<string, string> = {
   'dash.emptyFolder': 'Empty folder',
   'dash.goUp': 'Go up',
   'dash.cannotReadDir': 'Cannot read directory',
+
+  // Skills (B-3)
+  'dash.skills': 'Skills',
+  'dash.skillsTooltip': 'Project skills — markdown files injected into every agent\'s prompt at boot',
+  'dash.skillsTitle': 'Project skills',
+  'dash.skillsEmpty': 'No skills yet. Skills are short markdown files describing project conventions ("always use ESM", "tests live in tests/<area>/"). They are appended to every agent\'s system prompt at boot.',
+  'dash.skillsNew': 'New skill',
+  'dash.skillsFilenameLabel': 'Filename (must end in .md, alphanumerics + - + _ only)',
+  'dash.skillsFilenamePlaceholder': 'e.g. use-esm.md',
+  'dash.skillsFilenameInvalid': 'Invalid filename. Allowed: a-z A-Z 0-9 _ - ending in .md',
+  'dash.skillsContentLabel': 'Content',
+  'dash.skillsContentPlaceholder': 'Use ESM modules everywhere. Never CJS.',
+  'dash.skillsSizeUsed': '{used} / {budget} bytes used',
+  'dash.skillsSizeOver': 'Total exceeds 8 KB cap — agents will truncate at boot',
+  'dash.skillsDelete': 'Delete',
+  'dash.skillsDeleteConfirm': 'Delete "{filename}"?',
+  'dash.skillsCancel': 'Cancel',
+  'dash.skillsClose': 'Close',
 };

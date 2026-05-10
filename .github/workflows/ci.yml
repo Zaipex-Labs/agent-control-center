@@ -32,6 +32,9 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
+      - name: Type check (dashboard)
+        run: npm run typecheck:dashboard
+
       - name: Build server + CLI
         run: npm run build
 

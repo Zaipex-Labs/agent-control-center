@@ -258,6 +258,60 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
     },
   );
 
+  // ── Team memory ────────────────────────────────────────────
+
+  // FASE A-3 (v0.3.0): remember writes one decision into the reserved
+  // `decisions` namespace without the agent having to think about
+  // namespace/key plumbing. Auto-key = <YYYYMMDD>-<first-3-words slug>.
+  // Pair this with `recall` — together they form Team Memory.
+  mcp.tool(
+    'remember',
+    'Save a decision the team should remember (architecture choice, contract, tradeoff). Pass the decision summary; an auto-generated key is derived from today\'s date + first 3 words. Pass an explicit `key` only if you want a stable handle to update later. Avoid using this for transient state — use set_shared with namespace="files"/"contracts"/etc for that.',
+    {
+      summary: z.string().min(4),
+      key: z.string().optional(),
+    },
+    async (args) => {
+      const key = args.key && args.key.length > 0
+        ? args.key
+        : autoDecisionKey(args.summary);
+      const resp = await brokerFetch<OkResponse>('/api/shared/set', {
+        project_id: identity.project_id,
+        namespace: 'decisions',
+        key,
+        value: args.summary,
+        peer_id: identity.id,
+      });
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ ...resp, key }) }],
+      };
+    },
+  );
+
+  // FASE A-2 (v0.3.0): recall over the reserved `decisions`
+  // namespace. Cheap fuzzy match (LIKE + length-normalized scoring),
+  // project-scoped on the broker side. Useful before asking the team
+  // a question that may already have been decided.
+  mcp.tool(
+    'recall',
+    'Search this team\'s past decisions before asking a question. Fuzzy-matches a query over keys and values in the project\'s `decisions` namespace and returns the top matches. Use it whenever you are about to ask about an architectural choice, a contract, or "how do we…" — there\'s probably already a decision.',
+    {
+      query: z.string().min(2),
+      limit: z.number().int().min(1).max(20).optional(),
+    },
+    async (args) => {
+      const resp = await brokerFetch<{ matches: unknown[] }>('/api/decisions/recall', {
+        project_id: identity.project_id,
+        peer_id: identity.id,
+        query: args.query,
+        limit: args.limit,
+      });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(resp.matches, null, 2) }],
+      };
+    },
+  );
+
   // [M-4] Expose delete_shared so agents can clean up entries in
   // namespaces that grow forever (e.g. "files" — the dashboard work-
   // desk panel). The broker handler already exists
@@ -340,4 +394,26 @@ export function registerTools(mcp: McpServer, identity: AgentIdentity): void {
       };
     },
   );
+}
+
+// FASE A-3 (v0.3.0): derive a default key from a decision summary so
+// the agent can call `remember(...)` without inventing a key. Shape:
+// `<YYYYMMDD>-<first-3-words>`. Words are lowercased ASCII; everything
+// else is stripped. The full slug is bounded so very long summaries
+// don't blow up the SQLite primary key.
+//
+// Exported for tests — the slugger is the most likely place a future
+// regression sneaks in (e.g., a unicode summary producing an empty key).
+export function autoDecisionKey(summary: string, now: Date = new Date()): string {
+  const yyyymmdd = now.toISOString().slice(0, 10).replace(/-/g, '');
+  const slug = summary
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 3)
+    .join('-')
+    .replace(/-+/g, '-')
+    .slice(0, 40);
+  return slug ? `${yyyymmdd}-${slug}` : `${yyyymmdd}-decision`;
 }

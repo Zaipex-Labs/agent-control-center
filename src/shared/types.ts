@@ -42,6 +42,10 @@ export interface Peer {
   git_branch: string | null;
   tty: string | null;
   summary: string;
+  // Optional. Format is either `dicebear:<seed>` (generated bottts svg) or
+  // `data:image/...` (user-uploaded). Empty/undefined falls back to a
+  // deterministic seed derived from `name` at render time.
+  avatar?: string;
   registered_at: string;
   last_seen: string;
 }
@@ -81,6 +85,14 @@ export interface SharedStateEntry {
   value: string;
   updated_by: string;
   updated_at: string;
+  // FASE A-1 (v0.3.0): populated only for the reserved `decisions`
+  // namespace (Team Memory). Stays NULL for every other namespace.
+  // `updated_by` / `updated_at` already track the last editor; these
+  // additional fields preserve the *original* author and creation time
+  // across edits, which is the part decisions care about.
+  author_role?: string | null;
+  author_peer_id?: string | null;
+  created_at?: string | null;
 }
 
 // ── Project config (persisted as JSON) ─────────────────────────
@@ -92,6 +104,7 @@ export interface AgentConfig {
   agent_cmd: string;
   agent_args: string[];
   instructions: string;
+  avatar?: string;
 }
 
 export interface ProjectConfig {
@@ -116,6 +129,7 @@ export interface RegisterRequest {
   agent_type?: string;
   summary?: string;
   project_id: string;
+  avatar?: string;
 }
 
 export interface RegisterResponse {

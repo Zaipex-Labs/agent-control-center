@@ -18,6 +18,7 @@ import Avatar from '../components/Avatar';
 import StartupLogView, { type StartupLogStep } from '../components/StartupLogView';
 import EmptyOffice from '../components/EmptyOffice';
 import DeskPapers from '../components/DeskPapers';
+import SkillsModal from '../components/SkillsModal';
 import { projectUp, projectDown as apiProjectDown, saveResume } from '../lib/api';
 
 // True only if the current page was opened via an explicit browser
@@ -47,6 +48,7 @@ export default function ProjectPage() {
   const [creatingThread, setCreatingThread] = useState(false);
   const [newThreadName, setNewThreadName] = useState('');
   const [showSidebar, setShowSidebar] = useState(true);
+  const [showSkills, setShowSkills] = useState(false);
   const [sharedRefresh, setSharedRefresh] = useState(0);
   // Persist open terminal tabs per project so they survive a page reload.
   // The underlying agent processes keep running in the broker regardless —
@@ -418,6 +420,24 @@ export default function ProjectPage() {
           >
             {saving ? '…' : t('dash.save')}
           </button>
+          {/* B-3: Skills modal — markdown files injected into every
+              agent's system prompt at boot. */}
+          <button
+            onClick={() => setShowSkills(true)}
+            title={t('dash.skillsTooltip')}
+            style={{
+              fontFamily: 'var(--font-mono)', fontSize: 10,
+              padding: '5px 12px', borderRadius: 6,
+              border: '1px solid var(--z-border)',
+              background: 'transparent',
+              color: 'var(--z-text-secondary)', cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = '#E8823A'; e.currentTarget.style.color = '#E8823A'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--z-border)'; e.currentTarget.style.color = 'var(--z-text-secondary)'; }}
+          >
+            {t('dash.skills')}
+          </button>
           {/* [UX-6] Panel: title clarifies what the button toggles. */}
           <button
             onClick={() => { setShowSidebar(v => !v); setSharedRefresh(n => n + 1); }}
@@ -778,6 +798,14 @@ export default function ProjectPage() {
           onSaveAndShutdown={handleSaveAndShutdown}
           onShutdownAnyway={handleShutdownWithoutSaving}
           saving={saving}
+        />
+      )}
+
+      {showSkills && projectId && dashboardId && (
+        <SkillsModal
+          projectId={projectId}
+          peerId={dashboardId}
+          onClose={() => setShowSkills(false)}
         />
       )}
     </div>

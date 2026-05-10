@@ -27,6 +27,10 @@ export interface Peer {
   git_branch: string | null;
   tty: string | null;
   summary: string;
+  // PRE-2 (v0.3.0): persisted by the broker. Format: `dicebear:<seed>` |
+  // `data:image/...` | absent. resolveAvatarSrc() in lib/avatar.ts handles
+  // each case.
+  avatar?: string;
   registered_at: string;
   last_seen: string;
 }

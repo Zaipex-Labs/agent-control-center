@@ -37,6 +37,11 @@ import {
   handleSharedGet,
   handleSharedList,
   handleSharedDelete,
+  handleDecisionsRecall,
+  handleSkillsList,
+  handleSkillsGet,
+  handleSkillsSave,
+  handleSkillsDelete,
   handleCreateThread,
   handleListThreads,
   handleGetThread,
@@ -78,6 +83,11 @@ const POST_ROUTES: Record<string, PostHandler> = {
   '/api/shared/get': handleSharedGet,
   '/api/shared/list': handleSharedList,
   '/api/shared/delete': handleSharedDelete,
+  '/api/decisions/recall': handleDecisionsRecall,
+  '/api/skills/list': handleSkillsList,
+  '/api/skills/get': handleSkillsGet,
+  '/api/skills/save': handleSkillsSave,
+  '/api/skills/delete': handleSkillsDelete,
   '/api/threads/create': handleCreateThread,
   '/api/threads/list': handleListThreads,
   '/api/threads/get': handleGetThread,
@@ -109,6 +119,11 @@ const ROUTE_BODY_LIMITS: Record<string, number> = {
   '/api/set-role': 1024,
   '/api/csrf/issue': 1024,
   '/api/list-peers': 1024,
+  '/api/decisions/recall': 4 * 1024,        // ids + short query + limit
+  '/api/skills/list': 1024,
+  '/api/skills/get': 1024,
+  '/api/skills/save': 16 * 1024,            // 8KB content + JSON envelope
+  '/api/skills/delete': 1024,
 };
 
 const MIME_TYPES: Record<string, string> = {
