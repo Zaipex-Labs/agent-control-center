@@ -692,7 +692,10 @@ export function handleListModifiedFiles(body: unknown, res: ServerResponse): voi
 //   - 'periodic': /api/project/save-resume — user pressed "Save" while
 //     the team is alive. No shutdown urgency.
 //   - 'shutdown': /api/project/down — agents have ~3s before SIGTERM.
-function buildSaveResumePrompt(role: string, now: string, kind: 'periodic' | 'shutdown'): string {
+// Exported for tests/server/instructions.test.ts (M-1b) so the E2E
+// "G9 trigger contains the protocol body end-to-end" assertion can
+// inspect the produced prompt without spinning up the full broker.
+export function buildSaveResumePrompt(role: string, now: string, kind: 'periodic' | 'shutdown'): string {
   const intro = kind === 'shutdown'
     ? 'The team is shutting down. Save a final resume snapshot now so you can resume next session.'
     : 'Save your own resume snapshot so you can pick up where you left off next time.';
