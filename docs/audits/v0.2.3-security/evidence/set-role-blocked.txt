@@ -1,0 +1,15 @@
+# set-role-blocked — peer 4fd60ee1 (role=qa) tries to self-promote to arquitectura — rejected with 403 [QW-3]
+
+# request →
+POST /api/set-role HTTP/1.1
+Host: 127.0.0.1:7919
+Content-Type: application/json
+
+{"id":"4fd60ee1","role":"arquitectura"}
+
+
+# response ←
+HTTP/1.1 403
+Content-Type: application/json
+
+{"ok":false,"error":"Role \"arquitectura\" is reserved"}
