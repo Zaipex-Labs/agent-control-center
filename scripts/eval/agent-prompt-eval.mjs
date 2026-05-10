@@ -62,15 +62,16 @@ const REPORTS_DIR = join(REPO_ROOT, 'docs', 'audits', 'v0.3.0-team-memory', 'eva
 // ── arg parsing ────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const args = { runs: 3, variants: [], dryRun: false, scenario: null };
+  const args = { runs: 3, variants: [], dryRun: false, scenario: null, prefix: null };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--runs') args.runs = parseInt(argv[++i], 10) || 3;
     else if (a === '--variant') args.variants.push(argv[++i]);
     else if (a === '--dry-run') args.dryRun = true;
     else if (a === '--scenario') args.scenario = argv[++i];
+    else if (a === '--prefix') args.prefix = argv[++i];
     else if (a === '-h' || a === '--help') {
-      console.log('Usage: agent-prompt-eval.mjs [--runs N] [--variant name:path] [--scenario name] [--dry-run]');
+      console.log('Usage: agent-prompt-eval.mjs [--runs N] [--variant name:path] [--scenario name | --prefix pfx] [--dry-run]');
       process.exit(0);
     }
   }
@@ -112,10 +113,12 @@ function parseScenario(filePath) {
   return json;
 }
 
-function loadScenarios(filter) {
+function loadScenarios(filter, prefix) {
   const entries = readdirSync(SCENARIO_DIR).filter(f => f.endsWith('.md')).sort();
   const all = entries.map(name => parseScenario(join(SCENARIO_DIR, name)));
-  return filter ? all.filter(s => s.name === filter) : all;
+  if (filter) return all.filter(s => s.name === filter);
+  if (prefix) return all.filter(s => s.name.startsWith(prefix));
+  return all;
 }
 
 // ── prompt builders ────────────────────────────────────────────
@@ -237,7 +240,7 @@ async function main() {
     process.exit(0);
   }
 
-  const scenarios = loadScenarios(args.scenario);
+  const scenarios = loadScenarios(args.scenario, args.prefix);
   if (scenarios.length === 0) {
     console.error('[eval] no scenarios matched');
     process.exit(1);
