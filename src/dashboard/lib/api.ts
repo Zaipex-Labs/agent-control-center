@@ -336,6 +336,45 @@ export async function listSharedKeys(projectId: string, peerId: string, namespac
   return resp.keys;
 }
 
+// ── Project skills (B-3) ─────────────────────────────────────
+
+export interface SkillFileMeta {
+  filename: string;
+  size: number;
+  updated_at: string;
+}
+
+export async function listSkills(projectId: string, peerId: string): Promise<SkillFileMeta[]> {
+  const resp = await apiFetch<{ files: SkillFileMeta[] }>('skills/list', {
+    project_id: projectId, peer_id: peerId,
+  });
+  return resp.files;
+}
+
+export async function getSkill(
+  projectId: string, peerId: string, filename: string,
+): Promise<{ filename: string; content: string }> {
+  return apiFetch<{ filename: string; content: string }>('skills/get', {
+    project_id: projectId, peer_id: peerId, filename,
+  });
+}
+
+export async function saveSkill(
+  projectId: string, peerId: string, filename: string, content: string,
+): Promise<{ ok: true; filename: string; size: number }> {
+  return apiFetch<{ ok: true; filename: string; size: number }>('skills/save', {
+    project_id: projectId, peer_id: peerId, filename, content,
+  });
+}
+
+export async function deleteSkill(
+  projectId: string, peerId: string, filename: string,
+): Promise<void> {
+  await apiFetch<{ ok: true }>('skills/delete', {
+    project_id: projectId, peer_id: peerId, filename,
+  });
+}
+
 // ── Modified files (git-polled per agent cwd) ────────────────
 
 export interface ModifiedFile {
