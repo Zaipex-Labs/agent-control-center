@@ -16,8 +16,26 @@ interface UseThreadsReturn {
   loading: boolean;
 }
 
-function activeThreadStorageKey(projectId: string): string {
+export function activeThreadStorageKey(projectId: string): string {
   return `acc.activeThread.${projectId}`;
+}
+
+// Persist the active-thread selection so reloads land on the right thread.
+// Exported for testing — guards against Q-9 (passing an updater function would
+// store the literal string "undefined" in localStorage because `fn.id` is undefined).
+export function persistActiveThread(
+  storage: Pick<Storage, 'setItem' | 'removeItem'>,
+  projectId: string,
+  thread: Thread | null,
+): void {
+  if (thread === null) {
+    storage.removeItem(activeThreadStorageKey(projectId));
+    return;
+  }
+  if (typeof thread !== 'object' || typeof thread.id !== 'string') {
+    throw new Error('persistActiveThread: thread must be Thread | null, not a function or other value');
+  }
+  storage.setItem(activeThreadStorageKey(projectId), thread.id);
 }
 
 export function useThreads(projectId: string | undefined, peerId: string | undefined): UseThreadsReturn {
@@ -33,9 +51,7 @@ export function useThreads(projectId: string | undefined, peerId: string | undef
     setActiveThreadState(thread);
     if (!projectId) return;
     try {
-      const key = activeThreadStorageKey(projectId);
-      if (thread) localStorage.setItem(key, thread.id);
-      else localStorage.removeItem(key);
+      persistActiveThread(localStorage, projectId, thread);
     } catch { /* ignore */ }
   }, [projectId]);
 
@@ -93,9 +109,9 @@ export function useThreads(projectId: string | undefined, peerId: string | undef
     if (isEvent(lastEvent, 'thread:deleted')) {
       const data = lastEvent.data as { id: string };
       setThreads((prev) => prev.filter((t) => t.id !== data.id));
-      setActiveThread((cur) => (cur?.id === data.id ? null : cur));
+      if (activeThread?.id === data.id) setActiveThread(null);
     }
-  }, [lastEvent]);
+  }, [lastEvent, activeThread, setActiveThread]);
 
   const createThread = useCallback(
     async (name: string) => {
@@ -122,9 +138,9 @@ export function useThreads(projectId: string | undefined, peerId: string | undef
       if (!projectId || !peerId) return;
       await apiDeleteThread(projectId, threadId, peerId);
       setThreads((prev) => prev.filter((t) => t.id !== threadId));
-      setActiveThread((cur) => (cur?.id === threadId ? null : cur));
+      if (activeThread?.id === threadId) setActiveThread(null);
     },
-    [projectId, peerId, setActiveThread],
+    [projectId, peerId, setActiveThread, activeThread],
   );
 
   return { threads, activeThread, setActiveThread, createThread, deleteThread, loading };
