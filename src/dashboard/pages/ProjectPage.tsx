@@ -456,11 +456,19 @@ export default function ProjectPage() {
           <SidebarSection title={t('dash.agents')} />
           <div style={{ padding: '0 8px', flex: '0 0 auto', overflowY: 'auto', maxHeight: '40%' }}>
             {agents.length === 0 ? (
-              <div style={{
-                fontFamily: 'var(--font-mono)', fontSize: 10,
-                color: 'var(--z-text-muted)', padding: '12px 14px',
-              }}>
-                {t('dash.noActiveAgents')}
+              // [UX-5] Empty-state CTA collapsed to the central panel
+              // only — sidebar shows a neutral em-dash, header shows a
+              // muted badge, neither competes with the EmptyState's
+              // "Power up team" CTA in the middle column.
+              <div
+                aria-label={t('dash.noActiveAgents')}
+                style={{
+                  fontFamily: 'var(--font-mono)', fontSize: 12,
+                  color: 'var(--z-text-muted)', padding: '12px 14px',
+                  textAlign: 'center', opacity: 0.6,
+                }}
+              >
+                —
               </div>
             ) : (
               agents.map(peer => (
