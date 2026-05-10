@@ -290,7 +290,12 @@ export const es: Record<string, string> = {
   // ProjectPage
   'dash.teams': 'Equipos',
   'dash.panel': 'Panel',
+  'dash.panelToggleShow': 'Mostrar panel lateral',
+  'dash.panelToggleHide': 'Ocultar panel lateral',
   'dash.shutdown': 'Apagar equipo',
+  'dash.shutdownTooltip': 'Apaga el equipo y guarda el resumen de cada agente',
+  'dash.saveDisabledHint': 'No hay cambios por guardar',
+  'dash.saveResume': 'Guardar resumen del equipo',
   'dash.agentsActive': '{count} agente activo',
   'dash.agentsActivePlural': '{count} agentes activos',
   'dash.threadNamePlaceholder': 'Nombre del hilo...',

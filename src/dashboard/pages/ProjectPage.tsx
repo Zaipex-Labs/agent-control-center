@@ -392,16 +392,24 @@ export default function ProjectPage() {
               }}
             />
           )}
+          {/* [UX-6] Save: tooltip explains the disabled reason so the
+              user understands why the button is dim instead of
+              guessing it's broken. */}
           <button
             onClick={() => void handleSave()}
             disabled={saving || !isDirty}
+            title={
+              saving ? t('dash.saving')
+              : !isDirty ? t('dash.saveDisabledHint')
+              : t('dash.saveResume')
+            }
             style={{
               fontFamily: 'var(--font-mono)', fontSize: 10,
               padding: '5px 12px', borderRadius: 6,
               border: '1px solid rgba(61,186,122,0.4)',
               background: isDirty ? 'rgba(61,186,122,0.12)' : 'transparent',
               color: isDirty ? 'var(--z-green)' : 'var(--z-text-muted)',
-              cursor: saving ? 'wait' : (isDirty ? 'pointer' : 'default'),
+              cursor: saving ? 'wait' : (isDirty ? 'pointer' : 'not-allowed'),
               opacity: !isDirty ? 0.5 : 1,
               transition: 'all 0.15s',
             }}
@@ -410,8 +418,10 @@ export default function ProjectPage() {
           >
             {saving ? '…' : t('dash.save')}
           </button>
+          {/* [UX-6] Panel: title clarifies what the button toggles. */}
           <button
             onClick={() => { setShowSidebar(v => !v); setSharedRefresh(n => n + 1); }}
+            title={showSidebar ? t('dash.panelToggleHide') : t('dash.panelToggleShow')}
             style={{
               fontFamily: 'var(--font-mono)', fontSize: 10,
               padding: '5px 12px', borderRadius: 6,
@@ -425,20 +435,27 @@ export default function ProjectPage() {
           >
             {t('dash.panel')}
           </button>
-          <button
-            onClick={handleShutdown}
-            style={{
-              fontFamily: 'var(--font-mono)', fontSize: 10,
-              padding: '5px 12px', borderRadius: 6,
-              border: '1px solid rgba(216,90,48,0.4)',
-              background: 'transparent', color: '#D85A30',
-              cursor: 'pointer', transition: 'all 0.15s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(216,90,48,0.1)'; e.currentTarget.style.borderColor = '#D85A30'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'rgba(216,90,48,0.4)'; }}
-          >
-            {t('dash.shutdown')}
-          </button>
+          {/* [UX-6] Shutdown: hide entirely when there's nothing to
+              shut down — the "0 agents" badge already communicates the
+              state. Avoids the "Apagar equipo" foot-gun of clicking
+              shutdown on an already-empty project. */}
+          {activeCount > 0 && (
+            <button
+              onClick={handleShutdown}
+              title={t('dash.shutdownTooltip')}
+              style={{
+                fontFamily: 'var(--font-mono)', fontSize: 10,
+                padding: '5px 12px', borderRadius: 6,
+                border: '1px solid rgba(216,90,48,0.4)',
+                background: 'transparent', color: '#D85A30',
+                cursor: 'pointer', transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(216,90,48,0.1)'; e.currentTarget.style.borderColor = '#D85A30'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'rgba(216,90,48,0.4)'; }}
+            >
+              {t('dash.shutdown')}
+            </button>
+          )}
         </div>
       </nav>
 
