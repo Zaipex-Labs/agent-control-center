@@ -4,9 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Zaipex ACC — Agents Command Center</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=DM+Serif+Display&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <!-- [UX-3] Fonts are served locally from /fonts/ — see @font-face
+       declarations in src/dashboard/styles/zaipex.css. The previous
+       Google Fonts <link> leaked the user's IP + page-load timings
+       to fonts.gstatic.com on every dashboard open, breaking the
+       "local-only" promise of the tool. -->
 </head>
 <body>
   <div id="root"></div>
