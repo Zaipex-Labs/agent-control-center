@@ -217,6 +217,8 @@ export const es: Record<string, string> = {
   'dash.spawnPhasePty': 'pty',
   'dash.spawnPhaseMcp': 'claude',
   'dash.spawnPhaseReg': 'broker',
+  'dash.avatarSeedLabel': 'Semilla personalizada',
+  'dash.avatarSeedPlaceholder': 'ej. mago-gato, turing-2026',
   'dash.avatarPresets': 'Predise\u00f1ados',
   'dash.avatarUpload': 'Subir imagen',
   'dash.avatarReset': 'Restablecer',
