@@ -15,6 +15,7 @@ import { cleanStalePeers } from './cleanup.js';
 import { URL } from 'node:url';
 import { handleEventsUpgrade, closeAllEventsClients } from './websocket.js';
 import { handleTerminalUpgrade, killAllWebAgentsEverywhere, closeAllTerminalClients } from './terminal.js';
+import { getSpawnState } from './spawn-state.js';
 import { isAllowedHost, isAllowedOrigin, isJsonContentType } from './origin.js';
 import { startTokenCleanup, stopTokenCleanup } from './csrf-tokens.js';
 import {
@@ -224,6 +225,18 @@ export function createBrokerServer(): Server {
     // body, no project context. Returns {powers: Power[]}.
     if (method === 'GET' && url === '/api/powers') {
       return handleListPowers(res);
+    }
+
+    // v0.3.3 PRE-4 (MED-7a). Snapshot of the per-(project, role) spawn
+    // phase state held in broker memory. The dashboard fetches this once
+    // on mount to recover from the WS-handshake race where pty_ready
+    // (sometimes mcp_ready) fires before the client's socket is OPEN.
+    const spawnStateMatch = url.match(/^\/api\/project\/([^/?]+)\/spawn-state$/);
+    if (method === 'GET' && spawnStateMatch) {
+      const projectId = decodeURIComponent(spawnStateMatch[1]);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ phases: getSpawnState(projectId) }));
+      return;
     }
 
     if (method === 'GET' && url.startsWith('/api/browse')) {

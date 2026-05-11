@@ -15,6 +15,7 @@ import { broadcast } from './websocket.js';
 import { isAllowedOrigin, rejectUpgrade } from './origin.js';
 import { consumeToken } from './csrf-tokens.js';
 import { prepareAgentMcpConfig } from '../cli/mcp-config.js';
+import { recordSpawnPhase } from './spawn-state.js';
 
 // Locate a usable python3 binary. When the broker is launched via nohup /
 // launchd the PATH can lose /usr/local/bin or /opt/homebrew/bin, and
@@ -253,6 +254,15 @@ export function spawnWebAgent(
 
   // FASE C-1 (v0.3.2). First milestone: PTY child spawned. The
   // dashboard's per-agent checklist ticks 1/3 here.
+  //
+  // v0.3.3 PRE-4 (MED-7a): record into the broker's in-memory
+  // spawn-state map BEFORE emitting the WS event. This event fires
+  // ~50ms after the broker receives /api/project/up; the dashboard's
+  // WS handshake often hasn't completed yet, so broadcast() drops the
+  // frame (websocket.ts:120). The state map persists across that
+  // window, and the dashboard fetches it once on mount via
+  // /api/project/:id/spawn-state to backfill any lost events.
+  recordSpawnPhase(projectId, role, 'pty_ready');
   broadcast('agent:spawning', { role, phase: 'pty_ready' }, projectId);
 
   // Buffer all output for later WS clients
@@ -346,6 +356,9 @@ export function spawnWebAgent(
           // canonical signal). registered fires later from
           // handleRegister when the in-agent MCP server hits the
           // broker's /api/register.
+          // v0.3.3 PRE-4 (MED-7a): record BEFORE emit — see pty_ready
+          // site above for the full rationale.
+          recordSpawnPhase(projectId, role, 'mcp_ready');
           broadcast('agent:spawning', { role, phase: 'mcp_ready' }, projectId);
           return;
         }

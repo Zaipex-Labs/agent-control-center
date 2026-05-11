@@ -10,6 +10,7 @@ import type { ServerResponse } from 'node:http';
 import { generateId, getDefaultName } from '../../shared/utils.js';
 import { ARCHITECT_ROLE } from '../../shared/names.js';
 import { broadcast } from '../websocket.js';
+import { recordSpawnPhase } from '../spawn-state.js';
 import { issueToken as issueCsrfToken } from '../csrf-tokens.js';
 import type { Peer } from '../../shared/types.js';
 import {
@@ -103,6 +104,11 @@ export function handleRegister(body: unknown, res: ServerResponse): void {
   // pty_ready / mcp_ready flow so we skip the event for them — they'd
   // dirty the agent-only checklist with a phantom "Dashboard" row.
   if (peer.agent_type !== 'dashboard' && role) {
+    // v0.3.3 PRE-4 (MED-7a): record state BEFORE emit — see
+    // terminal.ts:256 for the full rationale. registered usually fires
+    // 2-5s after spawn so the WS race window is narrower here, but
+    // recording it keeps the snapshot endpoint authoritative.
+    recordSpawnPhase(peer.project_id, role, 'registered');
     broadcast('agent:spawning', { role, phase: 'registered' }, peer.project_id);
   }
   console.error(`[broker:register] id=${id} name=${name} role=${role} project=${peer.project_id} pid=${peer.pid}`);

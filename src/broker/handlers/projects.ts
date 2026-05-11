@@ -16,6 +16,7 @@ import { PROJECTS_DIR, ensureDirectories, techLeadCwd } from '../../shared/confi
 import { getDefaultName } from '../../shared/utils.js';
 import { ARCHITECT_ROLE, ARCHITECT_DEFAULT_INSTRUCTIONS } from '../../shared/names.js';
 import { assertSafeIdentifier, assertSafeDisplayName } from '../../shared/validate.js';
+import { clearSpawnState } from '../spawn-state.js';
 import { registerMcpServer, killTmuxSession, hasTmuxSession as hasTmuxSess, listTmuxSessions } from '../../cli/spawn.js';
 import { spawnWebAgent, killAllWebAgents, getWebAgent } from '../terminal.js';
 import { gitModifiedFiles } from '../files.js';
@@ -415,6 +416,12 @@ export function handleProjectUp(body: unknown, res: ServerResponse): void {
     return error(res, 'Project has no agents configured');
   }
 
+  // v0.3.3 PRE-4 (MED-7a): wipe any leftover spawn-phase state from a
+  // previous cycle BEFORE we start spawning. Otherwise the snapshot
+  // endpoint would return stale `true`s from the prior run and the
+  // dashboard's OR-merge would never see chips drop back to "in flight".
+  clearSpawnState(b.project_id);
+
   // Refresh the tech lead workspace (creates dir if missing, rewrites
   // CLAUDE.md so prompt edits take effect on every power-up) before we
   // validate cwds — otherwise the architect's cwd would fail the existence
@@ -776,6 +783,10 @@ export async function handleProjectDown(body: unknown, res: ServerResponse): Pro
   for (const peer of peers) {
     broadcast('peer:disconnected', { id: peer.id }, b.project_id);
   }
+
+  // v0.3.3 PRE-4 (MED-7a): drop the spawn-phase state for this
+  // project so the next "Encender" starts from a clean snapshot.
+  clearSpawnState(b.project_id);
 
   json(res, { ok: true, killed });
 }

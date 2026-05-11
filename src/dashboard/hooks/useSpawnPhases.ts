@@ -24,6 +24,23 @@ const EMPTY_PHASES: PhaseSet = {
   registered: false,
 };
 
+// v0.3.3 PRE-4 (MED-7a): defensive OR-merge — phases only flip
+// false → true within a spawn cycle, so combining server snapshot
+// with locally-folded WS events is safe in either order.
+function mergePhases(a: SpawnPhases, b: SpawnPhases): SpawnPhases {
+  const out: SpawnPhases = { ...a };
+  for (const role of Object.keys(b)) {
+    const ap = out[role] ?? EMPTY_PHASES;
+    const bp = b[role];
+    out[role] = {
+      pty_ready: ap.pty_ready || bp.pty_ready,
+      mcp_ready: ap.mcp_ready || bp.mcp_ready,
+      registered: ap.registered || bp.registered,
+    };
+  }
+  return out;
+}
+
 export function useSpawnPhases(
   projectId: string | undefined,
   active: boolean,
@@ -48,6 +65,31 @@ export function useSpawnPhases(
       };
     });
   }, [lastEvent]);
+
+  // v0.3.3 PRE-4 (MED-7a). When the user presses "Encender", events
+  // can fire on the broker (especially `pty_ready` at ~50ms post-spawn)
+  // before this hook's WebSocket has completed its handshake. Without
+  // backfill, the chip stays at `pty —` even though the broker
+  // already passed that phase. Fetch the broker's snapshot once when
+  // `(projectId, active)` flip on, and OR-merge with whatever the WS
+  // delivered in the meantime. Defensive against:
+  //   - fetch winning the race → snapshot seeds the state,
+  //   - WS winning the race → fetch is a no-op (no flips false→true),
+  //   - both winning concurrently → merge picks the union.
+  // Fetch failures are silent — the WS is still the primary source for
+  // any later events.
+  useEffect(() => {
+    if (!projectId || !active) return;
+    let cancelled = false;
+    fetch(`/api/project/${encodeURIComponent(projectId)}/spawn-state`)
+      .then(r => (r.ok ? r.json() as Promise<{ phases?: SpawnPhases }> : null))
+      .then(payload => {
+        if (cancelled || !payload?.phases) return;
+        setPhases(prev => mergePhases(prev, payload.phases!));
+      })
+      .catch(() => { /* silent — WS handles live updates */ });
+    return () => { cancelled = true; };
+  }, [projectId, active]);
 
   // Reset whenever the project changes OR the dashboard's `starting`
   // gate goes low. `active=true` means "the user just pressed
