@@ -112,8 +112,7 @@ npm run dashboard:build     # compila el dashboard web / builds the web dashboar
 npm link                    # instala el comando "acc" global / installs "acc" globally
 
 # 2. Crear proyecto desde el dashboard / Create a project from the dashboard
-acc broker start            # arranca el broker en 127.0.0.1:7899 / starts the broker
-open http://127.0.0.1:7899  # abre el dashboard / opens the dashboard
+acc app                     # arranca el broker y abre el dashboard / starts broker + opens dashboard
 
 #    (o desde el CLI / or from the CLI)
 acc project create my-app -d "My application"
@@ -167,9 +166,9 @@ npm link                 # instala "acc" / installs "acc" globally
 ```
 
 ```bash
-acc broker start
-open http://127.0.0.1:7899    # macOS
-xdg-open http://127.0.0.1:7899  # Linux
+acc app                          # arranca el broker y abre el dashboard
+# o sin abrir el navegador / or without auto-opening the browser:
+acc app --no-open
 ```
 
 <details>
@@ -277,13 +276,16 @@ npm run test:watch                 # watch mode
 |---|---|
 | `acc config set lang <en\|es>` | Cambiar idioma / Change language |
 
-### Broker
+### Dashboard / Broker
 
 | Comando / Command | Descripción / Description |
 |---|---|
-| `acc broker start` | Arrancar broker / Start broker |
-| `acc broker stop` | Parar broker / Stop broker |
-| `acc broker status` | Estado / Status |
+| `acc app [--port N] [--no-open]` | Arranca el broker y abre el dashboard / Starts the broker and opens the dashboard |
+| `acc status` | Estado del broker / Broker status (also lists peers) |
+
+> El broker es un daemon — se auto-arranca con `acc app` o `acc up` y queda en `127.0.0.1:7899` por defecto. Para detenerlo: `lsof -ti :7899 \| xargs kill` (Linux/macOS).
+>
+> The broker is a daemon — auto-starts with `acc app` or `acc up`, listening on `127.0.0.1:7899` by default. To stop it: `lsof -ti :7899 \| xargs kill` (Linux/macOS).
 
 ---
 

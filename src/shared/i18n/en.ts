@@ -16,7 +16,7 @@ export const en: Record<string, string> = {
 
   // ── status.ts ───────────────────────────────────────────────
   'status.brokerNotRunning': 'Broker is not running.',
-  'status.startHint': 'Start it with: acc broker start',
+  'status.startHint': 'Start it with: acc app',
   'status.heading': 'Broker Status',
   'status.statusLabel': 'Status:',
   'status.peersLabel': 'Peers:',

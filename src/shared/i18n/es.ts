@@ -16,7 +16,7 @@ export const es: Record<string, string> = {
 
   // ── status.ts ───────────────────────────────────────────────
   'status.brokerNotRunning': 'El broker no est\u00e1 corriendo.',
-  'status.startHint': 'Ini\u00e9cialo con: acc broker start',
+  'status.startHint': 'Ini\u00e9cialo con: acc app',
   'status.heading': 'Estado del Broker',
   'status.statusLabel': 'Estado:',
   'status.peersLabel': 'Peers:',
