@@ -40,16 +40,34 @@ so no stale wiring lingers.
 | Name         | What it does                                                  | Requires env                  | Launch command                                              |
 |--------------|---------------------------------------------------------------|-------------------------------|-------------------------------------------------------------|
 | `git`        | Read-only git inspection (log, diff, show, status)            | —                             | `uvx mcp-server-git --repository <agent cwd>`               |
-| `postgres`   | Read-only SQL access (SELECTs only)                            | `POSTGRES_CONNECTION_STRING`  | `npx -y @modelcontextprotocol/server-postgres <conn-string>`|
+| `postgres`   | Read-only SQL access (SELECTs only)                            | `POSTGRES_CONNECTION_STRING`  | `npx -y @modelcontextprotocol/server-postgres <conn-string>` ⚠️ deprecated, see below |
 | `playwright` | Browser automation (navigate, click, fill, screenshot)         | —                             | `npx -y @playwright/mcp@latest`                             |
 
 You'll need the underlying runners installed on your machine:
 
 - `uvx` — installs Python MCP servers in an ephemeral env. Install
   with `pip install pipx && pipx install uv` or via your package
-  manager.
+  manager. First `git`-power spawn downloads ~33 deps; subsequent
+  spawns reuse the cached install (~ms boot).
 - `npx` — bundled with Node.js. Used for both `postgres` and
   `playwright`.
+
+### Postgres power: upstream deprecation (as of 2026-05)
+
+`@modelcontextprotocol/server-postgres@0.6.2` prints
+`Package no longer supported. Contact Support at https://www.npmjs.com/support`
+on every spawn. The package still works for now, but it will likely
+stop receiving security fixes. Maintained alternatives at the time of
+writing include `@henkey/postgres-mcp-server` (Node) and
+`crystaldba/postgres-mcp` (Python, served via uvx). We did NOT swap
+the registry in v0.3.2 because the MCP-postgres ecosystem is still
+fragmenting — see FU-Z in `docs/audits/v0.3.2-powers-observability/
+followups.md`. Switching is a one-line registry change once the
+community converges on a successor.
+
+For now: if your team relies on the postgres power, treat the
+deprecation warning as a soft DEPRECATED notice. The `git` and
+`playwright` powers are unaffected.
 
 Adding a new power is a code change: append an entry to
 `POWERS_REGISTRY` in `src/shared/powers.ts`, add a test in
