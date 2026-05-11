@@ -111,6 +111,24 @@ export interface SharedStateEntry {
   created_at?: string | null;
 }
 
+// ── Powers (v0.3.2 FASE A-1) ──────────────────────────────────
+//
+// A "power" attaches an external MCP server to a specific agent at
+// spawn time (e.g. an agent with the `git` power gets the
+// mcp-server-git MCP tools alongside the ACC tools). The full
+// definition (command, args, etc.) lives in the server-only registry
+// at src/shared/powers.ts. This wire shape is the *public* face the
+// dashboard renders — name, description, and the env vars the user
+// must populate before the power will work.
+export interface Power {
+  name: string;
+  description: string;
+  // Env var names the agent's process must inherit. Empty when the
+  // power has no env requirements. The dashboard surfaces these as a
+  // hint when the power is toggled on.
+  requiredEnv: string[];
+}
+
 // ── Project config (persisted as JSON) ─────────────────────────
 
 export interface AgentConfig {
@@ -122,6 +140,10 @@ export interface AgentConfig {
   instructions: string;
   avatar?: string;
   model?: string;
+  // FASE A-1 (v0.3.2): canonical power names (e.g. ['git', 'postgres']).
+  // The spawner resolves each name against POWERS_REGISTRY at boot;
+  // unknown names are warned + skipped (see src/cli/spawn.ts).
+  powers?: string[];
 }
 
 export interface ProjectConfig {

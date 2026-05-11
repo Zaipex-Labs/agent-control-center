@@ -257,6 +257,9 @@ export const addAgentSchema = z.object({
   cwd: z.string().min(1),
   name: z.string().optional(),
   instructions: z.string().optional(),
+  // FASE A-1 (v0.3.2). Optional canonical power names. Unknown names
+  // are warned + skipped by the spawner; here we only shape-check.
+  powers: z.array(z.string()).optional(),
 });
 
 // FU-D: shape for a single agent in updateProjectSchema. Mirrors the
@@ -269,6 +272,8 @@ const agentEntrySchema = z.object({
   instructions: z.string().optional(),
   avatar: z.string().optional(),
   model: z.string().optional(),
+  // FASE A-1 (v0.3.2). See addAgentSchema for semantics.
+  powers: z.array(z.string()).optional(),
 });
 
 export const updateProjectSchema = z.object({
