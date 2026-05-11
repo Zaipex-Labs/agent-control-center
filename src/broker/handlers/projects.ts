@@ -17,6 +17,7 @@ import { getDefaultName } from '../../shared/utils.js';
 import { ARCHITECT_ROLE, ARCHITECT_DEFAULT_INSTRUCTIONS } from '../../shared/names.js';
 import { assertSafeIdentifier, assertSafeDisplayName } from '../../shared/validate.js';
 import { clearSpawnState } from '../spawn-state.js';
+import { detachPeer as detachTokenTail } from '../token-tail.js';
 import { registerMcpServer, killTmuxSession, hasTmuxSession as hasTmuxSess, listTmuxSessions } from '../../cli/spawn.js';
 import { spawnWebAgent, killAllWebAgents, getWebAgent } from '../terminal.js';
 import { gitModifiedFiles } from '../files.js';
@@ -769,6 +770,8 @@ export async function handleProjectDown(body: unknown, res: ServerResponse): Pro
       // Process already dead
     }
     deletePeer(peer.id);
+    // FASE A v0.3.3 — stop tailing this peer's Claude session JSONL.
+    detachTokenTail(peer.id);
   }
 
   // Kill tmux session (if started via CLI)

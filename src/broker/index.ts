@@ -65,6 +65,7 @@ import {
   handleDownloadBlob,
   handleBlobStats,
   handleListPowers,
+  handleProjectTokens,
 } from './handlers.js';
 
 type PostHandler = (body: unknown, res: ServerResponse) => void | Promise<void>;
@@ -236,6 +237,17 @@ export function createBrokerServer(): Server {
       const projectId = decodeURIComponent(spawnStateMatch[1]);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ phases: getSpawnState(projectId) }));
+      return;
+    }
+
+    // FASE A v0.3.3 — token usage aggregate for a project, bucketed
+    // by agent / hour / top-5 turn. Period is `today | week | month`,
+    // default `today`. Source rows are populated by the JSONL tailer.
+    const tokensMatch = url.match(/^\/api\/projects\/([^/?]+)\/tokens(?:\?(.+))?$/);
+    if (method === 'GET' && tokensMatch) {
+      const projectId = decodeURIComponent(tokensMatch[1]);
+      const query = new URLSearchParams(tokensMatch[2] ?? '');
+      handleProjectTokens(projectId, query.get('period'), res);
       return;
     }
 

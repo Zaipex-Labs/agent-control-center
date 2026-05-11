@@ -363,6 +363,24 @@ export const es: Record<string, string> = {
   'dash.attach.tooLarge': 'Archivo demasiado grande',
   'dash.attach.download': 'Descargar',
 
+  // FASE A v0.3.3 — TokensPanel
+  'dash.tokensSection': 'Tokens hoy',
+  'dash.tokensTotal': 'Total',
+  'dash.tokensTurns': 'turnos',
+  'dash.tokensLoading': 'Cargando uso...',
+  'dash.tokensEmpty': 'Sin uso registrado todavía.',
+  'dash.tokensSeeDetail': 'Ver detalle →',
+  'dash.tokensDetailTitle': 'Uso de tokens',
+  'dash.tokensByHour': 'Por hora',
+  'dash.tokensTopTurns': 'Top 5 turnos más caros',
+  'dash.tokensInput': 'Input',
+  'dash.tokensOutput': 'Output',
+  'dash.tokensCacheCreation': 'Cache creation',
+  'dash.tokensCacheRead': 'Cache read',
+  'dash.tokensPeriod.today': 'Hoy',
+  'dash.tokensPeriod.week': 'Semana',
+  'dash.tokensPeriod.month': 'Mes',
+
   // SharedStatePanel
   'dash.sharedState': 'Estado compartido',
   'dash.loading': 'Cargando...',

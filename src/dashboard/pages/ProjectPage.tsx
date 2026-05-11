@@ -12,6 +12,7 @@ import { useDashboardPeer, DashboardPeerContext } from '../hooks/useDashboardPee
 import Chat from '../components/Chat';
 import Compose from '../components/Compose';
 import SharedStatePanel from '../components/SharedStatePanel';
+import TokensPanel from '../components/TokensPanel';
 import AgentTerminalView from '../components/AgentTerminalView';
 import AgentDesk, { type DeskState } from '../components/AgentDesk';
 import Avatar from '../components/Avatar';
@@ -725,6 +726,10 @@ export default function ProjectPage() {
 
             <RightPanelSection title={t('dash.sharedState')}>
               <SharedStatePanel projectId={projectId} refreshKey={sharedRefresh} />
+            </RightPanelSection>
+
+            <RightPanelSection title={t('dash.tokensSection')}>
+              <TokensPanel projectId={projectId} refreshKey={sharedRefresh} />
             </RightPanelSection>
 
             <RightPanelSection title={t('dash.timeline')}>
