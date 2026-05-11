@@ -212,6 +212,8 @@ export const es: Record<string, string> = {
   'dash.agentName': 'Nombre (opcional)',
   'dash.agentNamePlaceholder': 'ej. Turing',
   'dash.instructions': 'Instrucciones (opcional)',
+  'dash.powersLabel': 'Powers (servidores MCP extra)',
+  'dash.powersRequires': 'Requiere variable(s) de entorno: {vars}. Expórtalas en tu shell antes de encender.',
   'dash.avatarPresets': 'Predise\u00f1ados',
   'dash.avatarUpload': 'Subir imagen',
   'dash.avatarReset': 'Restablecer',

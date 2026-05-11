@@ -212,6 +212,8 @@ export const en: Record<string, string> = {
   'dash.agentName': 'Name (optional)',
   'dash.agentNamePlaceholder': 'e.g. Turing',
   'dash.instructions': 'Instructions (optional)',
+  'dash.powersLabel': 'Powers (extra MCP servers)',
+  'dash.powersRequires': 'Requires env var(s): {vars}. Export them in your shell before powering up.',
   'dash.avatarPresets': 'Presets',
   'dash.avatarUpload': 'Upload image',
   'dash.avatarReset': 'Reset',

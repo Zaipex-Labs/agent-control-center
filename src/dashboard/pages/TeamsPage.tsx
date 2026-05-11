@@ -4,8 +4,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listProjects, projectUp, projectDown, createProject, updateProject, deleteProject } from '../lib/api';
-import type { Project, AgentConfig } from '../lib/types';
+import { listProjects, projectUp, projectDown, createProject, updateProject, deleteProject, listPowers } from '../lib/api';
+import type { Project, AgentConfig, Power } from '../lib/types';
 import Avatar from '../components/Avatar';
 import AgentIdCard, { type AgentDraft } from '../components/AgentIdCard';
 import CompactAgentIdCard, { type CompactAgentDraft } from '../components/CompactAgentIdCard';
@@ -427,6 +427,9 @@ export default function TeamsPage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
   const [selectedName, setSelectedName] = useState<string | null>(null);
+  // FASE A-3 (v0.3.2). One-shot fetch on mount — the registry is
+  // static at the server, no need to refetch on project changes.
+  const [availablePowers, setAvailablePowers] = useState<Power[]>([]);
   const navigate = useNavigate();
 
   const isProjectActive = (p: Project): boolean =>
@@ -473,6 +476,10 @@ export default function TeamsPage() {
       .then(setProjects)
       .catch(() => setProjects([]))
       .finally(() => setLoading(false));
+    // Fetch the powers registry once on mount. listPowers() swallows
+    // errors and returns [] so a broker temporarily missing /api/powers
+    // simply hides the section.
+    listPowers().then(setAvailablePowers);
   }, []);
 
   // Auto-select the first project once they load, prefer active ones so the
@@ -579,7 +586,15 @@ export default function TeamsPage() {
 
   const handleSaveEdit = async (
     description: string,
-    agents: Array<{ role: string; cwd: string; name?: string; instructions?: string }>,
+    agents: Array<{
+      role: string;
+      cwd: string;
+      name?: string;
+      instructions?: string;
+      avatar?: string;
+      model?: string;
+      powers?: string[];
+    }>,
   ) => {
     if (!editing) return;
     setSavingEdit(true);
@@ -785,6 +800,7 @@ export default function TeamsPage() {
           onClose={() => setEditing(null)}
           onSubmit={handleSaveEdit}
           saving={savingEdit}
+          availablePowers={availablePowers}
         />
       )}
 
@@ -815,11 +831,20 @@ export default function TeamsPage() {
   );
 }
 
-function EditProjectModal({ project, onClose, onSubmit, saving }: {
+function EditProjectModal({ project, onClose, onSubmit, saving, availablePowers }: {
   project: Project;
   onClose: () => void;
-  onSubmit: (description: string, agents: Array<{ role: string; cwd: string; name?: string; instructions?: string; avatar?: string; model?: string }>) => void;
+  onSubmit: (description: string, agents: Array<{
+    role: string;
+    cwd: string;
+    name?: string;
+    instructions?: string;
+    avatar?: string;
+    model?: string;
+    powers?: string[];
+  }>) => void;
   saving: boolean;
+  availablePowers: Power[];
 }) {
   const [description, setDescription] = useState(project.description ?? '');
   const [agents, setAgents] = useState<AgentDraft[]>(() => {
@@ -830,6 +855,7 @@ function EditProjectModal({ project, onClose, onSubmit, saving }: {
       instructions: a.instructions ?? '',
       avatar: a.avatar ?? '',
       model: a.model ?? '',
+      powers: a.powers ?? [],
     }));
     if (!mapped.some(a => a.role === ARCHITECT_ROLE)) {
       mapped.unshift({
@@ -839,6 +865,7 @@ function EditProjectModal({ project, onClose, onSubmit, saving }: {
         instructions: ARCHITECT_DEFAULT_INSTRUCTIONS,
         avatar: '',
         model: '',
+        powers: [],
       });
     }
     return mapped;
@@ -846,7 +873,7 @@ function EditProjectModal({ project, onClose, onSubmit, saving }: {
 
   const addCard = () => setAgents(prev => [
     ...prev,
-    { role: '', cwd: '', name: '', instructions: '', avatar: '', model: '' },
+    { role: '', cwd: '', name: '', instructions: '', avatar: '', model: '', powers: [] },
   ]);
   const removeCard = (i: number) => {
     if (agents[i]?.role === ARCHITECT_ROLE) return;
@@ -934,6 +961,7 @@ function EditProjectModal({ project, onClose, onSubmit, saving }: {
                 onDelete={() => removeCard(i)}
                 locked={agent.role === ARCHITECT_ROLE}
                 lockedHint={agent.role === ARCHITECT_ROLE ? '🔒 Tech Lead permanente — coordinador del equipo' : undefined}
+                availablePowers={availablePowers}
               />
             );
           })}

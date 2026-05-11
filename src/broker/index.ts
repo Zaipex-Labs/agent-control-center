@@ -63,6 +63,7 @@ import {
   handleUploadBlob,
   handleDownloadBlob,
   handleBlobStats,
+  handleListPowers,
 } from './handlers.js';
 
 type PostHandler = (body: unknown, res: ServerResponse) => void | Promise<void>;
@@ -217,6 +218,12 @@ export function createBrokerServer(): Server {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ lang: getLang() }));
       return;
+    }
+
+    // FASE A-3 (v0.3.2). Stateless registry projection — no auth, no
+    // body, no project context. Returns {powers: Power[]}.
+    if (method === 'GET' && url === '/api/powers') {
+      return handleListPowers(res);
     }
 
     if (method === 'GET' && url.startsWith('/api/browse')) {
