@@ -282,7 +282,10 @@ export const es: Record<string, string> = {
   'dash.errorCreating': 'Error al crear: {error}',
   'dash.registeringMcp': 'Encendiendo las luces de la oficina (MCP)...',
   'dash.spawningAgents': 'Abriendo la oficina (tmux)...',
-  'dash.agentStarted': '{name} ({role}) hizo check-in',
+  // v0.3.3 PRE-4: "hizo check-in" was misleading — it fired immediately
+  // after the broker forked the process, BEFORE the agent registered.
+  // "despertando" matches the office metaphor and the actual state.
+  'dash.agentStarted': '{name} ({role}) despertando',
   'dash.waitingConnect': 'Esperando a que todos lleguen a sus escritorios (broker)...',
   'dash.teamUp': '\u00a1Equipo listo para trabajar!',
 

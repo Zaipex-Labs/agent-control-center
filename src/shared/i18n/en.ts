@@ -282,7 +282,9 @@ export const en: Record<string, string> = {
   'dash.errorCreating': 'Error creating: {error}',
   'dash.registeringMcp': 'Flipping the office lights on (MCP)...',
   'dash.spawningAgents': 'Unlocking the office (tmux)...',
-  'dash.agentStarted': '{name} ({role}) clocked in',
+  // v0.3.3 PRE-4: "clocked in" was misleading — it fired immediately
+  // after the broker forked the process, BEFORE the agent registered.
+  'dash.agentStarted': '{name} ({role}) waking up',
   'dash.waitingConnect': 'Waiting for everyone to reach their desks (broker)...',
   'dash.teamUp': 'Team ready to work!',
 
