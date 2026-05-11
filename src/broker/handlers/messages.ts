@@ -22,6 +22,7 @@ import type {
   Peer,
 } from '../../shared/types.js';
 import {
+  getDb,
   selectPeerById,
   selectPeersByRole,
   insertMessage,
@@ -155,8 +156,17 @@ function loadThreadContext(
 //   2. Insert into message_log (the audit/history table).
 //   3. Register one blob_ref per attachment so cleanup can release the
 //      bytes when this specific message is dropped.
-//   4. Best-effort tmux notify, deduped per role so a 3-backend
-//      broadcast only triggers one send-keys per pane.
+// Then touch the thread's updated_at if a thread is in play.
+//
+// [P-17] All DB writes happen inside a single db.transaction(). Before
+// this each insert/touch was its own implicit transaction, meaning a
+// send-to-role broadcast to 3 peers with 2 attachments each used to
+// fsync the WAL 7+ times. The transaction collapses that into one
+// commit, and also gives us atomic rollback if any single statement
+// throws (e.g. a peer row vanished between selectPeersByRole and
+// insertMessage). Tmux notification is intentionally kept outside the
+// transaction — it shells out via execFileSync (3s timeout) and would
+// otherwise hold the WAL lock for the duration of the subprocess.
 function writeMessagesToTargets(
   projectId: string,
   fromPeer: Peer,
@@ -170,20 +180,26 @@ function writeMessagesToTargets(
   threadContext: { name: string; summary: string } | null,
   contextLabel: string,
 ): void {
-  const injectedRoles = new Set<string>();
-
-  for (const target of targets) {
-    if (contextLabel === 'send-to-role') {
-      console.error(`[broker:send-to-role] inserting message: from=${fromPeer.id} to=${target.id} (${target.role})`);
+  getDb().transaction(() => {
+    for (const target of targets) {
+      if (contextLabel === 'send-to-role') {
+        console.error(`[broker:send-to-role] inserting message: from=${fromPeer.id} to=${target.id} (${target.role})`);
+      }
+      const messageId = insertMessage(projectId, fromPeer.id, target.id, type, text, metadata, now, threadId);
+      insertLogEntry(
+        projectId, fromPeer.id, fromPeer.role, target.id, target.role,
+        type, text, metadata, now, fromPeer.id, threadId,
+      );
+      for (const att of incoming) addBlobRef(att.hash, projectId, messageId);
     }
-    const messageId = insertMessage(projectId, fromPeer.id, target.id, type, text, metadata, now, threadId);
-    insertLogEntry(
-      projectId, fromPeer.id, fromPeer.role, target.id, target.role,
-      type, text, metadata, now, fromPeer.id, threadId,
-    );
-    for (const att of incoming) addBlobRef(att.hash, projectId, messageId);
+    if (threadId) touchThread(projectId, threadId);
+  })();
 
-    // Best-effort tmux notify — once per role/window.
+  // Best-effort tmux notify — deduped per role so a 3-backend broadcast
+  // only triggers one send-keys per pane. Runs after commit so a slow
+  // tmux call can never hold the WAL lock.
+  const injectedRoles = new Set<string>();
+  for (const target of targets) {
     if (target.role && !injectedRoles.has(target.role)) {
       if (threadId && threadContext) {
         tmuxInjectWithContext(projectId, target.role, threadContext.name, threadContext.summary, fromPeer.name, fromPeer.role);
@@ -195,10 +211,12 @@ function writeMessagesToTargets(
   }
 }
 
-// Final shared steps: touch the thread row's updated_at, fan out the
-// `message:new` ws event, and reply with `{ ok: true, ... }` shaped
-// the way the caller wants. Caller passes the response shape so each
-// handler keeps its own wire contract (`{ ok }` vs `{ ok, sent_to }`).
+// Final shared steps: fan out the `message:new` ws event and reply
+// with `{ ok: true, ... }` shaped the way the caller wants. Caller
+// passes the response shape so each handler keeps its own wire
+// contract (`{ ok }` vs `{ ok, sent_to }`). The thread touch used to
+// live here; it moved into the writeMessagesToTargets transaction so
+// every per-message side-effect commits in one fsync (P-17).
 function finalizeDelivery(
   projectId: string,
   fromPeer: Peer,
@@ -210,7 +228,6 @@ function finalizeDelivery(
   responseBody: Record<string, unknown>,
   res: ServerResponse,
 ): void {
-  if (threadId) touchThread(projectId, threadId);
   broadcast('message:new', {
     thread_id: threadId,
     from_name: fromPeer.name,
