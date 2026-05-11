@@ -363,6 +363,9 @@ export const es: Record<string, string> = {
   'dash.attach.tooLarge': 'Archivo demasiado grande',
   'dash.attach.download': 'Descargar',
 
+  // FU-Y v0.3.3 — restart hint when powers change on a live team
+  'dash.powersRestartHint': 'Los cambios de powers requieren apagar y encender el agente para aplicar.',
+
   // FASE A v0.3.3 — TokensPanel
   'dash.tokensSection': 'Tokens hoy',
   'dash.tokensTotal': 'Total',

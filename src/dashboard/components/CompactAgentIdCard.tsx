@@ -5,10 +5,12 @@
 import { type CSSProperties, useState } from 'react';
 import Avatar from './Avatar';
 import FolderPicker from './FolderPicker';
+import PowersField from './PowersField';
 import { MODELS, DEFAULT_MODEL_ID } from '../lib/models';
 import { roleStyle } from '../lib/roles';
 import { getDefaultName } from '../../shared/names';
 import { t } from '../../shared/i18n/browser';
+import type { Power } from '../lib/types';
 
 export interface CompactAgentDraft {
   role: string;
@@ -16,6 +18,10 @@ export interface CompactAgentDraft {
   cwd: string;
   instructions: string;
   model: string;
+  // FU-X v0.3.3: powers picker is now available in the Create modal,
+  // so the draft carries the selected powers all the way through
+  // submit instead of forcing an Edit-modal round-trip.
+  powers: string[];
 }
 
 interface CompactAgentIdCardProps {
@@ -24,6 +30,7 @@ interface CompactAgentIdCardProps {
   onDelete: () => void;
   locked?: boolean;
   lockedHint?: string;
+  availablePowers?: Power[];
 }
 
 const labelStyle: CSSProperties = {
@@ -39,7 +46,7 @@ const inputStyle: CSSProperties = {
 
 const selectBgImage = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235a6272' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")";
 
-export default function CompactAgentIdCard({ draft, onChange, onDelete, locked = false, lockedHint }: CompactAgentIdCardProps) {
+export default function CompactAgentIdCard({ draft, onChange, onDelete, locked = false, lockedHint, availablePowers = [] }: CompactAgentIdCardProps) {
   const [focused, setFocused] = useState(false);
 
   const update = <K extends keyof CompactAgentDraft>(field: K, value: CompactAgentDraft[K]) =>
@@ -162,7 +169,19 @@ export default function CompactAgentIdCard({ draft, onChange, onDelete, locked =
           )}
         </div>
 
-        {/* Row 4: Instructions */}
+        {/* Row 4: Powers (FU-X v0.3.3 — only for non-tech-lead agents
+            and only when the registry has at least one power) */}
+        {!locked && availablePowers.length > 0 && (
+          <PowersField
+            value={draft.powers}
+            available={availablePowers}
+            disabled={locked}
+            onChange={next => update('powers', next)}
+            compact
+          />
+        )}
+
+        {/* Row 5: Instructions */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <label style={labelStyle}>{t('dash.instructions')}</label>
           <textarea
