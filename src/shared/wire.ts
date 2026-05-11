@@ -406,7 +406,20 @@ export type BrokerEvent =
   | 'thread:created'
   | 'thread:updated'
   | 'thread:deleted'
-  | 'agent:status';
+  | 'agent:status'
+  // FASE C-1 (v0.3.2). Per-agent spawn progress events.
+  | 'agent:spawning';
+
+// FASE C-1 (v0.3.2) — phases of the spawn checklist.
+// pty_ready: child process spawn() succeeded.
+// mcp_ready: claude's banner appeared (MCP servers loaded).
+// registered: the in-agent MCP server hit /api/register.
+export type SpawnPhase = 'pty_ready' | 'mcp_ready' | 'registered';
+
+export interface AgentSpawningEvent {
+  role: string;
+  phase: SpawnPhase;
+}
 
 export interface WsEvent {
   event: BrokerEvent;

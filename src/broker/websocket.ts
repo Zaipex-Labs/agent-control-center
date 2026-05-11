@@ -15,7 +15,14 @@ export type BrokerEvent =
   | 'thread:created'
   | 'thread:updated'
   | 'thread:deleted'
-  | 'agent:status';
+  | 'agent:status'
+  // FASE C-1 (v0.3.2). Three-phase spawn progress: pty_ready when the
+  // claude child process spawns; mcp_ready when its banner appears
+  // (claude has loaded its MCP servers); registered when the in-agent
+  // MCP server hits /api/register. Payload: { role, phase }. Dashboard
+  // listens via useSpawnPhases to render a per-agent checklist during
+  // the "Encender" flow.
+  | 'agent:spawning';
 
 interface WsClient {
   ws: WebSocket;

@@ -12,6 +12,7 @@ import CompactAgentIdCard, { type CompactAgentDraft } from '../components/Compac
 import { t } from '../../shared/i18n/browser';
 import { getDefaultName, ARCHITECT_ROLE, ARCHITECT_DEFAULT_INSTRUCTIONS } from '../../shared/names';
 import { officeIndex, renderOffice } from '../lib/offices';
+import { useSpawnPhases, type SpawnPhases, type PhaseSet } from '../hooks/useSpawnPhases';
 
 const ROLE_COLORS: Record<string, string> = {
   backend: '#4A9FE8',
@@ -50,7 +51,50 @@ function _AgentBadge({ name, role, avatar }: { name: string; role: string; avata
 
 const AGENTS_PREVIEW = 3;
 
-function ProjectCard({ project, onClick, onPowerUp, onShutdown, onEdit, onDelete, starting, stopping, startLog }: { project: Project; onClick: () => void; onPowerUp: () => void; onShutdown: () => void; onEdit: () => void; onDelete: () => void; starting: boolean; stopping: boolean; startLog: Array<{ text: string; done: boolean }> }) {
+// FASE C-1 (v0.3.2). One row per agent showing the three spawn
+// milestones (PTY → Claude/MCP → Registered). Each phase is a tiny
+// chip: ✓ when broadcast, dim "—" when still pending. Renders inside
+// the boot panel below the global startLog steps.
+function AgentSpawnRow({ agent, phase }: { agent: AgentConfig; phase: PhaseSet | undefined }) {
+  const p = phase ?? { pty_ready: false, mcp_ready: false, registered: false };
+  const allDone = p.pty_ready && p.mcp_ready && p.registered;
+  const inFlightKey: 'pty_ready' | 'mcp_ready' | 'registered' | null =
+    !p.pty_ready ? 'pty_ready' :
+    !p.mcp_ready ? 'mcp_ready' :
+    !p.registered ? 'registered' :
+    null;
+  const cell = (done: boolean, live: boolean, label: string) => (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      fontSize: 11, fontFamily: 'var(--font-mono)',
+      color: done ? '#3DBA7A' : live ? '#E8823A' : '#9AA0AA',
+    }}>
+      {done ? '✓' : live ? '⏳' : '—'}
+      <span>{label}</span>
+    </span>
+  );
+  const displayName = agent.name || getDefaultName(agent.role);
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      gap: 10,
+      animation: 'acc-step-in 0.35s ease both',
+      opacity: allDone ? 0.75 : 1,
+    }}>
+      <span style={{ color: '#5A6272', fontSize: 12 }}>
+        {displayName}{' '}
+        <span style={{ color: '#9AA0AA' }}>({agent.role})</span>
+      </span>
+      <span style={{ display: 'inline-flex', gap: 12 }}>
+        {cell(p.pty_ready, inFlightKey === 'pty_ready', t('dash.spawnPhasePty'))}
+        {cell(p.mcp_ready, inFlightKey === 'mcp_ready', t('dash.spawnPhaseMcp'))}
+        {cell(p.registered, inFlightKey === 'registered', t('dash.spawnPhaseReg'))}
+      </span>
+    </div>
+  );
+}
+
+function ProjectCard({ project, onClick, onPowerUp, onShutdown, onEdit, onDelete, starting, stopping, startLog, spawnPhases }: { project: Project; onClick: () => void; onPowerUp: () => void; onShutdown: () => void; onEdit: () => void; onDelete: () => void; starting: boolean; stopping: boolean; startLog: Array<{ text: string; done: boolean }>; spawnPhases?: SpawnPhases }) {
   const isActive = project.active_peers > 0 || project.tmux_running === true;
   const showingBootPanel = starting && startLog.length > 0;
   const bootFinished = showingBootPanel && startLog.every(s => s.done);
@@ -265,6 +309,24 @@ function ProjectCard({ project, onClick, onPowerUp, onShutdown, onEdit, onDelete
                   <span>{step.text}</span>
                 </div>
               ))}
+              {/* FASE C-1 (v0.3.2). Per-agent spawn checklist —
+                  shown while booting; collapses once the user
+                  enters the office. */}
+              {spawnPhases && project.agents.length > 0 && (
+                <div style={{
+                  marginTop: 8, paddingLeft: 26, paddingTop: 6,
+                  borderTop: '1px dashed #DDD5C8',
+                  display: 'flex', flexDirection: 'column', gap: 4,
+                }}>
+                  {project.agents.map(agent => (
+                    <AgentSpawnRow
+                      key={agent.role}
+                      agent={agent}
+                      phase={spawnPhases[agent.role]}
+                    />
+                  ))}
+                </div>
+              )}
               {startLog.every(s => s.done) && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onClick(); }}
@@ -430,6 +492,10 @@ export default function TeamsPage() {
   // FASE A-3 (v0.3.2). One-shot fetch on mount — the registry is
   // static at the server, no need to refetch on project changes.
   const [availablePowers, setAvailablePowers] = useState<Power[]>([]);
+  // FASE C-1 (v0.3.2). Per-agent spawn phases for the currently
+  // booting project. `starting` doubles as the project name and the
+  // active flag (truthy when in a boot cycle).
+  const spawnPhases = useSpawnPhases(starting ?? undefined, !!starting);
   const navigate = useNavigate();
 
   const isProjectActive = (p: Project): boolean =>
@@ -778,6 +844,7 @@ export default function TeamsPage() {
                 starting={starting === project.name}
                 stopping={stopping === project.name}
                 startLog={starting === project.name ? startLog : []}
+                spawnPhases={starting === project.name ? spawnPhases : undefined}
               />
             ))}
           </div>

@@ -251,6 +251,10 @@ export function spawnWebAgent(
   outputBuffers.set(key, []);
   log(`spawned web agent ${key} pid=${proc.pid} via ${pythonBin}`);
 
+  // FASE C-1 (v0.3.2). First milestone: PTY child spawned. The
+  // dashboard's per-agent checklist ticks 1/3 here.
+  broadcast('agent:spawning', { role, phase: 'pty_ready' }, projectId);
+
   // Buffer all output for later WS clients
   const appendBuffer = (data: Buffer) => {
     const buf = outputBuffers.get(key);
@@ -337,6 +341,12 @@ export function spawnWebAgent(
         if (noSpaces.includes('shortcuts') || noSpaces.includes('bypass')) {
           log(`banner ready for ${key}${accepted ? '' : ' (no accept needed)'} — waiting for MCP registration`);
           bannerSeen = true;
+          // FASE C-1 (v0.3.2). Second milestone: Claude finished
+          // loading its MCP servers (the shortcuts/bypass banner is the
+          // canonical signal). registered fires later from
+          // handleRegister when the in-agent MCP server hits the
+          // broker's /api/register.
+          broadcast('agent:spawning', { role, phase: 'mcp_ready' }, projectId);
           return;
         }
         return;
