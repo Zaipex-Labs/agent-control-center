@@ -57,6 +57,9 @@ interface AgentConfig {
   instructions?: string;
   avatar?: string;
   model?: string;
+  // FASE A-1 (v0.3.2). Persisted as a flat string[] of canonical
+  // power names. The spawner is the only consumer.
+  powers?: string[];
 }
 
 export function handleBrowse(query: string, res: ServerResponse): void {
@@ -326,6 +329,7 @@ export function handleAddAgent(body: unknown, res: ServerResponse): void {
     agent_cmd: 'claude',
     agent_args: [],
     instructions: b.instructions ?? '',
+    ...(b.powers && b.powers.length > 0 ? { powers: b.powers } : {}),
   });
   writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
   json(res, { ok: true });
@@ -381,6 +385,9 @@ export function handleUpdateProject(body: unknown, res: ServerResponse): void {
     instructions: a.instructions?.trim() ?? '',
     avatar: a.avatar ?? '',
     model: a.model ?? '',
+    // FASE A-1 (v0.3.2). Powers only persist when non-empty so the
+    // on-disk JSON stays minimal for agents that don't use them.
+    ...(a.powers && a.powers.length > 0 ? { powers: a.powers } : {}),
   }));
   const withArchitect = ensureArchitect(b.project_id, normalized);
 
@@ -468,9 +475,9 @@ export function handleProjectUp(body: unknown, res: ServerResponse): void {
         reused++;
         continue;
       }
-      console.error(`[broker] project/up: spawning ${b.project_id}:${agent.role} cwd=${agent.cwd}${agent.model ? ` model=${agent.model}` : ''}`);
+      console.error(`[broker] project/up: spawning ${b.project_id}:${agent.role} cwd=${agent.cwd}${agent.model ? ` model=${agent.model}` : ''}${agent.powers?.length ? ` powers=${agent.powers.join(',')}` : ''}`);
       try {
-        spawnWebAgent(b.project_id, agent.role, agent.cwd, agent.name, agent.model);
+        spawnWebAgent(b.project_id, agent.role, agent.cwd, agent.name, agent.model, agent.powers);
         spawned++;
       } catch (e) {
         console.error(`[broker] project/up: spawn failed for ${b.project_id}:${agent.role}: ${e instanceof Error ? e.message : String(e)}`);

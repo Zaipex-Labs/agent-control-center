@@ -98,6 +98,13 @@ export function handleRegister(body: unknown, res: ServerResponse): void {
 
   insertPeer(peer);
   broadcast('peer:connected', peer, peer.project_id);
+  // FASE C-1 (v0.3.2). Final milestone of the per-agent spawn
+  // checklist. Dashboard peers don't go through the
+  // pty_ready / mcp_ready flow so we skip the event for them — they'd
+  // dirty the agent-only checklist with a phantom "Dashboard" row.
+  if (peer.agent_type !== 'dashboard' && role) {
+    broadcast('agent:spawning', { role, phase: 'registered' }, peer.project_id);
+  }
   console.error(`[broker:register] id=${id} name=${name} role=${role} project=${peer.project_id} pid=${peer.pid}`);
   json(res, { id, name });
 }

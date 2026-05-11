@@ -11,8 +11,9 @@ import type {
   SharedGetResponse,
   MessageType,
   Attachment,
+  Power,
 } from './types';
-export type { Attachment };
+export type { Attachment, Power };
 
 async function apiFetch<T>(path: string, body?: unknown): Promise<T> {
   const resp = await fetch(`/api/${path}`, {
@@ -176,11 +177,33 @@ export async function deleteThread(projectId: string, threadId: string, peerId: 
 export async function updateProject(
   projectId: string,
   description: string,
-  agents: Array<{ role: string; cwd: string; name?: string; instructions?: string; avatar?: string }>,
+  agents: Array<{
+    role: string;
+    cwd: string;
+    name?: string;
+    instructions?: string;
+    avatar?: string;
+    model?: string;
+    // FASE A-1/A-3 (v0.3.2). Canonical power names.
+    powers?: string[];
+  }>,
 ): Promise<void> {
   await apiFetch<{ ok: boolean }>('project/update', {
     project_id: projectId, description, agents,
   });
+}
+
+// FASE A-3 (v0.3.2). Read-only — the powers registry lives in code
+// (src/shared/powers.ts), the dashboard just renders it. Returns
+// [] if the fetch fails so the editor degrades gracefully (existing
+// agent.powers values still round-trip from the project config).
+export async function listPowers(): Promise<Power[]> {
+  try {
+    const resp = await apiGet<{ powers: Power[] }>('/api/powers');
+    return resp.powers ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export async function projectUp(projectId: string): Promise<{

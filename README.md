@@ -315,6 +315,10 @@ npm run test:watch                 # watch mode
 `~/.zaipex-acc/projects/<project>/skills/` to inject team conventions
 into every agent's system prompt. See [`docs/skills.md`](docs/skills.md).
 
+**Powers (v0.3.2):** attach extra MCP servers per agent (`git`,
+`postgres`, `playwright`) via the dashboard's Edit modal. See
+[`docs/powers.md`](docs/powers.md).
+
 ---
 
 ## Configuración / Configuration
