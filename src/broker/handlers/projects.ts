@@ -15,7 +15,7 @@ import { join, resolve } from 'node:path';
 import { PROJECTS_DIR, ensureDirectories, techLeadCwd } from '../../shared/config.js';
 import { getDefaultName } from '../../shared/utils.js';
 import { ARCHITECT_ROLE, ARCHITECT_DEFAULT_INSTRUCTIONS } from '../../shared/names.js';
-import { assertSafeIdentifier } from '../../shared/validate.js';
+import { assertSafeIdentifier, assertSafeDisplayName } from '../../shared/validate.js';
 import { registerMcpServer, killTmuxSession, hasTmuxSession as hasTmuxSess, listTmuxSessions } from '../../cli/spawn.js';
 import { spawnWebAgent, killAllWebAgents, getWebAgent } from '../terminal.js';
 import { gitModifiedFiles } from '../files.js';
@@ -309,7 +309,9 @@ export function handleAddAgent(body: unknown, res: ServerResponse): void {
   try {
     assertSafeIdentifier('project_id', b.project_id);
     assertSafeIdentifier('role', b.role);
-    if (b.name) assertSafeIdentifier('name', b.name);
+    // Agent display name is allowed to contain spaces / unicode letters
+    // (e.g. default "Da Vinci", LatAm "café-app"). See validate.ts.
+    if (b.name) assertSafeDisplayName('name', b.name);
   } catch (e) {
     return error(res, e instanceof Error ? e.message : String(e), 400);
   }
@@ -366,7 +368,8 @@ export function handleUpdateProject(body: unknown, res: ServerResponse): void {
     seen.add(a.role);
     try {
       assertSafeIdentifier('role', a.role);
-      if (a.name) assertSafeIdentifier('name', a.name);
+      // Agent display name relaxed (see handleAddAgent comment + validate.ts).
+      if (a.name) assertSafeDisplayName('name', a.name);
     } catch (e) {
       return error(res, e instanceof Error ? e.message : String(e), 400);
     }
