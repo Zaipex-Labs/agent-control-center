@@ -2,111 +2,11 @@
 // Licensed under the Apache License, Version 2.0
 // See LICENSE file for details.
 
-export type { Attachment } from '../../shared/attachments';
+// [Q-4] Dashboard types are now sourced from the shared wire module so
+// broker and dashboard cannot drift. The wire module deliberately
+// avoids node-only imports so this re-export stays browser-clean.
+//
+// Some components/tests import via the `../lib/types` path — keep this
+// shim alive so that contract doesn't break.
 
-export type MessageType =
-  | 'message'
-  | 'question'
-  | 'response'
-  | 'contract_update'
-  | 'notification'
-  | 'task_request'
-  | 'task_complete';
-
-export type ThreadStatus = 'active' | 'archived';
-
-export interface Peer {
-  id: string;
-  project_id: string;
-  pid: number;
-  name: string;
-  role: string;
-  agent_type: string;
-  cwd: string;
-  git_root: string | null;
-  git_branch: string | null;
-  tty: string | null;
-  summary: string;
-  // PRE-2 (v0.3.0): persisted by the broker. Format: `dicebear:<seed>` |
-  // `data:image/...` | absent. resolveAvatarSrc() in lib/avatar.ts handles
-  // each case.
-  avatar?: string;
-  registered_at: string;
-  last_seen: string;
-}
-
-export interface LogEntry {
-  id: number;
-  project_id: string;
-  from_id: string;
-  from_role: string;
-  to_id: string;
-  to_role: string;
-  type: MessageType;
-  text: string;
-  metadata: string | null;
-  thread_id: string | null;
-  sent_at: string;
-  session_id: string;
-}
-
-export interface Thread {
-  id: string;
-  project_id: string;
-  name: string;
-  status: ThreadStatus;
-  summary: string;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-  // Roles that participated in this thread (populated server-side on list).
-  participants?: string[];
-}
-
-export interface SharedStateEntry {
-  value: string;
-  updated_by: string;
-  updated_at: string;
-}
-
-export interface AgentConfig {
-  role: string;
-  name?: string;
-  cwd: string;
-  agent_cmd: string;
-  agent_args: string[];
-  instructions: string;
-  avatar?: string;
-  model?: string;
-}
-
-export interface Project {
-  name: string;
-  description: string;
-  created_at: string;
-  agents: AgentConfig[];
-  active_peers: number;
-  peers: Peer[];
-  tmux_running?: boolean;
-}
-
-export interface HealthResponse {
-  status: 'ok';
-  peers: number;
-  pending_messages: number;
-}
-
-export type BrokerEvent =
-  | 'peer:connected'
-  | 'peer:disconnected'
-  | 'message:new'
-  | 'shared:updated'
-  | 'thread:created'
-  | 'thread:updated'
-  | 'thread:deleted'
-  | 'agent:status';
-
-export interface WsEvent {
-  event: BrokerEvent;
-  data: unknown;
-}
+export * from '../../shared/wire';

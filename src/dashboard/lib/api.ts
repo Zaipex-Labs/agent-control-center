@@ -8,7 +8,7 @@ import type {
   Thread,
   Project,
   HealthResponse,
-  SharedStateEntry,
+  SharedGetResponse,
   MessageType,
   Attachment,
 } from './types';
@@ -318,8 +318,8 @@ export async function getSharedState(
   peerId: string,
   namespace: string,
   key: string,
-): Promise<SharedStateEntry> {
-  return apiFetch<SharedStateEntry>('shared/get', {
+): Promise<SharedGetResponse> {
+  return apiFetch<SharedGetResponse>('shared/get', {
     project_id: projectId,
     peer_id: peerId,
     namespace,

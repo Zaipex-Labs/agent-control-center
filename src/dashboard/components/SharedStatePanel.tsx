@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { listSharedKeys, getSharedState } from '../lib/api';
-import type { SharedStateEntry } from '../lib/types';
+import type { SharedGetResponse } from '../lib/types';
 import { t } from '../../shared/i18n/browser';
 import { useCurrentPeerId } from '../hooks/useDashboardPeer';
 
@@ -51,7 +51,7 @@ function JsonPreview({ value }: { value: string }) {
 function NamespaceCard({ ns, projectId, peerId }: { ns: NamespaceData; projectId: string; peerId: string | undefined }) {
   const [expanded, setExpanded] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [keyValue, setKeyValue] = useState<SharedStateEntry | null>(null);
+  const [keyValue, setKeyValue] = useState<SharedGetResponse | null>(null);
 
   const loadKey = useCallback(async (key: string) => {
     if (selectedKey === key) {
