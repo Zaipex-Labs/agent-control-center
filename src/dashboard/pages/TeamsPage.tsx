@@ -828,7 +828,7 @@ export default function TeamsPage() {
             border: '1px dashed #DDD5C8', borderRadius: 12,
             background: '#FAF7F1',
           }}>
-            {search ? t('dash.noMatches') : t('ui.noProjects')}
+            {search ? t('dash.noMatches') : t('dash.noTeams')}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
