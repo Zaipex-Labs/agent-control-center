@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import type { ServerResponse } from 'node:http';
-import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
