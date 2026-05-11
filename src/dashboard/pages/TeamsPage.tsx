@@ -964,6 +964,10 @@ function EditProjectModal({ project, onClose, onSubmit, saving, availablePowers 
         position: 'fixed', inset: 0, background: 'rgba(15,24,36,0.5)',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
         zIndex: 100, padding: '40px 20px', overflowY: 'auto',
+        // v0.3.2.1 MED-1: keep modal scroll contained so it doesn't chain
+        // to the page behind. Also tightens the textarea→modal chain by
+        // making the modal the unambiguous scroll owner.
+        overscrollBehavior: 'contain',
       }}
     >
       <div
@@ -1208,6 +1212,10 @@ function CreateProjectModal({ onClose, onSubmit, creating }: {
         position: 'fixed', inset: 0, background: 'rgba(15,24,36,0.5)',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
         zIndex: 100, padding: '40px 20px', overflowY: 'auto',
+        // v0.3.2.1 MED-1: keep modal scroll contained so it doesn't chain
+        // to the page behind. Also tightens the textarea→modal chain by
+        // making the modal the unambiguous scroll owner.
+        overscrollBehavior: 'contain',
       }}
     >
       <div

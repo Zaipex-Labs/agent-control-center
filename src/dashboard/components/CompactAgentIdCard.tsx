@@ -169,8 +169,12 @@ export default function CompactAgentIdCard({ draft, onChange, onDelete, locked =
             value={draft.instructions}
             onChange={e => update('instructions', e.target.value)}
             placeholder={t('dash.instructionsPlaceholder')}
-            rows={2}
-            style={{ ...inputStyle, resize: 'vertical', minHeight: 52, lineHeight: 1.5 }}
+            // v0.3.2.1 MED-1: rows bumped from 2 → 4 for the same reason as
+            // AgentIdCard. Compact card stays smaller (2 fewer rows) since
+            // CreateProjectModal already has multiple cards stacked.
+            // textarea overscroll left on default `auto` — see AgentIdCard.
+            rows={4}
+            style={{ ...inputStyle, resize: 'vertical', minHeight: 80, lineHeight: 1.5 }}
             onFocus={e => { e.currentTarget.style.borderColor = '#4A9FE8'; e.currentTarget.style.background = '#fff'; }}
             onBlur={e => { e.currentTarget.style.borderColor = '#DDD5C8'; e.currentTarget.style.background = '#F0ECE3'; }}
           />
