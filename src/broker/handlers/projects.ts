@@ -475,9 +475,9 @@ export function handleProjectUp(body: unknown, res: ServerResponse): void {
         reused++;
         continue;
       }
-      console.error(`[broker] project/up: spawning ${b.project_id}:${agent.role} cwd=${agent.cwd}${agent.model ? ` model=${agent.model}` : ''}`);
+      console.error(`[broker] project/up: spawning ${b.project_id}:${agent.role} cwd=${agent.cwd}${agent.model ? ` model=${agent.model}` : ''}${agent.powers?.length ? ` powers=${agent.powers.join(',')}` : ''}`);
       try {
-        spawnWebAgent(b.project_id, agent.role, agent.cwd, agent.name, agent.model);
+        spawnWebAgent(b.project_id, agent.role, agent.cwd, agent.name, agent.model, agent.powers);
         spawned++;
       } catch (e) {
         console.error(`[broker] project/up: spawn failed for ${b.project_id}:${agent.role}: ${e instanceof Error ? e.message : String(e)}`);

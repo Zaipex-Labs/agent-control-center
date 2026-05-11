@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import type { AgentConfig } from '../shared/types.js';
 import { resolveEntryPoint, getDefaultName } from '../shared/utils.js';
 import { assertSafeIdentifier } from '../shared/validate.js';
+import { prepareAgentMcpConfig } from './mcp-config.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -85,17 +86,40 @@ function buildAgentEnv(projectName: string, agent: AgentConfig): NodeJS.ProcessE
 
 const MCP_SERVER_NAME = 'zaipex-acc';
 
-function buildAgentCommand(agent: AgentConfig): { cmd: string; args: string[] } {
+// FASE A-2 (v0.3.2). `mcpConfigPath`, when provided, is wired into
+// claude as `--mcp-config <path>`. The file holds the per-agent
+// powers (extra MCP servers); the ACC team-coordination server stays
+// the user-scope registration the broker already manages.
+function buildAgentCommand(agent: AgentConfig, mcpConfigPath?: string | null): { cmd: string; args: string[] } {
   const args = [
     '--dangerously-skip-permissions',
     '--dangerously-load-development-channels',
     `server:${MCP_SERVER_NAME}`,
     ...agent.agent_args,
   ];
+  if (mcpConfigPath) {
+    args.push('--mcp-config', mcpConfigPath);
+  }
   if (agent.instructions) {
     args.push('--instruction', agent.instructions);
   }
   return { cmd: agent.agent_cmd, args };
+}
+
+// Resolve and persist the agent's MCP config for this spawn, log any
+// warnings to stderr, and return the path (or null when no power
+// applies). Centralized here so each spawn strategy invokes it the
+// same way — keeps the warning channel uniform across tmux/web/win.
+function preparePowersForSpawn(projectName: string, agent: AgentConfig): string | null {
+  const prep = prepareAgentMcpConfig(projectName, {
+    powers: agent.powers,
+    cwd: agent.cwd,
+    role: agent.role,
+  });
+  for (const w of prep.warnings) {
+    process.stderr.write(w + '\n');
+  }
+  return prep.configPath;
 }
 
 function buildTmuxEnvExports(projectName: string, agent: AgentConfig): string {
@@ -131,7 +155,8 @@ function assertSafeSpawnInputs(projectName: string, agents: AgentConfig[]): void
 // never reaches a Node shell — Node hands it to tmux via execFileSync,
 // and tmux types it into the pane via send-keys.
 function buildPaneCommandLine(projectName: string, agent: AgentConfig): string {
-  const { cmd, args } = buildAgentCommand(agent);
+  const mcpConfigPath = preparePowersForSpawn(projectName, agent);
+  const { cmd, args } = buildAgentCommand(agent, mcpConfigPath);
   const envExports = buildTmuxEnvExports(projectName, agent);
   return `${envExports} ${cmd} ${args.map(shellEscape).join(' ')}`;
 }
@@ -272,7 +297,8 @@ export function spawnWithWindowsTerminal(
   const pids: number[] = [];
 
   for (const agent of agents) {
-    const { cmd, args } = buildAgentCommand(agent);
+    const mcpConfigPath = preparePowersForSpawn(projectName, agent);
+    const { cmd, args } = buildAgentCommand(agent, mcpConfigPath);
     const child = cpSpawn('cmd.exe', ['/c', 'start', cmd, ...args], {
       cwd: agent.cwd,
       detached: true,
@@ -295,7 +321,8 @@ export function spawnWithFallback(
   const pids: number[] = [];
 
   for (const agent of agents) {
-    const { cmd, args } = buildAgentCommand(agent);
+    const mcpConfigPath = preparePowersForSpawn(projectName, agent);
+    const { cmd, args } = buildAgentCommand(agent, mcpConfigPath);
     const child = cpSpawn(cmd, args, {
       cwd: agent.cwd,
       detached: true,

@@ -14,6 +14,7 @@ import { selectPeersByProject, getSharedState, deleteSharedState } from './datab
 import { broadcast } from './websocket.js';
 import { isAllowedOrigin, rejectUpgrade } from './origin.js';
 import { consumeToken } from './csrf-tokens.js';
+import { prepareAgentMcpConfig } from '../cli/mcp-config.js';
 
 // Locate a usable python3 binary. When the broker is launched via nohup /
 // launchd the PATH can lose /usr/local/bin or /opt/homebrew/bin, and
@@ -177,7 +178,14 @@ function processKey(projectId: string, role: string): string {
   return `${projectId}:${role}`;
 }
 
-export function spawnWebAgent(projectId: string, role: string, cwd: string, name?: string, model?: string): ChildProcess {
+export function spawnWebAgent(
+  projectId: string,
+  role: string,
+  cwd: string,
+  name?: string,
+  model?: string,
+  powers?: string[],
+): ChildProcess {
   const key = processKey(projectId, role);
 
   // Kill existing if any
@@ -199,6 +207,19 @@ export function spawnWebAgent(projectId: string, role: string, cwd: string, name
   // roles can run on different models (opus for architect, haiku for qa).
   if (model && model.trim()) {
     claudeArgs.push('--model', model.trim());
+  }
+
+  // FASE A-2 (v0.3.2). Resolve the agent's powers against the registry
+  // and write a per-agent --mcp-config JSON. Warnings (unknown power,
+  // missing env) land on broker stderr alongside the spawn log; the
+  // dashboard surfaces them via the existing terminal-buffer stream
+  // because they tail into the agent's stderr capture.
+  const prep = prepareAgentMcpConfig(projectId, { powers, cwd, role });
+  for (const w of prep.warnings) {
+    log(w);
+  }
+  if (prep.configPath) {
+    claudeArgs.push('--mcp-config', prep.configPath);
   }
 
   const env = {
