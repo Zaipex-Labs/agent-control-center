@@ -828,7 +828,7 @@ export default function TeamsPage() {
             border: '1px dashed #DDD5C8', borderRadius: 12,
             background: '#FAF7F1',
           }}>
-            {search ? t('dash.noMatches') : t('ui.noProjects')}
+            {search ? t('dash.noMatches') : t('dash.noTeams')}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -964,6 +964,10 @@ function EditProjectModal({ project, onClose, onSubmit, saving, availablePowers 
         position: 'fixed', inset: 0, background: 'rgba(15,24,36,0.5)',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
         zIndex: 100, padding: '40px 20px', overflowY: 'auto',
+        // v0.3.2.1 MED-1: keep modal scroll contained so it doesn't chain
+        // to the page behind. Also tightens the textarea→modal chain by
+        // making the modal the unambiguous scroll owner.
+        overscrollBehavior: 'contain',
       }}
     >
       <div
@@ -1208,6 +1212,10 @@ function CreateProjectModal({ onClose, onSubmit, creating }: {
         position: 'fixed', inset: 0, background: 'rgba(15,24,36,0.5)',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
         zIndex: 100, padding: '40px 20px', overflowY: 'auto',
+        // v0.3.2.1 MED-1: keep modal scroll contained so it doesn't chain
+        // to the page behind. Also tightens the textarea→modal chain by
+        // making the modal the unambiguous scroll owner.
+        overscrollBehavior: 'contain',
       }}
     >
       <div

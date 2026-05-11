@@ -4,6 +4,7 @@
 
 export const es: Record<string, string> = {
   // ── ui.ts ───────────────────────────────────────────────────
+  // CLI-context message — keep referencing the CLI sub-command.
   'ui.noProjects': 'No se encontraron proyectos. Crea uno con: acc project create <nombre>',
   'ui.projectsHeading': 'Proyectos',
   'ui.noAgents': 'Sin agentes configurados.',
@@ -15,7 +16,7 @@ export const es: Record<string, string> = {
 
   // ── status.ts ───────────────────────────────────────────────
   'status.brokerNotRunning': 'El broker no est\u00e1 corriendo.',
-  'status.startHint': 'Ini\u00e9cialo con: acc broker start',
+  'status.startHint': 'Ini\u00e9cialo con: acc app',
   'status.heading': 'Estado del Broker',
   'status.statusLabel': 'Estado:',
   'status.peersLabel': 'Peers:',
@@ -184,6 +185,9 @@ export const es: Record<string, string> = {
   'dash.newTeam': 'Nuevo equipo',
   'dash.yourTeams': 'Tus equipos',
   'dash.teamsSubtitle': 'Gestiona tus equipos de agentes y sus proyectos.',
+  // v0.3.2.1 MED-2: dashboard empty state — point at the "+ Nuevo equipo"
+  // button that's right above this text, not at the CLI command.
+  'dash.noTeams': 'Aún no tienes equipos. Crea el primero con el botón "+ Nuevo equipo".',
   'dash.active': 'Activo',
   'dash.inactive': 'Inactivo',
   'dash.lastActivity': '\u00daltima actividad',

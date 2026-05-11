@@ -306,9 +306,15 @@ export default function AgentIdCard({
             value={draft.instructions}
             onChange={e => update('instructions', e.target.value)}
             placeholder={t('dash.instructionsPlaceholder')}
-            rows={3}
+            // v0.3.2.1 MED-1: rows bumped from 3 → 6 so the Tech Lead's
+            // long pre-filled instructions don't force the user to wheel
+            // through internal scroll to reach the Save button. Modal-level
+            // `overscroll-behavior: contain` (TeamsPage.tsx) keeps things
+            // tidy; textarea stays on default `auto` so wheel chains to
+            // the modal once content edge is reached.
+            rows={6}
             style={{
-              ...inputStyle, resize: 'vertical', minHeight: 64, lineHeight: 1.5,
+              ...inputStyle, resize: 'vertical', minHeight: 96, lineHeight: 1.5,
             }}
             onFocus={e => { e.currentTarget.style.borderColor = '#4A9FE8'; e.currentTarget.style.background = '#fff'; }}
             onBlur={e => { e.currentTarget.style.borderColor = '#DDD5C8'; e.currentTarget.style.background = '#F0ECE3'; }}

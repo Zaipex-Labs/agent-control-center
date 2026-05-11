@@ -43,3 +43,46 @@ export function assertSafeIdentifier(fieldName: string, value: unknown): void {
     throw new Error(`Invalid ${fieldName}: only [a-zA-Z0-9_.-] allowed (1-64 chars)`);
   }
 }
+
+// v0.3.2.1 HIGH-2 + MED-3 — Agent *display* names (not identifiers).
+// Display names appear in the dashboard, the system prompt (markdown-
+// fenced per FU-H v0.3.1), and tmux pane titles. They do NOT flow to
+// file paths, shell command tokens, or MCP config keys — `role` and
+// `project_id` (the actual identifiers) handle those, and stay under
+// `assertSafeIdentifier`.
+//
+// Practical examples that should be allowed but were rejected pre-fix:
+//   "Da Vinci"   — default Tech Lead name in the dashboard
+//   "café-app"   — LatAm/Mexico-targeted product, accents matter
+//   "niño-bot"   — same
+//
+// We still reject < > " ' ` to keep the value safe for any context
+// that does end up rendering it as raw markup (defense-in-depth — the
+// dashboard escapes via React, but message-broker logs and rendered
+// system prompts touch the value too).
+const DISPLAY_NAME_RE = /^[\p{L}\p{N}_\- .]{1,64}$/u;
+const FORBIDDEN_DISPLAY_CHARS = /[<>"'`\\]/;
+
+export function assertSafeDisplayName(fieldName: string, value: unknown): void {
+  if (typeof value !== 'string') {
+    throw new Error(`Invalid ${fieldName}: must be a string`);
+  }
+  if (value.length === 0) {
+    throw new Error(`Invalid ${fieldName}: empty`);
+  }
+  if (value.length > 64) {
+    throw new Error(`Invalid ${fieldName}: too long (${value.length} > 64)`);
+  }
+  if (value.includes('\0')) {
+    throw new Error(`Invalid ${fieldName}: null byte`);
+  }
+  if (value.includes('..')) {
+    throw new Error(`Invalid ${fieldName}: contains ".."`);
+  }
+  if (FORBIDDEN_DISPLAY_CHARS.test(value)) {
+    throw new Error(`Invalid ${fieldName}: contains forbidden character (< > " ' \` \\)`);
+  }
+  if (!DISPLAY_NAME_RE.test(value)) {
+    throw new Error(`Invalid ${fieldName}: only letters, numbers, spaces, "_", "-", "." allowed (1-64 chars)`);
+  }
+}

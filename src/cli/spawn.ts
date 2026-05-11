@@ -38,38 +38,114 @@ function hasTmux(): boolean {
 
 // ── MCP server registration ────────────────────────────────────
 
+const MCP_SERVER_NAME = 'zaipex-acc';
+
 function getServerEntryPath(): string {
   const thisDir = resolve(fileURLToPath(import.meta.url), '..');
   return resolveEntryPoint(thisDir, '..', 'server', 'index.ts');
 }
 
-export function isMcpServerRegistered(): boolean {
-  try {
-    const output = execFileSync('claude', ['mcp', 'list'], {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      // Bound timeout so a stuck child doesn't hang vitest. Matches the
-      // cli test's 5s cap (see tests/cli/spawn.test.ts).
-      timeout: 3000,
-    });
-    return output.includes('zaipex-acc');
-  } catch {
-    return false;
-  }
+export interface RegisteredMcpServer {
+  command: string;
+  args: string[];
 }
 
-export function registerMcpServer(): void {
-  if (isMcpServerRegistered()) return;
+// `claude mcp get <name>` is ~3× faster than `mcp list` (no remote
+// health checks) and gives us the args/command of an existing
+// registration so we can detect cross-install conflicts.
+export function getRegisteredMcpServer(): RegisteredMcpServer | null {
+  let output: string;
+  try {
+    output = execFileSync('claude', ['mcp', 'get', MCP_SERVER_NAME], {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 3000,
+    });
+  } catch {
+    return null;
+  }
+  if (!output.includes(MCP_SERVER_NAME)) return null;
+  const commandMatch = output.match(/^\s*Command:\s*(.+)$/m);
+  const argsMatch = output.match(/^\s*Args:\s*(.+)$/m);
+  return {
+    command: commandMatch?.[1].trim() ?? '',
+    args: argsMatch ? argsMatch[1].trim().split(/\s+/).filter(Boolean) : [],
+  };
+}
 
+// Back-compat: callers that only need the boolean keep working.
+export function isMcpServerRegistered(): boolean {
+  return getRegisteredMcpServer() !== null;
+}
+
+function buildExpectedRegistration(): RegisteredMcpServer {
   const serverPath = getServerEntryPath();
   // runner is either "npx tsx" (two tokens) or "node" (one); expand to
   // separate argv entries so the whole thing is shell-free.
-  const runnerArgv = serverPath.endsWith('.ts') ? ['npx', 'tsx'] : ['node'];
-  execFileSync(
-    'claude',
-    ['mcp', 'add', '--scope', 'user', '--transport', 'stdio', 'zaipex-acc', '--', ...runnerArgv, serverPath],
-    { stdio: 'pipe' },
-  );
+  if (serverPath.endsWith('.ts')) {
+    return { command: 'npx', args: ['tsx', serverPath] };
+  }
+  return { command: 'node', args: [serverPath] };
+}
+
+function registrationsMatch(a: RegisteredMcpServer, b: RegisteredMcpServer): boolean {
+  if (a.command !== b.command) return false;
+  if (a.args.length !== b.args.length) return false;
+  for (let i = 0; i < a.args.length; i++) {
+    if (a.args[i] !== b.args[i]) return false;
+  }
+  return true;
+}
+
+export function registerMcpServer(): void {
+  const expected = buildExpectedRegistration();
+  const existing = getRegisteredMcpServer();
+
+  if (existing && registrationsMatch(existing, expected)) {
+    // Same install already registered — no-op.
+    return;
+  }
+
+  if (existing) {
+    // Different install registered. The agents this broker spawns
+    // will use the existing MCP server registration (Claude Code
+    // resolves user-scope MCP servers by name). Wire-compatible
+    // across recent versions; we warn loudly so the user knows.
+    const existingFull = [existing.command, ...existing.args].join(' ');
+    const expectedFull = [expected.command, ...expected.args].join(' ');
+    process.stderr.write(
+      `[acc] zaipex-acc MCP server already registered (user scope) pointing to a different install:\n` +
+      `      current:  ${existingFull}\n` +
+      `      this install: ${expectedFull}\n` +
+      `[acc] Agents will use the existing registration. To switch this install in:\n` +
+      `      claude mcp remove zaipex-acc -s user\n`,
+    );
+    return;
+  }
+
+  try {
+    execFileSync(
+      'claude',
+      ['mcp', 'add', '--scope', 'user', '--transport', 'stdio', MCP_SERVER_NAME, '--', expected.command, ...expected.args],
+      { stdio: 'pipe' },
+    );
+  } catch (e) {
+    // TOCTOU: another process raced us and added it first. claude exits
+    // non-zero with `already exists in user config` on stderr — that's
+    // exactly the state we wanted, so treat it as success.
+    const err = e as { stderr?: Buffer | string; message?: string };
+    const raw = typeof err.stderr === 'string'
+      ? err.stderr
+      : Buffer.isBuffer(err.stderr)
+        ? err.stderr.toString('utf8')
+        : err.message ?? String(e);
+    if (/already exists/i.test(raw)) return;
+    // Re-throw with a single-line message so the broker's handler
+    // (projects.ts:453) doesn't propagate raw multi-line stderr to
+    // the user.
+    const firstLine = raw.split('\n').map(s => s.trim()).filter(Boolean)[0] ?? 'unknown error';
+    throw new Error(firstLine, { cause: e });
+  }
 }
 
 // ── Agent command building ─────────────────────────────────────
@@ -83,8 +159,6 @@ function buildAgentEnv(projectName: string, agent: AgentConfig): NodeJS.ProcessE
     ...(agent.avatar ? { ACC_AVATAR: agent.avatar } : {}),
   };
 }
-
-const MCP_SERVER_NAME = 'zaipex-acc';
 
 // FASE A-2 (v0.3.2). `mcpConfigPath`, when provided, is wired into
 // claude as `--mcp-config <path>`. The file holds the per-agent
