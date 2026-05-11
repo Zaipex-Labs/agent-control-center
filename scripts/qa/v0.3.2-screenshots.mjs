@@ -46,27 +46,28 @@ async function makePage() {
   return page;
 }
 
-async function clickEditOnPowersDemo(page) {
+async function clickEditOn(page, projectName) {
   await page.goto(`${BROKER}/`, { waitUntil: 'networkidle0' });
   await page.waitForFunction(
-    () => /powers-demo/.test(document.body.textContent ?? ''),
+    (name) => new RegExp(name).test(document.body.textContent ?? ''),
     { timeout: 15_000 },
+    projectName,
   );
-  await page.evaluate(() => {
+  await page.evaluate((name) => {
     const buttons = Array.from(document.querySelectorAll('button'));
     for (const b of buttons) {
       const title = (b.getAttribute('title') || '').toLowerCase();
       if (!/edit|editar/.test(title)) continue;
       let el = b;
       while (el?.parentElement) {
-        if (el.parentElement.textContent?.includes('powers-demo')) {
+        if (el.parentElement.textContent?.includes(name)) {
           b.click();
           return;
         }
         el = el.parentElement;
       }
     }
-  });
+  }, projectName);
   await new Promise(r => setTimeout(r, 1200));
 }
 
@@ -86,7 +87,7 @@ try {
   // ── 01. Powers modal ─────────────────────────────────────────
   {
     const page = await makePage();
-    await clickEditOnPowersDemo(page);
+    await clickEditOn(page, PROJECT);
     await scrollToTuring(page);
     const path = `${OUT_DIR}/01-powers-modal.png`;
     await page.screenshot({ path, fullPage: false });
@@ -97,7 +98,7 @@ try {
   // ── 02. Avatar seed editor ───────────────────────────────────
   {
     const page = await makePage();
-    await clickEditOnPowersDemo(page);
+    await clickEditOn(page, PROJECT);
     await scrollToTuring(page);
     // Open the avatar picker on Turing's card, then type a seed.
     await page.evaluate(() => {
@@ -141,25 +142,26 @@ try {
     const page = await makePage();
     await page.goto(`${BROKER}/`, { waitUntil: 'networkidle0' });
     await page.waitForFunction(
-      () => /powers-demo/.test(document.body.textContent ?? ''),
+      (name) => new RegExp(name).test(document.body.textContent ?? ''),
       { timeout: 15_000 },
+      PROJECT,
     );
-    // Click "Encender" (Power up) button on the powers-demo card.
-    await page.evaluate(() => {
+    // Click "Encender" (Power up) button on the project card.
+    await page.evaluate((name) => {
       const buttons = Array.from(document.querySelectorAll('button'));
       for (const b of buttons) {
         const txt = b.textContent?.trim() || '';
         if (!/encender|power/i.test(txt)) continue;
         let el = b;
         while (el?.parentElement) {
-          if (el.parentElement.textContent?.includes('powers-demo')) {
+          if (el.parentElement.textContent?.includes(name)) {
             b.click();
             return;
           }
           el = el.parentElement;
         }
       }
-    });
+    }, PROJECT);
     // Wait for the boot panel + agent rows to render. pty_ready
     // events are broadcast right after spawn() so they arrive
     // within ~200ms; we wait a beat extra for the React commit.

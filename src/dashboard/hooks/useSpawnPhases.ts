@@ -10,7 +10,7 @@
 
 import { useEffect, useState } from 'react';
 import { useWebSocket, isEvent } from './useWebSocket';
-import type { SpawnPhase } from '../../shared/wire';
+import type { SpawnPhase, AgentSpawningEvent } from '../../shared/wire';
 
 // Re-export so consumers don't need a second import.
 export type { SpawnPhase };
@@ -33,7 +33,7 @@ export function useSpawnPhases(
 
   useEffect(() => {
     if (!lastEvent || !isEvent(lastEvent, 'agent:spawning')) return;
-    const { role, phase } = lastEvent.data as { role?: string; phase?: SpawnPhase };
+    const { role, phase } = lastEvent.data as Partial<AgentSpawningEvent>;
     if (!role || !phase) return;
     if (phase !== 'pty_ready' && phase !== 'mcp_ready' && phase !== 'registered') return;
     setPhases(prev => {

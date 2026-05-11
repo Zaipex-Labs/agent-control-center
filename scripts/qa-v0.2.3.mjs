@@ -11,7 +11,6 @@
 // they don't exist so the project-desktop screenshots have content.
 
 import puppeteer from 'puppeteer';
-import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { request as httpRequest } from 'node:http';
