@@ -92,6 +92,21 @@ export async function listProjects(): Promise<Project[]> {
   return resp.projects;
 }
 
+// B-1 v0.3.4 — one-click demo team for cold-landing onboarding.
+// Returns `already_existed: true` if the demo project was already
+// scaffolded, so the dashboard can just navigate to it instead of
+// surfacing an error.
+export async function createDemoProject(): Promise<{
+  ok: boolean;
+  name: string;
+  already_existed?: boolean;
+}> {
+  return apiFetch<{ ok: boolean; name: string; already_existed?: boolean }>(
+    'project/create-demo',
+    {},
+  );
+}
+
 // ── FASE A v0.3.3 — token usage ───────────────────────────────
 
 export type TokenPeriod = 'today' | 'week' | 'month';
@@ -142,6 +157,33 @@ export async function getProjectTokens(
 ): Promise<TokensReport> {
   return apiGet<TokensReport>(
     `/api/projects/${encodeURIComponent(projectId)}/tokens?period=${period}`,
+  );
+}
+
+// FU-AH v0.3.4 — coord-overhead readout (count of inter-agent
+// messages vs assistant turn count + pair breakdown). v0.3.5 will
+// surface analysis/optimisation; v0.3.4 only ships the read shape.
+export interface CoordOverheadPair {
+  from_role: string;
+  to_role: string;
+  events: number;
+}
+
+export interface CoordOverheadReport {
+  period: TokenPeriod;
+  since: string;
+  coord_events: number;
+  total_turns: number;
+  coord_ratio: number;
+  by_pair: CoordOverheadPair[];
+}
+
+export async function getProjectCoordOverhead(
+  projectId: string,
+  period: TokenPeriod = 'today',
+): Promise<CoordOverheadReport> {
+  return apiGet<CoordOverheadReport>(
+    `/api/projects/${encodeURIComponent(projectId)}/coord-overhead?period=${period}`,
   );
 }
 
@@ -425,6 +467,20 @@ export async function listSkills(projectId: string, peerId: string): Promise<Ski
     project_id: projectId, peer_id: peerId,
   });
   return resp.files;
+}
+
+// B-4 v0.3.4 — skills "marketplace" (minimal). Returns the three
+// curated example skills the dashboard can preview + one-click-copy
+// to a project. No auth — these are read-only static content.
+export interface SkillExample {
+  filename: string;
+  description: string;
+  content: string;
+}
+
+export async function listSkillExamples(): Promise<SkillExample[]> {
+  const resp = await apiFetch<{ examples: SkillExample[] }>('skills/list-examples', {});
+  return resp.examples;
 }
 
 export async function getSkill(

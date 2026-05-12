@@ -188,6 +188,8 @@ export const es: Record<string, string> = {
   // v0.3.2.1 MED-2: dashboard empty state — point at the "+ Nuevo equipo"
   // button that's right above this text, not at the CLI command.
   'dash.noTeams': 'Aún no tienes equipos. Crea el primero con el botón "+ Nuevo equipo".',
+  // B-1 v0.3.4 — secondary CTA in empty state for one-click demo.
+  'dash.createDemo': 'Crear equipo demo →',
   'dash.active': 'Activo',
   'dash.inactive': 'Inactivo',
   'dash.lastActivity': '\u00daltima actividad',
@@ -366,6 +368,9 @@ export const es: Record<string, string> = {
   // FU-Y v0.3.3 — restart hint when powers change on a live team
   'dash.powersRestartHint': 'Los cambios de powers requieren apagar y encender el agente para aplicar.',
 
+  // FU-AG v0.3.4 — cache thrash warning on rapid down/up cycle (<60s)
+  'dash.cacheResetWarning': 'Reiniciar el equipo descarta el cache de contexto (~$1-3 por reset en proyecto típico). Si solo necesitas que algo cambie, revisa skills o powers en lugar de reiniciar.',
+
   // FASE A v0.3.3 — TokensPanel
   'dash.tokensSection': 'Tokens hoy',
   'dash.tokensTotal': 'Total',
@@ -383,6 +388,11 @@ export const es: Record<string, string> = {
   'dash.tokensPeriod.today': 'Hoy',
   'dash.tokensPeriod.week': 'Semana',
   'dash.tokensPeriod.month': 'Mes',
+
+  // FU-AH v0.3.4 — coord overhead
+  'dash.coordOverheadTitle': 'Coordinación inter-agente',
+  'dash.coordEvents': 'Eventos de coord',
+  'dash.coordRatioOf': 'de',
 
   // SharedStatePanel
   'dash.sharedState': 'Estado compartido',
@@ -435,4 +445,30 @@ export const es: Record<string, string> = {
   'dash.skillsDeleteConfirm': '\u00bfBorrar "{filename}"?',
   'dash.skillsCancel': 'Cancelar',
   'dash.skillsClose': 'Cerrar',
+  'dash.skillsExamples': 'Ejemplos \u2192',
+  'dash.skillsExamplesTitle': 'Ejemplos de skills',
+  'dash.skillsExamplesIntro': 'Skills iniciales curados. Pulsa "Copiar a mi equipo" para a\u00f1adir uno al proyecto \u2014 luego lo editas.',
+  'dash.skillsExamplesBack': '\u2190 Volver',
+  'dash.skillsCopyToTeam': 'Copiar a mi equipo',
+  'dash.skillsCopying': 'Copiando\u2026',
+  'dash.skillsCopied': 'Copiado \u2014 lo ver\u00e1s en la lista',
+  'tour.aria': 'Tour de bienvenida',
+  'tour.stepOf': 'Paso {current} de {total}',
+  'tour.skip': 'Saltar tour',
+  'tour.skipAria': 'Saltar tour',
+  'tour.next': 'Siguiente',
+  'tour.done': 'Listo',
+  'tour.replay': 'Ver tour',
+  'tour.s1.title': 'Tu equipo',
+  'tour.s1.body': 'Cada tarjeta es un equipo \u2014 agentes, un directorio y estado compartido. Pulsa para entrar a la oficina.',
+  'tour.s1.hint': 'Mira la tarjeta del equipo a tu izquierda.',
+  'tour.s2.title': 'Encender',
+  'tour.s2.body': 'Este bot\u00f3n arranca los agentes y los conecta al broker. Tarda ~5 s y luego entras a la oficina.',
+  'tour.s2.hint': 'En la esquina inferior derecha de la tarjeta.',
+  'tour.s3.title': 'Estado compartido',
+  'tour.s3.body': 'Los agentes publican contratos, schemas y decisiones aqu\u00ed. Puedes leerlos y editarlos t\u00fa tambi\u00e9n \u2014 es un key-value por proyecto.',
+  'tour.s3.hint': 'Panel a la derecha \u2014 Estado compartido.',
+  'tour.s4.title': 'Skills',
+  'tour.s4.body': 'Archivos markdown cortos que se inyectan en el prompt de cada agente \u2014 estilo, convenciones, gotchas del proyecto. Prueba los ejemplos.',
+  'tour.s4.hint': 'Barra superior \u2014 bot\u00f3n Skills.',
 };

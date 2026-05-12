@@ -202,6 +202,100 @@ export function handleSkillsSave(body: unknown, res: ServerResponse): void {
   json(res, { ok: true, filename: b.filename, size: byteLen });
 }
 
+// B-4 v0.3.4 — skills "marketplace" (minimal). The dashboard
+// Skills modal exposes these three example skills as one-click
+// "Copy to my team" cards. Inlined as constants (rather than
+// readFileSync from docs/skills/) so the deploy path doesn't
+// depend on whether docs/ ships alongside dist/. Source of truth
+// is duplicated under docs/skills/example-*.md for users browsing
+// the repo, and the constants below mirror that content.
+
+const SKILL_EXAMPLE_CONVENTIONS = `# Project conventions
+
+Tiny starter conventions for the team. Copy + edit.
+
+## Stack
+- TypeScript everywhere (\`.ts\` / \`.tsx\`).
+- React 19 for UI, Node 20+ runtime.
+- Postgres 15 for persistence, tables prefixed with \`app_\`.
+- Tests with Vitest. Integration tests touch a real DB (no mocks).
+
+## Workflow
+- Branch per feature. Conventional commits.
+- API responses follow \`{ ok: bool, data?: any, error?: string }\`.
+- The coordinator writes \`decisions.md\` when something crosses two roles.
+`;
+
+const SKILL_EXAMPLE_API_SHAPE = `# API response shape
+
+Every backend response — successful or not — uses this envelope:
+
+\`\`\`jsonc
+{ "ok": true | false, "data": ..., "error": "...", "code": "..." }
+\`\`\`
+
+- \`data\` present iff \`ok === true\`.
+- \`error\` (short human string) + \`code\` (stable machine code)
+  present iff \`ok === false\`.
+- Validation failures add \`issues: [{path, message, code}]\`,
+  matching the broker's own \`INVALID_BODY\` shape.
+
+Never: a different shape per endpoint, error message in \`data\`,
+or HTTP status as the only error signal.
+`;
+
+const SKILL_EXAMPLE_TESTING_STYLE = `# Testing style
+
+Every test follows the **AAA** structure with explicit separators:
+
+\`\`\`ts
+it('returns the user when email matches', async () => {
+  // Arrange
+  const user = await makeUser({ email: 'a@b.co' });
+  // Act
+  const result = await findUserByEmail('a@b.co');
+  // Assert
+  expect(result).toMatchObject({ id: user.id });
+});
+\`\`\`
+
+Factories over JSON fixtures. Mock at the function boundary
+for unit tests; integration tests touch a real DB (no mocks of
+better-sqlite3). Each test reinitialises the world in
+\`beforeEach\` — no shared state between tests.
+
+File layout: \`<area>/<unit>.test.ts\` mirrors the source. \`it()\`
+text is a complete present-tense sentence.
+`;
+
+interface SkillExample {
+  filename: string;
+  description: string;
+  content: string;
+}
+
+const SKILL_EXAMPLES: SkillExample[] = [
+  {
+    filename: 'conventions.md',
+    description: 'Project stack + workflow conventions (TS, React, Postgres, Vitest).',
+    content: SKILL_EXAMPLE_CONVENTIONS,
+  },
+  {
+    filename: 'api-shape.md',
+    description: 'Unified API response envelope ({ok, data?, error?, code?}).',
+    content: SKILL_EXAMPLE_API_SHAPE,
+  },
+  {
+    filename: 'testing-style.md',
+    description: 'AAA pattern, factories over fixtures, no shared state.',
+    content: SKILL_EXAMPLE_TESTING_STYLE,
+  },
+];
+
+export function handleSkillsListExamples(_body: unknown, res: ServerResponse): void {
+  json(res, { examples: SKILL_EXAMPLES });
+}
+
 export function handleSkillsDelete(body: unknown, res: ServerResponse): void {
   const b = body as SkillReqBase;
   if (!b.project_id || !b.filename) {

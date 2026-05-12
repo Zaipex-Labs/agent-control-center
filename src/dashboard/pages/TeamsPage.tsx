@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listProjects, projectUp, projectDown, createProject, updateProject, deleteProject, listPowers } from '../lib/api';
+import { listProjects, projectUp, projectDown, createProject, createDemoProject, updateProject, deleteProject, listPowers } from '../lib/api';
 import type { Project, AgentConfig, Power } from '../lib/types';
 import Avatar from '../components/Avatar';
 import AgentIdCard, { type AgentDraft } from '../components/AgentIdCard';
@@ -13,6 +13,8 @@ import { t } from '../../shared/i18n/browser';
 import { getDefaultName, ARCHITECT_ROLE, ARCHITECT_DEFAULT_INSTRUCTIONS } from '../../shared/names';
 import { officeIndex, renderOffice } from '../lib/offices';
 import { useSpawnPhases, type SpawnPhases, type PhaseSet } from '../hooks/useSpawnPhases';
+import OnboardingTour from '../components/OnboardingTour';
+import { useOnboardingTour, TOUR_KEY_SEEN } from '../hooks/useOnboardingTour';
 
 const ROLE_COLORS: Record<string, string> = {
   backend: '#4A9FE8',
@@ -498,6 +500,22 @@ export default function TeamsPage() {
   const spawnPhases = useSpawnPhases(starting ?? undefined, !!starting);
   const navigate = useNavigate();
 
+  // B-5 v0.3.4 — Onboarding tour (steps 1 + 2 live on this page).
+  // Pass projectCount only after the initial load resolves, so the
+  // eligibility check sees the real value, not `0` mid-fetch.
+  const tour = useOnboardingTour({
+    page: 'teams',
+    projectCount: loading ? undefined : projects.length,
+  });
+  // "Ver tour" restart affordance — only meaningful once the user
+  // already saw + dismissed it.
+  const [tourSeenFlag, setTourSeenFlag] = useState<boolean>(() => {
+    try { return localStorage.getItem(TOUR_KEY_SEEN) === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    if (tour.step !== null && tourSeenFlag) setTourSeenFlag(false);
+  }, [tour.step, tourSeenFlag]);
+
   const isProjectActive = (p: Project): boolean =>
     p.active_peers > 0 || p.tmux_running === true;
 
@@ -592,8 +610,24 @@ export default function TeamsPage() {
   };
 
   const startProject = async (name: string) => {
+    // v0.3.4 FU-AG — warn (non-blocking) when the user does
+    // Apagar → Encender within ~60 s. The cache prefix is wiped on
+    // every `acc up` so this round-trip is the most expensive thing
+    // a user can do casually. We surface it as an inline notice via
+    // setError (existing channel) so we don't add a toast subsystem
+    // for a single warning. The user can dismiss with the existing
+    // close affordance and proceed — this is informational, never
+    // blocking.
+    try {
+      const last = Number(localStorage.getItem(`acc.lastDown.${name}`));
+      if (last && Date.now() - last < 60_000) {
+        setError(t('dash.cacheResetWarning'));
+        // Don't return — let the spawn proceed. The setError is the
+        // user's warning; the cost is theirs to take.
+      }
+    } catch { /* localStorage unavailable — silent */ }
+
     setStarting(name);
-    setError(null);
     const log: Array<{ text: string; done: boolean }> = [
       { text: t('dash.registeringMcp'), done: false },
     ];
@@ -701,6 +735,12 @@ export default function TeamsPage() {
     setError(null);
     try {
       await projectDown(name);
+      // v0.3.4 FU-AG — remember when this project went down so the next
+      // Encender within 60s can warn about cache-thrash cost. Use
+      // localStorage so the timestamp survives a page reload.
+      try {
+        localStorage.setItem(`acc.lastDown.${name}`, String(Date.now()));
+      } catch { /* private browsing / quota — silent */ }
       await reload();
     } catch (e) {
       setError(t('dash.errorShutdown', { name, error: e instanceof Error ? e.message : String(e) }));
@@ -752,20 +792,37 @@ export default function TeamsPage() {
               {t('dash.teamsSubtitle')}
             </p>
           </div>
-          <button
-            onClick={() => setShowCreate(true)}
-            style={{
-              background: '#E8823A', color: '#fff', border: 'none',
-              padding: '9px 18px', borderRadius: 10, fontSize: 13,
-              fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)',
-              letterSpacing: 0.2, flexShrink: 0,
-              transition: 'background 0.2s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#D4732E'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = '#E8823A'; }}
-          >
-            + {t('dash.newTeam')}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {tourSeenFlag && (
+              <button
+                onClick={() => { tour.restart(); setTourSeenFlag(false); }}
+                style={{
+                  background: 'none', border: 'none', padding: '6px 4px',
+                  color: '#5A6272', cursor: 'pointer',
+                  fontFamily: 'var(--font-mono)', fontSize: 12,
+                  textDecoration: 'underline', textUnderlineOffset: 3,
+                }}
+                onMouseEnter={e => { e.currentTarget.style.color = '#E8823A'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = '#5A6272'; }}
+              >
+                {t('tour.replay')}
+              </button>
+            )}
+            <button
+              onClick={() => setShowCreate(true)}
+              style={{
+                background: '#E8823A', color: '#fff', border: 'none',
+                padding: '9px 18px', borderRadius: 10, fontSize: 13,
+                fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                letterSpacing: 0.2, flexShrink: 0,
+                transition: 'background 0.2s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#D4732E'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#E8823A'; }}
+            >
+              + {t('dash.newTeam')}
+            </button>
+          </div>
         </div>
 
         {projects.length > 0 && (
@@ -828,7 +885,34 @@ export default function TeamsPage() {
             border: '1px dashed #DDD5C8', borderRadius: 12,
             background: '#FAF7F1',
           }}>
-            {search ? t('dash.noMatches') : t('dash.noTeams')}
+            <div>{search ? t('dash.noMatches') : t('dash.noTeams')}</div>
+            {/* B-1 v0.3.4 — secondary CTA only when there's no search
+                term and no projects yet. Once a user has any project,
+                the demo CTA disappears so it doesn't keep eating
+                cold-landing real estate. */}
+            {!search && (
+              <button
+                onClick={async () => {
+                  try {
+                    const r = await createDemoProject();
+                    await reload();
+                    navigate(`/${encodeURIComponent(r.name)}`);
+                  } catch (e) {
+                    setError(t('dash.errorCreating', { error: e instanceof Error ? e.message : String(e) }));
+                  }
+                }}
+                style={{
+                  marginTop: 14, padding: '8px 18px', borderRadius: 8,
+                  background: '#fff', border: '1px solid #DDD5C8',
+                  color: '#1E2D40', fontSize: 13, cursor: 'pointer',
+                  fontFamily: 'var(--font-mono)',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = '#E8823A'; e.currentTarget.style.color = '#E8823A'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = '#DDD5C8'; e.currentTarget.style.color = '#1E2D40'; }}
+              >
+                {t('dash.createDemo')}
+              </button>
+            )}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -893,6 +977,15 @@ export default function TeamsPage() {
           onConfirm={confirmDelete}
           onCancel={() => setDeletingProject(null)}
           danger
+        />
+      )}
+
+      {tour.step !== null && (
+        <OnboardingTour
+          step={tour.step}
+          totalSteps={tour.totalSteps}
+          onNext={() => { tour.next(); setTourSeenFlag(true); }}
+          onSkip={() => { tour.skip(); setTourSeenFlag(true); }}
         />
       )}
     </div>
@@ -1055,7 +1148,7 @@ function EditProjectModal({ project, onClose, onSubmit, saving, availablePowers 
                 onChange={next => replaceCard(i, next)}
                 onDelete={() => removeCard(i)}
                 locked={agent.role === ARCHITECT_ROLE}
-                lockedHint={agent.role === ARCHITECT_ROLE ? '🔒 Tech Lead permanente — coordinador del equipo' : undefined}
+                lockedHint={agent.role === ARCHITECT_ROLE ? '🔒 Coordinador permanente del equipo' : undefined}
                 availablePowers={availablePowers}
               />
             );
@@ -1349,7 +1442,7 @@ function CreateProjectModal({ onClose, onSubmit, creating, availablePowers }: {
               onChange={next => replaceRow(i, next)}
               onDelete={() => removeAgentRow(i)}
               locked={agent.role === ARCHITECT_ROLE}
-              lockedHint={agent.role === ARCHITECT_ROLE ? '🔒 Tech Lead permanente' : undefined}
+              lockedHint={agent.role === ARCHITECT_ROLE ? '🔒 Coordinador permanente' : undefined}
               availablePowers={availablePowers}
             />
           ))}

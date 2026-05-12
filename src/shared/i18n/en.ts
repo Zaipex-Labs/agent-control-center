@@ -188,6 +188,8 @@ export const en: Record<string, string> = {
   // v0.3.2.1 MED-2: dashboard empty state — point at the "+ New team"
   // button that's right above this text, not at the CLI command.
   'dash.noTeams': 'No teams yet. Create your first one with the "+ New team" button.',
+  // B-1 v0.3.4 — secondary CTA in empty state for one-click demo.
+  'dash.createDemo': 'Create demo team →',
   'dash.active': 'Active',
   'dash.inactive': 'Inactive',
   'dash.lastActivity': 'Last activity',
@@ -365,6 +367,9 @@ export const en: Record<string, string> = {
   // FU-Y v0.3.3 — restart hint when powers change on a live team
   'dash.powersRestartHint': 'Power changes take effect on the next agent restart (apagar then encender).',
 
+  // FU-AG v0.3.4 — cache thrash warning on rapid down/up cycle (<60s)
+  'dash.cacheResetWarning': 'Restarting the team discards the context cache (~$1-3 per reset on a typical project). If you only need something to change, check skills or powers instead of restarting.',
+
   // FASE A v0.3.3 — TokensPanel
   'dash.tokensSection': 'Tokens today',
   'dash.tokensTotal': 'Total',
@@ -382,6 +387,11 @@ export const en: Record<string, string> = {
   'dash.tokensPeriod.today': 'Today',
   'dash.tokensPeriod.week': 'Week',
   'dash.tokensPeriod.month': 'Month',
+
+  // FU-AH v0.3.4 — coord overhead
+  'dash.coordOverheadTitle': 'Inter-agent coordination',
+  'dash.coordEvents': 'Coord events',
+  'dash.coordRatioOf': 'of',
 
   // SharedStatePanel
   'dash.sharedState': 'Shared state',
@@ -434,4 +444,30 @@ export const en: Record<string, string> = {
   'dash.skillsDeleteConfirm': 'Delete "{filename}"?',
   'dash.skillsCancel': 'Cancel',
   'dash.skillsClose': 'Close',
+  'dash.skillsExamples': 'Examples →',
+  'dash.skillsExamplesTitle': 'Skill examples',
+  'dash.skillsExamplesIntro': 'Curated starter skills. Click "Copy to my team" to drop one into this project — edit it after.',
+  'dash.skillsExamplesBack': '← Back',
+  'dash.skillsCopyToTeam': 'Copy to my team',
+  'dash.skillsCopying': 'Copying…',
+  'dash.skillsCopied': 'Copied — find it in the list',
+  'tour.aria': 'Onboarding tour',
+  'tour.stepOf': 'Step {current} of {total}',
+  'tour.skip': 'Skip tour',
+  'tour.skipAria': 'Skip tour',
+  'tour.next': 'Next',
+  'tour.done': 'Got it',
+  'tour.replay': 'Replay tour',
+  'tour.s1.title': 'Your team',
+  'tour.s1.body': 'Each card is a team — agents, a working directory, shared state. Click it any time to step into the office.',
+  'tour.s1.hint': 'Look at the team card to your left.',
+  'tour.s2.title': 'Encender (power up)',
+  'tour.s2.body': 'This button spawns the agents and wires them to the broker. Roughly 5 seconds, then you can enter the office.',
+  'tour.s2.hint': 'Bottom-right of the team card.',
+  'tour.s3.title': 'Shared state',
+  'tour.s3.body': 'Agents publish contracts, schemas and decisions here. You can read and edit them too — it\'s a key-value store per project.',
+  'tour.s3.hint': 'Right side panel — Shared state.',
+  'tour.s4.title': 'Skills',
+  'tour.s4.body': 'Small markdown files appended to every agent\'s prompt — your project\'s style, conventions, gotchas. Try the example skills.',
+  'tour.s4.hint': 'Top toolbar — the Skills button.',
 };

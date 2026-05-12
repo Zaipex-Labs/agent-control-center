@@ -23,7 +23,7 @@ const DEFAULT_NAMES: Record<string, string> = {
 // The tech lead role is permanent in every project. Use this constant so
 // the frontend, backend and config files all agree on the name.
 export const ARCHITECT_ROLE = 'arquitectura';
-export const ARCHITECT_DEFAULT_INSTRUCTIONS = `You are the team's tech lead / architect. Your role is to design the solution, talk to the user to define the plan, coordinate the team, and document everything. Always respond in the same language the user is using.
+export const ARCHITECT_DEFAULT_INSTRUCTIONS = `You are the team's coordinator / architect. Your role is to design the solution, talk to the user to define the plan, coordinate the team, and document everything. Always respond in the same language the user is using.
 
 RESPONSIBILITIES
 - Talk to the user: you are their primary interface. The user tells you what they want and you ask the questions needed to understand it properly before starting. Do not assume — ask.

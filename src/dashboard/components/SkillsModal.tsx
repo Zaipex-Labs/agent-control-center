@@ -11,7 +11,8 @@ import { useEffect, useState } from 'react';
 import { t } from '../../shared/i18n/browser';
 import {
   listSkills, getSkill, saveSkill, deleteSkill,
-  type SkillFileMeta,
+  listSkillExamples,
+  type SkillFileMeta, type SkillExample,
 } from '../lib/api';
 
 const SKILL_FILENAME_RE = /^[a-zA-Z0-9_-]+\.md$/;
@@ -34,6 +35,16 @@ export default function SkillsModal({ projectId, peerId, onClose }: SkillsModalP
   const [draftFilename, setDraftFilename] = useState('');
   const [draftContent, setDraftContent] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // B-4 v0.3.4 — examples subview. When `showExamples` is true the
+  // modal renders the curated starter skills (loaded lazily on first
+  // open) instead of the editor or the list. Copying one calls the
+  // same saveSkill endpoint as the editor, then drops back to the list.
+  const [showExamples, setShowExamples] = useState(false);
+  const [examples, setExamples] = useState<SkillExample[]>([]);
+  const [examplesLoading, setExamplesLoading] = useState(false);
+  const [copying, setCopying] = useState<string | null>(null);
+  const [copiedToast, setCopiedToast] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -96,6 +107,41 @@ export default function SkillsModal({ projectId, peerId, onClose }: SkillsModalP
       setError((e as Error).message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function openExamples() {
+    setShowExamples(true);
+    setError(null);
+    setCopiedToast(null);
+    if (examples.length > 0) return;
+    setExamplesLoading(true);
+    try {
+      const list = await listSkillExamples();
+      setExamples(list);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setExamplesLoading(false);
+    }
+  }
+
+  function closeExamples() {
+    setShowExamples(false);
+    setCopiedToast(null);
+  }
+
+  async function copyExample(ex: SkillExample) {
+    setCopying(ex.filename);
+    setError(null);
+    try {
+      await saveSkill(projectId, peerId, ex.filename, ex.content);
+      setCopiedToast(ex.filename);
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setCopying(null);
     }
   }
 
@@ -162,8 +208,103 @@ export default function SkillsModal({ projectId, peerId, onClose }: SkillsModalP
           </div>
         )}
 
-        {/* Editor view */}
-        {editing !== null ? (
+        {/* Examples subview (takes precedence when toggled) */}
+        {showExamples ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>
+                {t('dash.skillsExamplesTitle')}
+              </h3>
+              <button
+                onClick={closeExamples}
+                style={{
+                  background: 'none', border: '1px solid var(--z-border)',
+                  color: 'var(--z-text-secondary)', fontSize: 12,
+                  padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+                }}
+              >
+                {t('dash.skillsExamplesBack')}
+              </button>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--z-text-secondary)', margin: 0, lineHeight: 1.5 }}>
+              {t('dash.skillsExamplesIntro')}
+            </p>
+
+            {copiedToast && (
+              <div style={{
+                padding: 8, borderRadius: 6,
+                background: 'rgba(46,160,67,0.12)',
+                border: '1px solid rgba(46,160,67,0.4)',
+                color: '#2EA047', fontSize: 12,
+              }}>
+                {t('dash.skillsCopied')} ({copiedToast})
+              </div>
+            )}
+
+            {examplesLoading ? (
+              <div style={{ padding: 24, textAlign: 'center', color: 'var(--z-text-muted)' }}>…</div>
+            ) : (
+              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {examples.map(ex => {
+                  const alreadyExists = files.some(f => f.filename === ex.filename);
+                  return (
+                    <div
+                      key={ex.filename}
+                      style={{
+                        padding: 12, borderRadius: 8,
+                        background: 'var(--z-navy-deep)',
+                        border: '1px solid var(--z-border)',
+                        display: 'flex', flexDirection: 'column', gap: 8,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--z-text)' }}>
+                            {ex.filename}
+                          </span>
+                          <span style={{ fontSize: 11, color: 'var(--z-text-muted)' }}>
+                            {ex.description}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => void copyExample(ex)}
+                          disabled={copying !== null || alreadyExists}
+                          style={{
+                            background: alreadyExists ? 'var(--z-navy-dark)' : 'var(--z-orange)',
+                            border: alreadyExists ? '1px solid var(--z-border)' : 'none',
+                            color: alreadyExists ? 'var(--z-text-muted)' : '#fff',
+                            fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap',
+                            padding: '6px 12px', borderRadius: 6,
+                            cursor: (copying !== null || alreadyExists) ? 'default' : 'pointer',
+                            opacity: copying === ex.filename ? 0.6 : 1,
+                          }}
+                        >
+                          {copying === ex.filename
+                            ? t('dash.skillsCopying')
+                            : alreadyExists
+                              ? `✓ ${ex.filename}`
+                              : t('dash.skillsCopyToTeam')}
+                        </button>
+                      </div>
+                      <pre style={{
+                        margin: 0, padding: 10, borderRadius: 6,
+                        background: 'var(--z-navy-darkest, #0b1220)',
+                        color: 'var(--z-text-secondary)',
+                        fontFamily: 'var(--font-mono)', fontSize: 11,
+                        lineHeight: 1.5,
+                        maxHeight: 180, overflow: 'auto',
+                        whiteSpace: 'pre-wrap',
+                        border: '1px solid var(--z-border)',
+                      }}>
+                        {ex.content}
+                      </pre>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : editing !== null ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0 }}>
             <label style={{ fontSize: 12, color: 'var(--z-text-secondary)' }}>
               {t('dash.skillsFilenameLabel')}
@@ -291,16 +432,29 @@ export default function SkillsModal({ projectId, peerId, onClose }: SkillsModalP
                   ? t('dash.skillsSizeOver')
                   : t('dash.skillsSizeUsed', { used: totalBytes, budget: MAX_TOTAL_BYTES })}
               </span>
-              <button
-                onClick={startNew}
-                style={{
-                  background: 'var(--z-orange)', border: 'none',
-                  color: '#fff', fontSize: 12, fontWeight: 500,
-                  padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
-                }}
-              >
-                {t('dash.skillsNew')}
-              </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => void openExamples()}
+                  style={{
+                    background: 'none',
+                    border: '1px solid var(--z-border)',
+                    color: 'var(--z-text-secondary)', fontSize: 12,
+                    padding: '6px 12px', borderRadius: 6, cursor: 'pointer',
+                  }}
+                >
+                  {t('dash.skillsExamples')}
+                </button>
+                <button
+                  onClick={startNew}
+                  style={{
+                    background: 'var(--z-orange)', border: 'none',
+                    color: '#fff', fontSize: 12, fontWeight: 500,
+                    padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
+                  }}
+                >
+                  {t('dash.skillsNew')}
+                </button>
+              </div>
             </div>
           </>
         )}

@@ -68,6 +68,7 @@ let handleSkillsList: typeof import('../../src/broker/handlers.js').handleSkills
 let handleSkillsGet: typeof import('../../src/broker/handlers.js').handleSkillsGet;
 let handleSkillsSave: typeof import('../../src/broker/handlers.js').handleSkillsSave;
 let handleSkillsDelete: typeof import('../../src/broker/handlers.js').handleSkillsDelete;
+let handleSkillsListExamples: typeof import('../../src/broker/handlers.js').handleSkillsListExamples;
 
 beforeEach(async () => {
   tmpHome = mkdtempSync(join(tmpdir(), 'acc-skills-handlers-'));
@@ -75,8 +76,10 @@ beforeEach(async () => {
   process.env['ACC_HOME'] = tmpHome;
   vi.resetModules();
   ({ initDatabase, insertPeer } = await import('../../src/broker/database.js'));
-  ({ handleSkillsList, handleSkillsGet, handleSkillsSave, handleSkillsDelete } =
-    await import('../../src/broker/handlers.js'));
+  ({
+    handleSkillsList, handleSkillsGet, handleSkillsSave, handleSkillsDelete,
+    handleSkillsListExamples,
+  } = await import('../../src/broker/handlers.js'));
   initDatabase(':memory:');
   insertPeer(makePeer({ id: 'p1', project_id: 'proj' }));
   insertPeer(makePeer({ id: 'p-other', project_id: 'other-proj' }));
@@ -297,6 +300,51 @@ describe('handleSkillsDelete', () => {
     const { res, result } = createMockRes();
     handleSkillsDelete({ project_id: 'proj', peer_id: 'p-other', filename: 'esm.md' }, res);
     expect(result.statusCode).toBe(403);
+  });
+});
+
+// ── examples (B-4 v0.3.4) ──────────────────────────────────────
+
+describe('handleSkillsListExamples', () => {
+  it('returns the three curated example skills', () => {
+    const { res, result } = createMockRes();
+    handleSkillsListExamples({}, res);
+    expect(result.statusCode).toBe(200);
+    const body = result.body as { examples: { filename: string; description: string; content: string }[] };
+    expect(body.examples).toHaveLength(3);
+    const names = body.examples.map(e => e.filename).sort();
+    expect(names).toEqual(['api-shape.md', 'conventions.md', 'testing-style.md']);
+  });
+
+  it('every example has non-empty filename, description and content', () => {
+    const { res, result } = createMockRes();
+    handleSkillsListExamples({}, res);
+    const body = result.body as { examples: { filename: string; description: string; content: string }[] };
+    for (const ex of body.examples) {
+      expect(ex.filename).toMatch(/^[a-zA-Z0-9_-]+\.md$/);
+      expect(ex.description.length).toBeGreaterThan(0);
+      expect(ex.content.length).toBeGreaterThan(50);
+    }
+  });
+
+  it('copies an example into a project via saveSkill (round-trip)', () => {
+    // First fetch examples
+    const listRes = createMockRes();
+    handleSkillsListExamples({}, listRes.res);
+    const body = listRes.result.body as { examples: { filename: string; content: string }[] };
+    const ex = body.examples[0]!;
+
+    // Save it as if the UI clicked "Copy to my team"
+    const saveRes = createMockRes();
+    handleSkillsSave(
+      { project_id: 'proj', peer_id: 'p1', filename: ex.filename, content: ex.content },
+      saveRes.res,
+    );
+    expect(saveRes.result.statusCode).toBe(200);
+
+    // Confirm it lands on disk
+    const onDisk = readFileSync(skillPath('proj', ex.filename), 'utf8');
+    expect(onDisk).toBe(ex.content);
   });
 });
 

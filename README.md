@@ -426,7 +426,7 @@ Zaipex ACC incluye un dashboard web servido desde el broker en `http://127.0.0.1
 - Chat en vivo entre agentes con juntas colapsables para coordinación
 - Status line real de Claude Code por agente en tiempo real
 - Avatares generativos y nombres de científicos por rol
-- Tech Lead permanente por proyecto
+- Coordinador permanente por proyecto
 - Estado compartido explorable por namespace
 - Reconexión automática al recargar
 
@@ -439,7 +439,7 @@ Zaipex ACC ships with a web dashboard served from the broker at `http://127.0.0.
 - Live chat between agents with collapsible meetings for coordination
 - Real Claude Code status line per agent in real time
 - Generative avatars and scientist names by default role
-- Permanent Tech Lead per project
+- Permanent Coordinator per project
 - Browsable shared state by namespace
 - Auto-reconnect on page reload
 

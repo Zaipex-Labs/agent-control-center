@@ -14,12 +14,14 @@ import Compose from '../components/Compose';
 import SharedStatePanel from '../components/SharedStatePanel';
 import TokensPanel from '../components/TokensPanel';
 import AgentTerminalView from '../components/AgentTerminalView';
-import AgentDesk, { type DeskState } from '../components/AgentDesk';
+import { type DeskState } from '../components/AgentDesk';
 import Avatar from '../components/Avatar';
 import StartupLogView, { type StartupLogStep } from '../components/StartupLogView';
 import EmptyOffice from '../components/EmptyOffice';
 import DeskPapers from '../components/DeskPapers';
 import SkillsModal from '../components/SkillsModal';
+import OnboardingTour from '../components/OnboardingTour';
+import { useOnboardingTour } from '../hooks/useOnboardingTour';
 import { projectUp, projectDown as apiProjectDown, saveResume } from '../lib/api';
 
 // True only if the current page was opened via an explicit browser
@@ -51,6 +53,11 @@ export default function ProjectPage() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [showSkills, setShowSkills] = useState(false);
   const [sharedRefresh, setSharedRefresh] = useState(0);
+
+  // B-5 v0.3.4 — Onboarding tour. Steps 3 and 4 live on this page;
+  // 1 and 2 live on TeamsPage. The hook is page-scoped so it returns
+  // a non-null step only when the stored step matches this page.
+  const tour = useOnboardingTour({ page: 'project' });
   // Persist open terminal tabs per project so they survive a page reload.
   // The underlying agent processes keep running in the broker regardless —
   // this just restores which tabs the dashboard was showing.
@@ -813,6 +820,15 @@ export default function ProjectPage() {
           onClose={() => setShowSkills(false)}
         />
       )}
+
+      {tour.step !== null && (
+        <OnboardingTour
+          step={tour.step}
+          totalSteps={tour.totalSteps}
+          onNext={tour.next}
+          onSkip={tour.skip}
+        />
+      )}
     </div>
     </DashboardPeerContext.Provider>
   );
@@ -1017,7 +1033,28 @@ function AgentRow({ peer, state, selected, working, liveStatus, onClick }: {
       onMouseEnter={e => { if (!selected && state !== 'offline') e.currentTarget.style.background = 'rgba(74,159,232,0.08)'; }}
       onMouseLeave={e => { if (!selected) e.currentTarget.style.background = 'transparent'; }}
     >
-      <AgentDesk role={peer.role} state={state} size={56} />
+      {/* B-2 v0.3.4 — sidebar agents now render the same dicebear
+          face as TeamsPage cards, with a small state dot overlay.
+          Pre-v0.3.4 this was an AgentDesk laptop SVG (different
+          identity from the bottts face on TeamsPage); audit MED-6.
+          AgentDesk lives on for potential v0.4.0 office-view reuse. */}
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <Avatar
+          avatar={peer.avatar ?? null}
+          seed={peer.name || getDefaultName(peer.role)}
+          size={40}
+          background={roleStyle(peer.role).avatar}
+          title={displayName}
+        />
+        <span style={{
+          position: 'absolute', right: -2, bottom: -2,
+          width: 12, height: 12, borderRadius: '50%',
+          border: '2px solid var(--z-navy-dark)',
+          background: state === 'working' ? 'var(--z-orange)'
+                    : state === 'waiting' ? 'var(--z-green)'
+                    : 'var(--z-text-muted)',
+        }} />
+      </div>
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{
           fontSize: 13, fontWeight: 500, color: 'var(--z-text)',

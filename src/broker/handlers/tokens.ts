@@ -17,7 +17,13 @@
 // thousands of rows — still trivial in memory).
 
 import type { ServerResponse } from 'node:http';
-import { selectTokenUsageSince, type TokenUsageRow } from '../database.js';
+import {
+  selectTokenUsageSince,
+  countCoordEventsSince,
+  selectCoordEventsByPair,
+  countTokenTurnsSince,
+  type TokenUsageRow,
+} from '../database.js';
 import { json, error } from './_helpers.js';
 
 export type TokenPeriod = 'today' | 'week' | 'month';
@@ -143,5 +149,33 @@ export function handleProjectTokens(projectId: string, period: string | null, re
     period: p,
     since,
     ...agg,
+  });
+}
+
+// FU-AH v0.3.4 — coord overhead audit endpoint. Returns enough shape
+// for a small dashboard panel: total inter-agent coord events, total
+// assistant turns, ratio, and a (from_role → to_role) breakdown so
+// the user can see whether one specialist is chattier than others.
+// Analysis + prompt tuning lives in v0.3.5 once there's a week+ of
+// real data; v0.3.4 ships just the read surface.
+export function handleProjectCoordOverhead(
+  projectId: string,
+  period: string | null,
+  res: ServerResponse,
+): void {
+  if (!projectId) return error(res, 'Missing project_id');
+  const p: TokenPeriod = period === 'week' || period === 'month' ? period : 'today';
+  const since = periodSince(p);
+  const coord = countCoordEventsSince(projectId, since);
+  const turns = countTokenTurnsSince(projectId, since);
+  const ratio = turns > 0 ? coord / turns : 0;
+  const by_pair = selectCoordEventsByPair(projectId, since);
+  json(res, {
+    period: p,
+    since,
+    coord_events: coord,
+    total_turns: turns,
+    coord_ratio: ratio,
+    by_pair,
   });
 }

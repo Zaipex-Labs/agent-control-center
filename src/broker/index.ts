@@ -40,6 +40,7 @@ import {
   handleSharedDelete,
   handleDecisionsRecall,
   handleSkillsList,
+  handleSkillsListExamples,
   handleSkillsGet,
   handleSkillsSave,
   handleSkillsDelete,
@@ -52,6 +53,7 @@ import {
   handleListProjects,
   handleBrowse,
   handleCreateProject,
+  handleCreateDemo,
   handleAddAgent,
   handleUpdateProject,
   handleDeleteProject,
@@ -66,6 +68,7 @@ import {
   handleBlobStats,
   handleListPowers,
   handleProjectTokens,
+  handleProjectCoordOverhead,
 } from './handlers.js';
 
 type PostHandler = (body: unknown, res: ServerResponse) => void | Promise<void>;
@@ -88,6 +91,7 @@ const POST_ROUTES: Record<string, PostHandler> = {
   '/api/shared/delete': handleSharedDelete,
   '/api/decisions/recall': handleDecisionsRecall,
   '/api/skills/list': handleSkillsList,
+  '/api/skills/list-examples': handleSkillsListExamples,
   '/api/skills/get': handleSkillsGet,
   '/api/skills/save': handleSkillsSave,
   '/api/skills/delete': handleSkillsDelete,
@@ -98,6 +102,7 @@ const POST_ROUTES: Record<string, PostHandler> = {
   '/api/threads/search': handleSearchThreads,
   '/api/threads/summary': handleThreadSummary,
   '/api/project/create': handleCreateProject,
+  '/api/project/create-demo': handleCreateDemo,
   '/api/project/add-agent': handleAddAgent,
   '/api/project/update': handleUpdateProject,
   '/api/project/delete': handleDeleteProject,
@@ -124,6 +129,7 @@ const ROUTE_BODY_LIMITS: Record<string, number> = {
   '/api/list-peers': 1024,
   '/api/decisions/recall': 4 * 1024,        // ids + short query + limit
   '/api/skills/list': 1024,
+  '/api/skills/list-examples': 1024,
   '/api/skills/get': 1024,
   '/api/skills/save': 16 * 1024,            // 8KB content + JSON envelope
   '/api/skills/delete': 1024,
@@ -248,6 +254,17 @@ export function createBrokerServer(): Server {
       const projectId = decodeURIComponent(tokensMatch[1]);
       const query = new URLSearchParams(tokensMatch[2] ?? '');
       handleProjectTokens(projectId, query.get('period'), res);
+      return;
+    }
+
+    // FU-AH v0.3.4 — coord-overhead readout (coord_events / total_turns
+    // ratio plus per-(from,to) breakdown). Read-only; analysis &
+    // tuning live in v0.3.5 once data accumulates.
+    const coordMatch = url.match(/^\/api\/projects\/([^/?]+)\/coord-overhead(?:\?(.+))?$/);
+    if (method === 'GET' && coordMatch) {
+      const projectId = decodeURIComponent(coordMatch[1]);
+      const query = new URLSearchParams(coordMatch[2] ?? '');
+      handleProjectCoordOverhead(projectId, query.get('period'), res);
       return;
     }
 
