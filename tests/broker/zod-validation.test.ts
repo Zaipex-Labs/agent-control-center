@@ -349,10 +349,10 @@ describe('zod validation · threads handlers [FU-D]', () => {
 });
 
 describe('zod validation · projects handlers [FU-D]', () => {
-  it('project/create: missing name → INVALID_BODY', () => {
+  it('project/create: empty body → INVALID_BODY on project_id (MED-8)', () => {
     const { res, result } = createMockRes();
     handleCreateProject({}, res);
-    expectInvalidBody(result, 'name');
+    expectInvalidBody(result, 'project_id');
   });
 
   it('project/add-agent: missing cwd → INVALID_BODY', () => {

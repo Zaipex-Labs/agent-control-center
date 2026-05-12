@@ -17,7 +17,7 @@ import {
 } from '../blobs.js';
 import { getAllBlobRefCounts, blobBelongsToProject } from '../blob-refs.js';
 import { selectPeerById } from '../database.js';
-import { json, error, parseRawBody } from './_helpers.js';
+import { json, error, errorResponse, parseRawBody } from './_helpers.js';
 
 export async function handleUploadBlob(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const mime = (req.headers['content-type'] ?? '').split(';')[0].trim();
@@ -39,9 +39,7 @@ export async function handleUploadBlob(req: IncomingMessage, res: ServerResponse
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (/too large/i.test(msg)) {
-      res.writeHead(413, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: msg, code: 'BLOB_TOO_LARGE' }));
-      return;
+      return errorResponse(res, 413, 'BLOB_TOO_LARGE', msg);
     }
     error(res, msg, 400);
   }
@@ -56,37 +54,22 @@ export function handleDownloadBlob(req: IncomingMessage, hash: string, res: Serv
   // message in the peer's project references it (blob_refs row).
   const peerId = String(req.headers['x-peer-id'] ?? '').trim();
   if (!peerId) {
-    res.writeHead(401, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      ok: false,
-      error: 'Missing X-Peer-Id header',
-      code: 'MISSING_PEER_ID',
-    }));
-    return;
+    return errorResponse(res, 401, 'MISSING_PEER_ID', 'Missing X-Peer-Id header');
   }
 
   const peer = selectPeerById(peerId);
   if (!peer) {
-    res.writeHead(401, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      ok: false,
-      error: 'Unknown peer',
-      code: 'UNKNOWN_PEER',
-    }));
-    return;
+    return errorResponse(res, 401, 'UNKNOWN_PEER', 'Unknown peer');
   }
 
   // ACL runs before getBlob so unknown hashes return 403 (same as
   // "hash exists but not yours") — prevents enumeration of the blob
   // store by brute-forcing sha256 values.
   if (!blobBelongsToProject(hash, peer.project_id)) {
-    res.writeHead(403, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      ok: false,
-      error: 'Blob not accessible to this peer\'s project',
-      code: 'BLOB_ACCESS_DENIED',
-    }));
-    return;
+    return errorResponse(
+      res, 403, 'BLOB_ACCESS_DENIED',
+      "Blob not accessible to this peer's project",
+    );
   }
 
   const got = getBlob(hash);
@@ -94,14 +77,7 @@ export function handleDownloadBlob(req: IncomingMessage, hash: string, res: Serv
     // Edge case: blob_refs row survived but the on-disk file is gone
     // (GC race, manual unlink, etc.). Return 404 so the dashboard can
     // retry — this is a bug state, not an ACL failure.
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      ok: false,
-      error: 'Blob not found',
-      code: 'BLOB_NOT_FOUND',
-      hash,
-    }));
-    return;
+    return errorResponse(res, 404, 'BLOB_NOT_FOUND', 'Blob not found');
   }
 
   console.error('[broker] blob:download hash=%s peer=%s project=%s size=%d',

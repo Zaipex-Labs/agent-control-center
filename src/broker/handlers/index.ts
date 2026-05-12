@@ -90,4 +90,8 @@ export {
 } from './skills.js';
 
 export { handleListPowers } from './powers.js';
-export { handleProjectTokens, handleProjectCoordOverhead } from './tokens.js';
+export {
+  handleProjectTokens,
+  handleProjectCoordOverhead,
+  handleProjectEstimateCost,
+} from './tokens.js';

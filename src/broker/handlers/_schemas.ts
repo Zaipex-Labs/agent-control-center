@@ -246,10 +246,24 @@ export const searchThreadsSchema = z.object({
 
 // ── Projects ──────────────────────────────────────────────────
 
+// MED-8 (v0.3.2 audit, closed in v0.4.0): every other /api/project/*
+// endpoint uses `project_id`; only this one used `name`. v0.4.0
+// standardises on `project_id` and keeps `name` as a back-compat
+// alias for one version. The refine() ensures at least one is
+// provided; the handler prefers project_id when both are present.
+// Drop the `name` alias in v0.5.0 / v1.0+ once external callers
+// have migrated.
 export const createProjectSchema = z.object({
-  name: z.string().min(1),
+  project_id: z.string().min(1).optional(),
+  name: z.string().min(1).optional(),
   description: z.string().optional(),
-});
+}).refine(
+  d => Boolean(d.project_id) || Boolean(d.name),
+  {
+    message: 'Missing required field: project_id (or legacy `name`)',
+    path: ['project_id'],
+  },
+);
 
 export const addAgentSchema = z.object({
   project_id: z.string().min(1),

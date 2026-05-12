@@ -17,6 +17,7 @@ import { tmuxNotify, tmuxInjectWithContext } from '../tmux.js';
 import { getBlob } from '../blobs.js';
 import { addBlobRef } from '../blob-refs.js';
 import { serializeAttachments, type Attachment } from '../../shared/attachments.js';
+import { swallow } from '../../shared/log.js';
 import type {
   MessageType,
   Peer,
@@ -37,6 +38,7 @@ import {
 import {
   json,
   error,
+  errorResponse,
   validateIdentifiers,
   assertProjectMembership,
   parseBodyOrError,
@@ -60,23 +62,19 @@ const FIVE_MINUTES_MS = 5 * 60 * 1000;
 // adding a new validation rule (e.g. per-mime cap) lands in one place.
 function validateAttachments(incoming: Attachment[], res: ServerResponse): boolean {
   if (incoming.length > MAX_ATTACHMENTS_PER_MESSAGE) {
-    res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      ok: false,
-      error: `Too many attachments (max ${MAX_ATTACHMENTS_PER_MESSAGE} per message)`,
-      code: 'TOO_MANY_ATTACHMENTS',
-    }));
+    errorResponse(
+      res, 400, 'TOO_MANY_ATTACHMENTS',
+      `Too many attachments (max ${MAX_ATTACHMENTS_PER_MESSAGE} per message)`,
+    );
     return false;
   }
   for (const att of incoming) {
     if (!getBlob(att.hash)) {
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        ok: false,
-        error: 'Attachment blob not found on server',
-        code: 'BLOB_NOT_FOUND',
-        hash: att.hash,
-      }));
+      errorResponse(
+        res, 404, 'BLOB_NOT_FOUND',
+        'Attachment blob not found on server',
+        { extras: { hash: att.hash } },
+      );
       return false;
     }
   }
@@ -97,7 +95,9 @@ function buildMetadata(incoming: Attachment[], existingRaw: string | null | unde
   if (incoming.length === 0) return existingRaw ?? null;
   let existingObj: Record<string, unknown> = {};
   if (existingRaw) {
-    try { existingObj = JSON.parse(existingRaw) as Record<string, unknown>; } catch { /* ignore */ }
+    swallow('message:metadata-parse', () => {
+      existingObj = JSON.parse(existingRaw) as Record<string, unknown>;
+    });
   }
   return serializeAttachments(incoming, existingObj);
 }
@@ -260,13 +260,10 @@ export async function handleSendMessage(body: unknown, res: ServerResponse): Pro
   // a local attacker who knows a peer_id in project B could send messages
   // (with attachments) to that peer while claiming to be in project A.
   if (fromPeer.project_id !== b.project_id || toPeer.project_id !== b.project_id) {
-    res.writeHead(403, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      ok: false,
-      error: 'Peer does not belong to the requested project',
-      code: 'PROJECT_MISMATCH',
-    }));
-    return;
+    return errorResponse(
+      res, 403, 'PROJECT_MISMATCH',
+      'Peer does not belong to the requested project',
+    );
   }
 
   const incoming = b.attachments ?? [];
@@ -309,13 +306,10 @@ export async function handleSendToRole(body: unknown, res: ServerResponse): Prom
   // check just stops impersonation of a project by a peer that doesn't
   // belong to it.
   if (fromPeer.project_id !== b.project_id) {
-    res.writeHead(403, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      ok: false,
-      error: 'Peer does not belong to the requested project',
-      code: 'PROJECT_MISMATCH',
-    }));
-    return;
+    return errorResponse(
+      res, 403, 'PROJECT_MISMATCH',
+      'Peer does not belong to the requested project',
+    );
   }
 
   const targets = selectPeersByRole(b.project_id, b.role);

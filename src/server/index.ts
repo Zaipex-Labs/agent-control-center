@@ -13,6 +13,7 @@ import { ensureBroker, brokerFetch } from './broker-client.js';
 import { pushMessage, writeInterruptFile } from './channel.js';
 import { registerTools, type AgentIdentity } from './tools.js';
 import { loadProjectSkills, formatSkillsSection } from '../shared/skills.js';
+import { swallowAsync } from '../shared/log.js';
 import type {
   RegisterResponse,
   PollMessagesResponse,
@@ -218,10 +219,12 @@ export async function main(): Promise<void> {
         id: identity.id,
       });
       for (const msg of resp.messages) {
-        // Look up sender info
+        // Look up sender info — best-effort enrichment for the
+        // delivery tiers below; failures fall through with the
+        // 'unknown' defaults.
         let fromRole = 'unknown';
         let fromCwd = '';
-        try {
+        await swallowAsync('mcp:list-peers-lookup', async () => {
           const peers = await brokerFetch<Peer[]>('/api/list-peers', {
             project_id: identity.project_id,
             scope: 'project',
@@ -231,9 +234,7 @@ export async function main(): Promise<void> {
             fromRole = sender.role;
             fromCwd = sender.cwd;
           }
-        } catch {
-          // Best effort
-        }
+        });
 
         // Tier 1: MCP channel push
         let delivered = false;
@@ -258,8 +259,14 @@ export async function main(): Promise<void> {
           }
         }
       }
-    } catch {
-      // Broker might be temporarily unreachable
+    } catch (e) {
+      // Broker might be temporarily unreachable. We don't use
+      // swallow() here because this is the outermost wrapper of
+      // the entire poll cycle — keeping the bare catch keeps the
+      // narrow "ignore network blip" semantics. If the broker
+      // stays down, the next heartbeat will log heartbeatFailed
+      // every 15s which is the right signal frequency.
+      void e;
     }
   }, 1000);
 

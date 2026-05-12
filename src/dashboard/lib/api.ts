@@ -187,6 +187,36 @@ export async function getProjectCoordOverhead(
   );
 }
 
+// FU-AE v0.4.0 — pre-send cost estimate. Returned shape mirrors
+// CostEstimate in src/broker/cost-estimator.ts. The dashboard's
+// Compose component fetches this on debounced text changes and
+// renders an inline preview above the Send button. Confidence
+// drives the visual treatment — see Compose.tsx.
+export type CostConfidence = 'low' | 'medium' | 'high';
+
+export interface CostEstimate {
+  estimatedTurns: [number, number];
+  estimatedCostUSD: [number, number];
+  confidence: CostConfidence;
+  sampleSize: number;
+  basis: {
+    agents: number;
+    complexity: 'light' | 'normal' | 'heavy';
+    source: 'synthetic-v0.3.3' | 'project-avg';
+    avgUsdPerTurn?: number;
+  };
+}
+
+export async function estimateMessageCost(
+  projectId: string,
+  message: string,
+): Promise<CostEstimate> {
+  const qs = new URLSearchParams({ message });
+  return apiGet<CostEstimate>(
+    `/api/projects/${encodeURIComponent(projectId)}/estimate-cost?${qs.toString()}`,
+  );
+}
+
 // ── Dashboard peer registration ───────────────────────────────
 
 export async function registerDashboard(
@@ -241,8 +271,12 @@ export async function browseFolders(path?: string): Promise<{ path: string; fold
 
 // ── Project control ───────────────────────────────────────────
 
-export async function createProject(name: string, description: string): Promise<{ ok: boolean; name: string }> {
-  return apiFetch<{ ok: boolean; name: string }>('project/create', { name, description });
+// MED-8 (v0.4.0): /api/project/create now accepts both `project_id`
+// (canonical) and `name` (legacy alias for one version). Dashboard
+// uses the canonical form going forward; the broker still accepts
+// `name` from older clients until v0.5.0+.
+export async function createProject(name: string, description: string): Promise<{ ok: boolean; project_id: string; name: string }> {
+  return apiFetch<{ ok: boolean; project_id: string; name: string }>('project/create', { project_id: name, description });
 }
 
 export async function addAgent(

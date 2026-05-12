@@ -25,6 +25,7 @@ import {
   type TokenUsageRow,
 } from '../database.js';
 import { json, error } from './_helpers.js';
+import { estimateCost } from '../cost-estimator.js';
 
 export type TokenPeriod = 'today' | 'week' | 'month';
 
@@ -178,4 +179,22 @@ export function handleProjectCoordOverhead(
     coord_ratio: ratio,
     by_pair,
   });
+}
+
+// FU-AE v0.4.0 — Pre-send cost estimation. Reads URL search param
+// `message` (the draft text) and returns a synthetic-baseline-backed
+// estimate that becomes increasingly real-data-driven as the
+// project's `token_usage` table accumulates rows. See
+// src/broker/cost-estimator.ts for the model + thresholds.
+export function handleProjectEstimateCost(
+  projectId: string,
+  message: string | null,
+  res: ServerResponse,
+): void {
+  if (!projectId) return error(res, 'Missing project_id');
+  // Empty message yields a zero-turn estimate — the dashboard hides
+  // the preview entirely when the textarea is empty, but the broker
+  // tolerates the call so the client doesn't have to short-circuit.
+  const estimate = estimateCost(projectId, message ?? '');
+  json(res, estimate);
 }

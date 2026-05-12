@@ -8,6 +8,7 @@ import { readFile, realpath } from 'node:fs/promises';
 import { join, extname, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ACC_HOST, ACC_PORT, CLEANUP_INTERVAL_MS } from '../shared/config.js';
+import { swallowAsync } from '../shared/log.js';
 import { t, getLang } from '../shared/i18n/index.js';
 import { initDatabase, closeDatabase } from './database.js';
 import { gcOrphanBlobs } from './blob-gc.js';
@@ -69,6 +70,7 @@ import {
   handleListPowers,
   handleProjectTokens,
   handleProjectCoordOverhead,
+  handleProjectEstimateCost,
 } from './handlers.js';
 
 type PostHandler = (body: unknown, res: ServerResponse) => void | Promise<void>;
@@ -268,6 +270,17 @@ export function createBrokerServer(): Server {
       return;
     }
 
+    // FU-AE v0.4.0 — pre-send cost estimate. Returns a synthetic-
+    // baseline-backed prediction labelled with confidence so the UI
+    // can render the disclaimer visibly. See cost-estimator.ts.
+    const estimateMatch = url.match(/^\/api\/projects\/([^/?]+)\/estimate-cost(?:\?(.+))?$/);
+    if (method === 'GET' && estimateMatch) {
+      const projectId = decodeURIComponent(estimateMatch[1]);
+      const query = new URLSearchParams(estimateMatch[2] ?? '');
+      handleProjectEstimateCost(projectId, query.get('message'), res);
+      return;
+    }
+
     if (method === 'GET' && url.startsWith('/api/browse')) {
       const query = url.includes('?') ? url.split('?')[1] : '';
       return handleBrowse(query, res);
@@ -356,7 +369,8 @@ export function createBrokerServer(): Server {
         (resolved === dashboardBase || resolved.startsWith(dashboardBase + sep));
 
       if (insideDashboard) {
-        try {
+        let served = false;
+        await swallowAsync('dashboard:asset-read', async () => {
           const content = await readFile(resolved!);
           const ext = extname(filePath);
           const headers: Record<string, string> = {
@@ -368,22 +382,21 @@ export function createBrokerServer(): Server {
           }
           res.writeHead(200, headers);
           res.end(content);
-          return;
-        } catch {
-          // Fall through to SPA fallback.
-        }
+          served = true;
+        });
+        if (served) return;
       }
 
       // SPA fallback — index.html. Always served from inside DASHBOARD_DIR
       // (no traversal possible) so it doesn't need the realpath dance.
-      try {
+      let indexServed = false;
+      await swallowAsync('dashboard:index-read', async () => {
         const indexContent = await readFile(join(DASHBOARD_DIR, 'index.html'));
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(indexContent);
-        return;
-      } catch {
-        // Dashboard not built yet
-      }
+        indexServed = true;
+      });
+      if (indexServed) return;
     }
 
     res.writeHead(404, { 'Content-Type': 'application/json' });

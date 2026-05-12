@@ -16,6 +16,7 @@ import { isAllowedOrigin, rejectUpgrade } from './origin.js';
 import { consumeToken } from './csrf-tokens.js';
 import { prepareAgentMcpConfig } from '../cli/mcp-config.js';
 import { recordSpawnPhase } from './spawn-state.js';
+import { swallow } from '../shared/log.js';
 
 // Locate a usable python3 binary. When the broker is launched via nohup /
 // launchd the PATH can lose /usr/local/bin or /opt/homebrew/bin, and
@@ -482,7 +483,7 @@ export function spawnWebAgent(
         if (seen.has(fp)) continue;
         seen.add(fp);
         log(`auto-continue for ${key}: matched "${m[0].trim()}"`);
-        try { stdin.write('\r'); } catch { /* ignore */ }
+        swallow('terminal:auto-continue-write', () => stdin.write('\r'));
         break;
       }
     }, 2000);
