@@ -99,3 +99,55 @@ describe('handleCreateProject validates name [C-1]', () => {
     expect(result.statusCode).toBe(200);
   });
 });
+
+// MED-8 (v0.4.0): /api/project/create now accepts both `project_id`
+// (canonical) and `name` (legacy alias). One transition version where
+// new callers can switch without breaking old ones; the `name` alias
+// drops in v0.5.0+.
+describe('handleCreateProject MED-8 — project_id vs name', () => {
+  it('accepts canonical project_id', () => {
+    const { res, result } = createMockRes();
+    handleCreateProject({ project_id: 'med8-canonical', description: 'a' }, res);
+    expect(result.statusCode).toBe(200);
+    expect(result.body?.ok).toBe(true);
+    const body = result.body as { project_id?: string; name?: string };
+    expect(body.project_id).toBe('med8-canonical');
+    // Response includes `name` too for the same back-compat window.
+    expect(body.name).toBe('med8-canonical');
+    expect(readdirSync(projectsDir)).toContain('med8-canonical.json');
+  });
+
+  it('accepts legacy name alias (back-compat)', () => {
+    const { res, result } = createMockRes();
+    handleCreateProject({ name: 'med8-legacy', description: 'a' }, res);
+    expect(result.statusCode).toBe(200);
+    expect(result.body?.ok).toBe(true);
+    const body = result.body as { project_id?: string; name?: string };
+    expect(body.project_id).toBe('med8-legacy');
+    expect(body.name).toBe('med8-legacy');
+    expect(readdirSync(projectsDir)).toContain('med8-legacy.json');
+  });
+
+  it('prefers project_id when both are present', () => {
+    const { res, result } = createMockRes();
+    handleCreateProject(
+      { project_id: 'med8-winner', name: 'med8-loser', description: 'a' },
+      res,
+    );
+    expect(result.statusCode).toBe(200);
+    const body = result.body as { project_id?: string; name?: string };
+    expect(body.project_id).toBe('med8-winner');
+    expect(body.name).toBe('med8-winner');
+    expect(readdirSync(projectsDir)).toContain('med8-winner.json');
+    expect(readdirSync(projectsDir)).not.toContain('med8-loser.json');
+  });
+
+  it('rejects body with neither project_id nor name', () => {
+    const { res, result } = createMockRes();
+    handleCreateProject({ description: 'a' }, res);
+    expect(result.statusCode).toBe(400);
+    const body = result.body as { code?: string; error?: string };
+    expect(body.code).toBe('INVALID_BODY');
+    expect(body.error).toMatch(/project_id/i);
+  });
+});

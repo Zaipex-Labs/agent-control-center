@@ -278,27 +278,37 @@ export function handleCreateProject(body: unknown, res: ServerResponse): void {
   const b = parseBodyOrError(createProjectSchema, body, res);
   if (!b) return;
 
-  // [C-1] — name flows into a filesystem path (PROJECTS_DIR/<name>.json),
-  // into the tech-lead dir (TECHLEAD/<name>/), and later into tmux session
-  // names (acc-<name>). Validate before touching any of those sinks.
+  // MED-8: accept either `project_id` (canonical, consistent with every
+  // other /api/project/* endpoint) or `name` (legacy, deprecated in
+  // v0.4.0, drop in v0.5.0+). Both means project_id wins; the schema
+  // refine() guarantees at least one is set.
+  const projectId = (b.project_id ?? b.name) as string;
+
+  // [C-1] — projectId flows into a filesystem path
+  // (PROJECTS_DIR/<id>.json), into the tech-lead dir (TECHLEAD/<id>/),
+  // and later into tmux session names (acc-<id>). Validate before
+  // touching any of those sinks.
   try {
-    assertSafeIdentifier('name', b.name);
+    assertSafeIdentifier('project_id', projectId);
   } catch (e) {
     return error(res, e instanceof Error ? e.message : String(e), 400);
   }
 
   ensureDirectories();
-  const configPath = join(PROJECTS_DIR, `${b.name}.json`);
-  if (existsSync(configPath)) return error(res, `Project already exists: ${b.name}`);
+  const configPath = join(PROJECTS_DIR, `${projectId}.json`);
+  if (existsSync(configPath)) return error(res, `Project already exists: ${projectId}`);
 
   const config = {
-    name: b.name,
+    name: projectId,
     description: b.description ?? '',
     created_at: new Date().toISOString(),
-    agents: [buildTechLeadAgent(b.name)],
+    agents: [buildTechLeadAgent(projectId)],
   };
   writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
-  json(res, { ok: true, name: b.name });
+  // Response includes BOTH fields for the same back-compat window —
+  // existing dashboard reads `name`, new callers should read
+  // `project_id`. Drop `name` from the response in v0.5.0+.
+  json(res, { ok: true, project_id: projectId, name: projectId });
 }
 
 // B-1 v0.3.4 — one-click demo team for cold landing onboarding.

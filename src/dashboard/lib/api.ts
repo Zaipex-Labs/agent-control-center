@@ -241,8 +241,12 @@ export async function browseFolders(path?: string): Promise<{ path: string; fold
 
 // ── Project control ───────────────────────────────────────────
 
-export async function createProject(name: string, description: string): Promise<{ ok: boolean; name: string }> {
-  return apiFetch<{ ok: boolean; name: string }>('project/create', { name, description });
+// MED-8 (v0.4.0): /api/project/create now accepts both `project_id`
+// (canonical) and `name` (legacy alias for one version). Dashboard
+// uses the canonical form going forward; the broker still accepts
+// `name` from older clients until v0.5.0+.
+export async function createProject(name: string, description: string): Promise<{ ok: boolean; project_id: string; name: string }> {
+  return apiFetch<{ ok: boolean; project_id: string; name: string }>('project/create', { project_id: name, description });
 }
 
 export async function addAgent(
