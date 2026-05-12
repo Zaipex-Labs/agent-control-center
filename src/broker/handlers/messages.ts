@@ -17,6 +17,7 @@ import { tmuxNotify, tmuxInjectWithContext } from '../tmux.js';
 import { getBlob } from '../blobs.js';
 import { addBlobRef } from '../blob-refs.js';
 import { serializeAttachments, type Attachment } from '../../shared/attachments.js';
+import { swallow } from '../../shared/log.js';
 import type {
   MessageType,
   Peer,
@@ -94,7 +95,9 @@ function buildMetadata(incoming: Attachment[], existingRaw: string | null | unde
   if (incoming.length === 0) return existingRaw ?? null;
   let existingObj: Record<string, unknown> = {};
   if (existingRaw) {
-    try { existingObj = JSON.parse(existingRaw) as Record<string, unknown>; } catch { /* ignore */ }
+    swallow('message:metadata-parse', () => {
+      existingObj = JSON.parse(existingRaw) as Record<string, unknown>;
+    });
   }
   return serializeAttachments(incoming, existingObj);
 }

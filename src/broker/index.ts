@@ -8,6 +8,7 @@ import { readFile, realpath } from 'node:fs/promises';
 import { join, extname, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ACC_HOST, ACC_PORT, CLEANUP_INTERVAL_MS } from '../shared/config.js';
+import { swallowAsync } from '../shared/log.js';
 import { t, getLang } from '../shared/i18n/index.js';
 import { initDatabase, closeDatabase } from './database.js';
 import { gcOrphanBlobs } from './blob-gc.js';
@@ -356,7 +357,8 @@ export function createBrokerServer(): Server {
         (resolved === dashboardBase || resolved.startsWith(dashboardBase + sep));
 
       if (insideDashboard) {
-        try {
+        let served = false;
+        await swallowAsync('dashboard:asset-read', async () => {
           const content = await readFile(resolved!);
           const ext = extname(filePath);
           const headers: Record<string, string> = {
@@ -368,22 +370,21 @@ export function createBrokerServer(): Server {
           }
           res.writeHead(200, headers);
           res.end(content);
-          return;
-        } catch {
-          // Fall through to SPA fallback.
-        }
+          served = true;
+        });
+        if (served) return;
       }
 
       // SPA fallback — index.html. Always served from inside DASHBOARD_DIR
       // (no traversal possible) so it doesn't need the realpath dance.
-      try {
+      let indexServed = false;
+      await swallowAsync('dashboard:index-read', async () => {
         const indexContent = await readFile(join(DASHBOARD_DIR, 'index.html'));
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(indexContent);
-        return;
-      } catch {
-        // Dashboard not built yet
-      }
+        indexServed = true;
+      });
+      if (indexServed) return;
     }
 
     res.writeHead(404, { 'Content-Type': 'application/json' });

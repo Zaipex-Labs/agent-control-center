@@ -13,6 +13,7 @@ import { broadcast } from '../websocket.js';
 import { recordSpawnPhase } from '../spawn-state.js';
 import { attachPeer as attachTokenTail, detachPeer as detachTokenTail } from '../token-tail.js';
 import { issueToken as issueCsrfToken } from '../csrf-tokens.js';
+import { swallow } from '../../shared/log.js';
 import type { Peer } from '../../shared/types.js';
 import {
   insertPeer,
@@ -276,7 +277,7 @@ export function handleListPeers(body: unknown, res: ServerResponse): void {
   });
   // Fire-and-forget eviction so the DB catches up for future callers.
   for (const id of deadIds) {
-    try { deletePeer(id); } catch { /* ignore */ }
+    swallow('peer:stale-eviction', () => deletePeer(id));
   }
 
   json(res, peers);

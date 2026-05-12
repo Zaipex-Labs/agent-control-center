@@ -6,6 +6,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { isAllowedOrigin, rejectUpgrade } from './origin.js';
+import { swallow } from '../shared/log.js';
 
 export type BrokerEvent =
   | 'peer:connected'
@@ -55,12 +56,12 @@ function ensureHeartbeat(): void {
         // No pong since the previous tick — half-open connection.
         // terminate() drops the socket immediately, the 'close' handler
         // removes it from the Set.
-        try { client.ws.terminate(); } catch { /* ignore */ }
+        swallow('ws:half-open-terminate', () => client.ws.terminate());
         clients.delete(client);
         continue;
       }
       client.alive = false;
-      try { client.ws.ping(); } catch { /* ignore — close handler cleans up */ }
+      swallow('ws:ping', () => client.ws.ping());
     }
   }, HEARTBEAT_INTERVAL_MS);
   // Don't keep the event loop alive just for the heartbeat — broker
@@ -125,6 +126,6 @@ export function broadcast(event: BrokerEvent, data: unknown, projectId?: string)
     // the socket. This is a feature-event stream, not a transport;
     // missing one update is recoverable from the next /api/* read.
     if (client.ws.bufferedAmount > BROADCAST_BUFFER_LIMIT) continue;
-    try { client.ws.send(payload); } catch { /* ignore — close handler cleans up */ }
+    swallow('ws:broadcast-send', () => client.ws.send(payload));
   }
 }
