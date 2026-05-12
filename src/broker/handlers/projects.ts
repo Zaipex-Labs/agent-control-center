@@ -12,7 +12,7 @@ import type { ServerResponse } from 'node:http';
 import { readdirSync, readFileSync, existsSync, writeFileSync, rmSync, realpathSync, mkdirSync, unlinkSync } from 'node:fs';
 import { readdir as readdirAsync, readFile as readFileAsync } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { PROJECTS_DIR, ensureDirectories, techLeadCwd } from '../../shared/config.js';
+import { PROJECTS_DIR, ACC_HOME, ensureDirectories, techLeadCwd } from '../../shared/config.js';
 import { getDefaultName } from '../../shared/utils.js';
 import { ARCHITECT_ROLE, ARCHITECT_DEFAULT_INSTRUCTIONS } from '../../shared/names.js';
 import { assertSafeIdentifier, assertSafeDisplayName } from '../../shared/validate.js';
@@ -32,6 +32,7 @@ import {
   insertLogEntry,
   selectHistory,
   setSharedState,
+  setSharedStateWithMeta,
   deleteProjectData,
   listProjectIdsInDb,
 } from '../database.js';
@@ -298,6 +299,119 @@ export function handleCreateProject(body: unknown, res: ServerResponse): void {
   };
   writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
   json(res, { ok: true, name: b.name });
+}
+
+// B-1 v0.3.4 — one-click demo team for cold landing onboarding.
+// Creates a project "demo-fullstack" pre-populated with Turing
+// (backend), Ada (frontend), Curie (qa) + the example conventions
+// skill + one seeded decision in team memory, so a new user can
+// hit Encender and see the whole product in 30 seconds rather than
+// hunt down the right config combination.
+//
+// Idempotent: if `demo-fullstack` already exists, returns
+// `{ok: true, name, already_existed: true}` so the dashboard can
+// just navigate to the existing project.
+const DEMO_PROJECT_NAME = 'demo-fullstack';
+
+const DEMO_SKILL_CONTENT = `# Demo project conventions
+
+Tiny starter skill for the demo team. Replace with your own once you
+spin up a real project — these are placeholders that show what a
+skill file looks like to the agents.
+
+## Stack
+- TypeScript everywhere (\`.ts\` / \`.tsx\`).
+- React 19 for UI, Node 20+ runtime.
+- Postgres 15 for persistence, tables prefixed with \`app_\`.
+- Tests with Vitest. Integration tests touch a real DB (no mocks).
+
+## Workflow
+- Branch per feature. Conventional commits.
+- API responses follow \`{ ok: bool, data?: any, error?: string }\`.
+- Tech lead writes \`decisions.md\` for anything that crosses two roles.
+`;
+
+const DEMO_DECISION_KEY = 'demo-stack-2026';
+const DEMO_DECISION_VALUE =
+  'Stack: TypeScript + React + Postgres. Tests con Vitest.';
+
+export function handleCreateDemo(_body: unknown, res: ServerResponse): void {
+  ensureDirectories();
+  const configPath = join(PROJECTS_DIR, `${DEMO_PROJECT_NAME}.json`);
+
+  // Idempotent: existing demo project → just confirm it's there.
+  if (existsSync(configPath)) {
+    return json(res, { ok: true, name: DEMO_PROJECT_NAME, already_existed: true });
+  }
+
+  // Each demo agent needs a real cwd that exists at spawn time —
+  // /tmp tends to get cleaned and the user's home shouldn't have
+  // mystery dirs appear, so we keep them under ACC_HOME/demo/.
+  const demoBase = join(ACC_HOME, 'demo');
+  mkdirSync(demoBase, { recursive: true });
+  const specs: Array<{ role: string; name: string; avatarSeed: string }> = [
+    { role: 'backend',  name: 'Turing', avatarSeed: 'demo-backend' },
+    { role: 'frontend', name: 'Ada',    avatarSeed: 'demo-frontend' },
+    { role: 'qa',       name: 'Curie',  avatarSeed: 'demo-qa' },
+  ];
+  const agents = [buildTechLeadAgent(DEMO_PROJECT_NAME)];
+  for (const spec of specs) {
+    const cwd = join(demoBase, spec.role);
+    mkdirSync(cwd, { recursive: true });
+    // Seed a README so the dir isn't suspiciously empty — also makes
+    // Turing's git power immediately useful.
+    const readme = join(cwd, 'README.md');
+    if (!existsSync(readme)) {
+      writeFileSync(readme,
+        `# Demo ${spec.role}\n\nWorkspace for ${spec.name} (${spec.role}) in ${DEMO_PROJECT_NAME}.\nReplace this dir with a real repo when you're ready.\n`,
+      );
+    }
+    agents.push({
+      role: spec.role,
+      cwd,
+      name: spec.name,
+      agent_cmd: 'claude',
+      agent_args: [],
+      instructions: '',
+      avatar: `dicebear:${spec.avatarSeed}`,
+      model: '',
+    });
+  }
+
+  const config = {
+    name: DEMO_PROJECT_NAME,
+    description: 'Demo fullstack — Turing/Ada/Curie. Edita o reemplaza cuando estés listo para un proyecto real.',
+    created_at: new Date().toISOString(),
+    agents,
+  };
+  writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+
+  // Seed the example skill file so the user sees the skills feature
+  // working from turn 0.
+  const skillsDir = join(ACC_HOME, 'projects', DEMO_PROJECT_NAME, 'skills');
+  mkdirSync(skillsDir, { recursive: true });
+  const skillPath = join(skillsDir, 'conventions.md');
+  if (!existsSync(skillPath)) {
+    writeFileSync(skillPath, DEMO_SKILL_CONTENT);
+  }
+
+  // Seed one decision in team memory. Authored as "system" so the
+  // dashboard's decision-author chip doesn't blame the user for it.
+  // Once the user encends the team, recall(query) finds it.
+  try {
+    setSharedStateWithMeta(
+      DEMO_PROJECT_NAME, 'decisions',
+      DEMO_DECISION_KEY, DEMO_DECISION_VALUE,
+      'system', new Date().toISOString(),
+      { author_role: 'system', author_peer_id: 'system' },
+    );
+  } catch (e) {
+    // Seed failure is non-fatal — the project is still usable. Log so
+    // a future maintainer notices if the helper signature shifts.
+    console.error(`[broker:create-demo] decision seed failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  json(res, { ok: true, name: DEMO_PROJECT_NAME });
 }
 
 export function handleAddAgent(body: unknown, res: ServerResponse): void {

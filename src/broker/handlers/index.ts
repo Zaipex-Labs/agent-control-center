@@ -70,6 +70,7 @@ export {
   migrateLegacyProjects,
   handleListProjects,
   handleCreateProject,
+  handleCreateDemo,
   handleAddAgent,
   handleUpdateProject,
   handleProjectUp,

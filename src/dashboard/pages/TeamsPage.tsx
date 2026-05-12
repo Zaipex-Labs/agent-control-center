@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listProjects, projectUp, projectDown, createProject, updateProject, deleteProject, listPowers } from '../lib/api';
+import { listProjects, projectUp, projectDown, createProject, createDemoProject, updateProject, deleteProject, listPowers } from '../lib/api';
 import type { Project, AgentConfig, Power } from '../lib/types';
 import Avatar from '../components/Avatar';
 import AgentIdCard, { type AgentDraft } from '../components/AgentIdCard';
@@ -850,7 +850,34 @@ export default function TeamsPage() {
             border: '1px dashed #DDD5C8', borderRadius: 12,
             background: '#FAF7F1',
           }}>
-            {search ? t('dash.noMatches') : t('dash.noTeams')}
+            <div>{search ? t('dash.noMatches') : t('dash.noTeams')}</div>
+            {/* B-1 v0.3.4 — secondary CTA only when there's no search
+                term and no projects yet. Once a user has any project,
+                the demo CTA disappears so it doesn't keep eating
+                cold-landing real estate. */}
+            {!search && (
+              <button
+                onClick={async () => {
+                  try {
+                    const r = await createDemoProject();
+                    await reload();
+                    navigate(`/${encodeURIComponent(r.name)}`);
+                  } catch (e) {
+                    setError(t('dash.errorCreating', { error: e instanceof Error ? e.message : String(e) }));
+                  }
+                }}
+                style={{
+                  marginTop: 14, padding: '8px 18px', borderRadius: 8,
+                  background: '#fff', border: '1px solid #DDD5C8',
+                  color: '#1E2D40', fontSize: 13, cursor: 'pointer',
+                  fontFamily: 'var(--font-mono)',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = '#E8823A'; e.currentTarget.style.color = '#E8823A'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = '#DDD5C8'; e.currentTarget.style.color = '#1E2D40'; }}
+              >
+                {t('dash.createDemo')}
+              </button>
+            )}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>

@@ -188,6 +188,8 @@ export const en: Record<string, string> = {
   // v0.3.2.1 MED-2: dashboard empty state — point at the "+ New team"
   // button that's right above this text, not at the CLI command.
   'dash.noTeams': 'No teams yet. Create your first one with the "+ New team" button.',
+  // B-1 v0.3.4 — secondary CTA in empty state for one-click demo.
+  'dash.createDemo': 'Create demo team →',
   'dash.active': 'Active',
   'dash.inactive': 'Inactive',
   'dash.lastActivity': 'Last activity',

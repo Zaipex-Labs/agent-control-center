@@ -92,6 +92,21 @@ export async function listProjects(): Promise<Project[]> {
   return resp.projects;
 }
 
+// B-1 v0.3.4 — one-click demo team for cold-landing onboarding.
+// Returns `already_existed: true` if the demo project was already
+// scaffolded, so the dashboard can just navigate to it instead of
+// surfacing an error.
+export async function createDemoProject(): Promise<{
+  ok: boolean;
+  name: string;
+  already_existed?: boolean;
+}> {
+  return apiFetch<{ ok: boolean; name: string; already_existed?: boolean }>(
+    'project/create-demo',
+    {},
+  );
+}
+
 // ── FASE A v0.3.3 — token usage ───────────────────────────────
 
 export type TokenPeriod = 'today' | 'week' | 'month';
