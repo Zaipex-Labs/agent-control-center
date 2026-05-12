@@ -98,6 +98,33 @@ describe('handleAddAgent persists powers', () => {
     const frontend = config.agents.find((a: { role: string }) => a.role === 'frontend');
     expect(Object.prototype.hasOwnProperty.call(frontend, 'powers')).toBe(false);
   });
+
+  // MED-9 (v0.4.1): when the caller doesn't supply `name`, the
+  // handler should fall back to the role-default name from
+  // getDefaultName. Pre-v0.4.1 it wrote name='' and the dashboard
+  // had to synthesise; external API callers got an unnamed agent.
+  it('falls back to role-default name when none supplied (MED-9)', () => {
+    const { res } = createMockRes();
+    handleAddAgent(
+      { project_id: 'powers-proj', role: 'backend', cwd: home },
+      res,
+    );
+    const config = JSON.parse(readFileSync(join(projectsDir, 'powers-proj.json'), 'utf-8'));
+    const backend = config.agents.find((a: { role: string }) => a.role === 'backend');
+    expect(backend.name).toBeTruthy();
+    expect(backend.name.length).toBeGreaterThan(0);
+  });
+
+  it('preserves the caller-supplied name when present (MED-9)', () => {
+    const { res } = createMockRes();
+    handleAddAgent(
+      { project_id: 'powers-proj', role: 'qa', cwd: home, name: 'CustomName' },
+      res,
+    );
+    const config = JSON.parse(readFileSync(join(projectsDir, 'powers-proj.json'), 'utf-8'));
+    const qa = config.agents.find((a: { role: string }) => a.role === 'qa');
+    expect(qa.name).toBe('CustomName');
+  });
 });
 
 describe('handleUpdateProject persists powers per agent', () => {

@@ -447,10 +447,18 @@ export function handleAddAgent(body: unknown, res: ServerResponse): void {
     return error(res, `Agent with role '${b.role}' already exists`);
   }
 
+  // MED-9 (v0.4.1): when the caller doesn't supply `name`, fall
+  // back to the role-default name from getDefaultName(). Pre-v0.4.1
+  // the broker wrote `name: ''` and the dashboard had to synthesise
+  // a name on render — fine for the dashboard, broken for any
+  // external script calling /api/project/add-agent directly.
+  const agentName = b.name && b.name.trim().length > 0
+    ? b.name
+    : getDefaultName(b.role);
   config.agents.push({
     role: b.role,
     cwd: b.cwd,
-    name: b.name ?? '',
+    name: agentName,
     agent_cmd: 'claude',
     agent_args: [],
     instructions: b.instructions ?? '',
