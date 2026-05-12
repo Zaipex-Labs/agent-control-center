@@ -691,7 +691,7 @@ export default function ProjectPage() {
                   onDismissError={clearError}
                   flashMessageId={flashMessageId}
                 />
-                <Compose agents={agents} onSend={sendMessage} />
+                <Compose agents={agents} projectId={projectId} onSend={sendMessage} />
               </div>
             ) : agents.length === 0 ? (
               <EmptyState

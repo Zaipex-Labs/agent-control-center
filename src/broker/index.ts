@@ -70,6 +70,7 @@ import {
   handleListPowers,
   handleProjectTokens,
   handleProjectCoordOverhead,
+  handleProjectEstimateCost,
 } from './handlers.js';
 
 type PostHandler = (body: unknown, res: ServerResponse) => void | Promise<void>;
@@ -266,6 +267,17 @@ export function createBrokerServer(): Server {
       const projectId = decodeURIComponent(coordMatch[1]);
       const query = new URLSearchParams(coordMatch[2] ?? '');
       handleProjectCoordOverhead(projectId, query.get('period'), res);
+      return;
+    }
+
+    // FU-AE v0.4.0 — pre-send cost estimate. Returns a synthetic-
+    // baseline-backed prediction labelled with confidence so the UI
+    // can render the disclaimer visibly. See cost-estimator.ts.
+    const estimateMatch = url.match(/^\/api\/projects\/([^/?]+)\/estimate-cost(?:\?(.+))?$/);
+    if (method === 'GET' && estimateMatch) {
+      const projectId = decodeURIComponent(estimateMatch[1]);
+      const query = new URLSearchParams(estimateMatch[2] ?? '');
+      handleProjectEstimateCost(projectId, query.get('message'), res);
       return;
     }
 
