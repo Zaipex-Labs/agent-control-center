@@ -20,6 +20,8 @@ import StartupLogView, { type StartupLogStep } from '../components/StartupLogVie
 import EmptyOffice from '../components/EmptyOffice';
 import DeskPapers from '../components/DeskPapers';
 import SkillsModal from '../components/SkillsModal';
+import OnboardingTour from '../components/OnboardingTour';
+import { useOnboardingTour } from '../hooks/useOnboardingTour';
 import { projectUp, projectDown as apiProjectDown, saveResume } from '../lib/api';
 
 // True only if the current page was opened via an explicit browser
@@ -51,6 +53,11 @@ export default function ProjectPage() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [showSkills, setShowSkills] = useState(false);
   const [sharedRefresh, setSharedRefresh] = useState(0);
+
+  // B-5 v0.3.4 — Onboarding tour. Steps 3 and 4 live on this page;
+  // 1 and 2 live on TeamsPage. The hook is page-scoped so it returns
+  // a non-null step only when the stored step matches this page.
+  const tour = useOnboardingTour({ page: 'project' });
   // Persist open terminal tabs per project so they survive a page reload.
   // The underlying agent processes keep running in the broker regardless —
   // this just restores which tabs the dashboard was showing.
@@ -811,6 +818,15 @@ export default function ProjectPage() {
           projectId={projectId}
           peerId={dashboardId}
           onClose={() => setShowSkills(false)}
+        />
+      )}
+
+      {tour.step !== null && (
+        <OnboardingTour
+          step={tour.step}
+          totalSteps={tour.totalSteps}
+          onNext={tour.next}
+          onSkip={tour.skip}
         />
       )}
     </div>

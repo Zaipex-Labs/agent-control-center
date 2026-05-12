@@ -13,6 +13,8 @@ import { t } from '../../shared/i18n/browser';
 import { getDefaultName, ARCHITECT_ROLE, ARCHITECT_DEFAULT_INSTRUCTIONS } from '../../shared/names';
 import { officeIndex, renderOffice } from '../lib/offices';
 import { useSpawnPhases, type SpawnPhases, type PhaseSet } from '../hooks/useSpawnPhases';
+import OnboardingTour from '../components/OnboardingTour';
+import { useOnboardingTour, TOUR_KEY_SEEN } from '../hooks/useOnboardingTour';
 
 const ROLE_COLORS: Record<string, string> = {
   backend: '#4A9FE8',
@@ -498,6 +500,22 @@ export default function TeamsPage() {
   const spawnPhases = useSpawnPhases(starting ?? undefined, !!starting);
   const navigate = useNavigate();
 
+  // B-5 v0.3.4 — Onboarding tour (steps 1 + 2 live on this page).
+  // Pass projectCount only after the initial load resolves, so the
+  // eligibility check sees the real value, not `0` mid-fetch.
+  const tour = useOnboardingTour({
+    page: 'teams',
+    projectCount: loading ? undefined : projects.length,
+  });
+  // "Ver tour" restart affordance — only meaningful once the user
+  // already saw + dismissed it.
+  const [tourSeenFlag, setTourSeenFlag] = useState<boolean>(() => {
+    try { return localStorage.getItem(TOUR_KEY_SEEN) === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    if (tour.step !== null && tourSeenFlag) setTourSeenFlag(false);
+  }, [tour.step, tourSeenFlag]);
+
   const isProjectActive = (p: Project): boolean =>
     p.active_peers > 0 || p.tmux_running === true;
 
@@ -774,20 +792,37 @@ export default function TeamsPage() {
               {t('dash.teamsSubtitle')}
             </p>
           </div>
-          <button
-            onClick={() => setShowCreate(true)}
-            style={{
-              background: '#E8823A', color: '#fff', border: 'none',
-              padding: '9px 18px', borderRadius: 10, fontSize: 13,
-              fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)',
-              letterSpacing: 0.2, flexShrink: 0,
-              transition: 'background 0.2s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#D4732E'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = '#E8823A'; }}
-          >
-            + {t('dash.newTeam')}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {tourSeenFlag && (
+              <button
+                onClick={() => { tour.restart(); setTourSeenFlag(false); }}
+                style={{
+                  background: 'none', border: 'none', padding: '6px 4px',
+                  color: '#5A6272', cursor: 'pointer',
+                  fontFamily: 'var(--font-mono)', fontSize: 12,
+                  textDecoration: 'underline', textUnderlineOffset: 3,
+                }}
+                onMouseEnter={e => { e.currentTarget.style.color = '#E8823A'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = '#5A6272'; }}
+              >
+                {t('tour.replay')}
+              </button>
+            )}
+            <button
+              onClick={() => setShowCreate(true)}
+              style={{
+                background: '#E8823A', color: '#fff', border: 'none',
+                padding: '9px 18px', borderRadius: 10, fontSize: 13,
+                fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                letterSpacing: 0.2, flexShrink: 0,
+                transition: 'background 0.2s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#D4732E'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#E8823A'; }}
+            >
+              + {t('dash.newTeam')}
+            </button>
+          </div>
         </div>
 
         {projects.length > 0 && (
@@ -942,6 +977,15 @@ export default function TeamsPage() {
           onConfirm={confirmDelete}
           onCancel={() => setDeletingProject(null)}
           danger
+        />
+      )}
+
+      {tour.step !== null && (
+        <OnboardingTour
+          step={tour.step}
+          totalSteps={tour.totalSteps}
+          onNext={() => { tour.next(); setTourSeenFlag(true); }}
+          onSkip={() => { tour.skip(); setTourSeenFlag(true); }}
         />
       )}
     </div>
