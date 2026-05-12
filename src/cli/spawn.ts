@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AgentConfig } from '../shared/types.js';
+import { swallow } from '../shared/log.js';
 import { resolveEntryPoint, getDefaultName } from '../shared/utils.js';
 import { assertSafeIdentifier } from '../shared/validate.js';
 import { prepareAgentMcpConfig } from './mcp-config.js';
@@ -284,12 +285,12 @@ export function spawnWithTmux(
     ], { stdio: 'pipe' });
   }
 
-  // Select the first window
-  try {
+  // Select the first window — best-effort; if the user has a custom
+  // tmux config that renames windows differently, this fails but the
+  // session is still up. swallow surfaces it without breaking spawn.
+  swallow('spawn:tmux-select-window', () => {
     execFileSync('tmux', ['select-window', '-t', `${sessionName}:${first.role}`], { stdio: 'pipe' });
-  } catch {
-    // Best effort
-  }
+  });
 
   // Collect PIDs from tmux panes
   const pids = getTmuxPanePids(sessionName);

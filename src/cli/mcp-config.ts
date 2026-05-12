@@ -24,6 +24,7 @@ import { mkdirSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { ACC_HOME } from '../shared/config.js';
 import { POWERS_REGISTRY, resolvePower } from '../shared/powers.js';
+import { swallow } from '../shared/log.js';
 
 export interface PreparedPowers {
   // Absolute path to the generated --mcp-config JSON file, or null when
@@ -119,10 +120,8 @@ export function prepareAgentMcpConfig(
 export function pruneAgentMcpConfig(projectName: string, role: string): void {
   const path = agentMcpConfigPath(projectName, role);
   if (existsSync(path)) {
-    try {
-      unlinkSync(path);
-    } catch {
-      // Best effort — a stale file is recoverable on next spawn.
-    }
+    // Best effort — a stale file is recoverable on next spawn,
+    // but if cleanup fails repeatedly the swallow log surfaces it.
+    swallow('config:agent-mcp-prune', () => unlinkSync(path));
   }
 }

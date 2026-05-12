@@ -16,6 +16,7 @@ import { PROJECTS_DIR, ACC_HOME, ensureDirectories, techLeadCwd } from '../../sh
 import { getDefaultName } from '../../shared/utils.js';
 import { ARCHITECT_ROLE, ARCHITECT_DEFAULT_INSTRUCTIONS } from '../../shared/names.js';
 import { assertSafeIdentifier, assertSafeDisplayName } from '../../shared/validate.js';
+import { swallow } from '../../shared/log.js';
 import { clearSpawnState } from '../spawn-state.js';
 import { detachPeer as detachTokenTail } from '../token-tail.js';
 import { registerMcpServer, killTmuxSession, hasTmuxSession as hasTmuxSess, listTmuxSessions } from '../../cli/spawn.js';
@@ -869,12 +870,14 @@ export async function handleProjectDown(body: unknown, res: ServerResponse): Pro
   const now = new Date().toISOString();
   for (const peer of liveAgents) {
     const promptText = buildSaveResumePrompt(peer.role, now, 'shutdown');
-    try {
+    // DB writes during shutdown — if better-sqlite3 is mid-close
+    // or a constraint fails, we still want the agent to get killed.
+    // swallow makes the silent failure visible without blocking
+    // shutdown.
+    swallow('save-resume:system-msg-insert', () => {
       insertMessage(b.project_id, 'system', peer.id, 'notification', promptText, null, now, null);
       insertLogEntry(b.project_id, 'system', 'system', peer.id, peer.role, 'notification', promptText, null, now, 'system', null);
-    } catch {
-      // ignore
-    }
+    });
   }
   if (liveAgents.length > 0) {
     await new Promise(resolve => setTimeout(resolve, 3000));
