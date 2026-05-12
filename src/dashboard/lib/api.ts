@@ -145,6 +145,33 @@ export async function getProjectTokens(
   );
 }
 
+// FU-AH v0.3.4 — coord-overhead readout (count of inter-agent
+// messages vs assistant turn count + pair breakdown). v0.3.5 will
+// surface analysis/optimisation; v0.3.4 only ships the read shape.
+export interface CoordOverheadPair {
+  from_role: string;
+  to_role: string;
+  events: number;
+}
+
+export interface CoordOverheadReport {
+  period: TokenPeriod;
+  since: string;
+  coord_events: number;
+  total_turns: number;
+  coord_ratio: number;
+  by_pair: CoordOverheadPair[];
+}
+
+export async function getProjectCoordOverhead(
+  projectId: string,
+  period: TokenPeriod = 'today',
+): Promise<CoordOverheadReport> {
+  return apiGet<CoordOverheadReport>(
+    `/api/projects/${encodeURIComponent(projectId)}/coord-overhead?period=${period}`,
+  );
+}
+
 // ── Dashboard peer registration ───────────────────────────────
 
 export async function registerDashboard(

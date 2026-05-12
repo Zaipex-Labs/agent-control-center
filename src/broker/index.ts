@@ -66,6 +66,7 @@ import {
   handleBlobStats,
   handleListPowers,
   handleProjectTokens,
+  handleProjectCoordOverhead,
 } from './handlers.js';
 
 type PostHandler = (body: unknown, res: ServerResponse) => void | Promise<void>;
@@ -248,6 +249,17 @@ export function createBrokerServer(): Server {
       const projectId = decodeURIComponent(tokensMatch[1]);
       const query = new URLSearchParams(tokensMatch[2] ?? '');
       handleProjectTokens(projectId, query.get('period'), res);
+      return;
+    }
+
+    // FU-AH v0.3.4 — coord-overhead readout (coord_events / total_turns
+    // ratio plus per-(from,to) breakdown). Read-only; analysis &
+    // tuning live in v0.3.5 once data accumulates.
+    const coordMatch = url.match(/^\/api\/projects\/([^/?]+)\/coord-overhead(?:\?(.+))?$/);
+    if (method === 'GET' && coordMatch) {
+      const projectId = decodeURIComponent(coordMatch[1]);
+      const query = new URLSearchParams(coordMatch[2] ?? '');
+      handleProjectCoordOverhead(projectId, query.get('period'), res);
       return;
     }
 

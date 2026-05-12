@@ -8,7 +8,13 @@
 // with hourly histogram and top-5 most-expensive turns.
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { getProjectTokens, type TokensReport, type TokenPeriod } from '../lib/api';
+import {
+  getProjectTokens,
+  getProjectCoordOverhead,
+  type TokensReport,
+  type TokenPeriod,
+  type CoordOverheadReport,
+} from '../lib/api';
 import { t } from '../../shared/i18n/browser';
 
 const POLL_INTERVAL_MS = 30_000;
@@ -158,7 +164,12 @@ export default function TokensPanel({ projectId, refreshKey }: TokensPanelProps)
       </button>
 
       {detailOpen && (
-        <TokensDetailModal report={report} onClose={() => setDetailOpen(false)} />
+        <TokensDetailModal
+          report={report}
+          projectId={projectId}
+          period={period}
+          onClose={() => setDetailOpen(false)}
+        />
       )}
     </div>
   );
@@ -166,12 +177,24 @@ export default function TokensPanel({ projectId, refreshKey }: TokensPanelProps)
 
 function TokensDetailModal({
   report,
+  projectId,
+  period,
   onClose,
 }: {
   report: TokensReport;
+  projectId: string;
+  period: TokenPeriod;
   onClose: () => void;
 }) {
   const histMax = Math.max(1, ...report.by_hour.map(b => b.total));
+
+  // FU-AH v0.3.4 — fetch coord overhead lazily when the modal opens.
+  // Empty state if the broker doesn't return data (e.g. no inter-agent
+  // chatter in the window).
+  const [coord, setCoord] = useState<CoordOverheadReport | null>(null);
+  useEffect(() => {
+    getProjectCoordOverhead(projectId, period).then(setCoord).catch(() => {/* silent */});
+  }, [projectId, period]);
 
   return (
     <div
@@ -252,6 +275,31 @@ function TokensDetailModal({
               );
             })}
           </svg>
+        )}
+
+        {/* FU-AH v0.3.4 — coord overhead small section. v0.3.5 will
+            add prompt-tuning analysis once enough data accrues. */}
+        {coord && coord.coord_events > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{
+              fontFamily: 'var(--font-mono)', fontSize: 9,
+              textTransform: 'uppercase', letterSpacing: 1.5,
+              color: 'var(--z-text-muted)', marginBottom: 8,
+            }}>
+              {t('dash.coordOverheadTitle')}
+            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--z-text-secondary)' }}>
+              <div>
+                {t('dash.coordEvents')}: <span style={{ color: 'var(--z-text)' }}>{coord.coord_events}</span>
+                {' '}({(coord.coord_ratio * 100).toFixed(0)}% {t('dash.coordRatioOf')} {coord.total_turns} {t('dash.tokensTurns')})
+              </div>
+              {coord.by_pair.slice(0, 5).map((p: { from_role: string; to_role: string; events: number }) => (
+                <div key={`${p.from_role}-${p.to_role}`} style={{ paddingLeft: 8, color: 'var(--z-text-muted)' }}>
+                  <span style={{ color: 'var(--z-text)' }}>{p.from_role}</span> → <span style={{ color: 'var(--z-text)' }}>{p.to_role}</span>: {p.events}
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* Top turns */}

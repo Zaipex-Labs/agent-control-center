@@ -801,3 +801,55 @@ export function selectTokenUsageSince(
     ORDER BY created_at ASC
   `).all(projectId, sinceIso) as TokenUsageRow[];
 }
+
+// ── FU-AH v0.3.4 — coord overhead instrumentation ──────────────
+//
+// "Coord events" = messages whose `from_role` and `to_role` are
+// BOTH non-empty AND distinct (genuine inter-agent routing — excludes
+// user→agent and self-talk). Counted against the same period as
+// token_usage so the dashboard can render
+//   coord_ratio = coord_events / token_turns
+// — a proxy for how much of a project's compute is going into
+// coordination chatter vs the per-specialist work itself.
+
+export interface CoordEventRow {
+  from_role: string;
+  to_role: string;
+  events: number;
+}
+
+export function countCoordEventsSince(projectId: string, sinceIso: string): number {
+  const row = getDb().prepare(`
+    SELECT COUNT(*) AS n
+    FROM message_log
+    WHERE project_id = ?
+      AND sent_at >= ?
+      AND from_role <> ''
+      AND to_role <> ''
+      AND from_role <> to_role
+  `).get(projectId, sinceIso) as { n: number };
+  return row?.n ?? 0;
+}
+
+export function selectCoordEventsByPair(projectId: string, sinceIso: string): CoordEventRow[] {
+  return getDb().prepare(`
+    SELECT from_role, to_role, COUNT(*) AS events
+    FROM message_log
+    WHERE project_id = ?
+      AND sent_at >= ?
+      AND from_role <> ''
+      AND to_role <> ''
+      AND from_role <> to_role
+    GROUP BY from_role, to_role
+    ORDER BY events DESC
+  `).all(projectId, sinceIso) as CoordEventRow[];
+}
+
+export function countTokenTurnsSince(projectId: string, sinceIso: string): number {
+  const row = getDb().prepare(`
+    SELECT COUNT(*) AS n
+    FROM token_usage
+    WHERE project_id = ? AND created_at >= ?
+  `).get(projectId, sinceIso) as { n: number };
+  return row?.n ?? 0;
+}

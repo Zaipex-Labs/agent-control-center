@@ -365,6 +365,9 @@ export const en: Record<string, string> = {
   // FU-Y v0.3.3 — restart hint when powers change on a live team
   'dash.powersRestartHint': 'Power changes take effect on the next agent restart (apagar then encender).',
 
+  // FU-AG v0.3.4 — cache thrash warning on rapid down/up cycle (<60s)
+  'dash.cacheResetWarning': 'Restarting the team discards the context cache (~$1-3 per reset on a typical project). If you only need something to change, check skills or powers instead of restarting.',
+
   // FASE A v0.3.3 — TokensPanel
   'dash.tokensSection': 'Tokens today',
   'dash.tokensTotal': 'Total',
@@ -382,6 +385,11 @@ export const en: Record<string, string> = {
   'dash.tokensPeriod.today': 'Today',
   'dash.tokensPeriod.week': 'Week',
   'dash.tokensPeriod.month': 'Month',
+
+  // FU-AH v0.3.4 — coord overhead
+  'dash.coordOverheadTitle': 'Inter-agent coordination',
+  'dash.coordEvents': 'Coord events',
+  'dash.coordRatioOf': 'of',
 
   // SharedStatePanel
   'dash.sharedState': 'Shared state',

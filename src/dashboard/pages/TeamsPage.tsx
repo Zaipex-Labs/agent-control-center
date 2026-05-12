@@ -592,8 +592,24 @@ export default function TeamsPage() {
   };
 
   const startProject = async (name: string) => {
+    // v0.3.4 FU-AG — warn (non-blocking) when the user does
+    // Apagar → Encender within ~60 s. The cache prefix is wiped on
+    // every `acc up` so this round-trip is the most expensive thing
+    // a user can do casually. We surface it as an inline notice via
+    // setError (existing channel) so we don't add a toast subsystem
+    // for a single warning. The user can dismiss with the existing
+    // close affordance and proceed — this is informational, never
+    // blocking.
+    try {
+      const last = Number(localStorage.getItem(`acc.lastDown.${name}`));
+      if (last && Date.now() - last < 60_000) {
+        setError(t('dash.cacheResetWarning'));
+        // Don't return — let the spawn proceed. The setError is the
+        // user's warning; the cost is theirs to take.
+      }
+    } catch { /* localStorage unavailable — silent */ }
+
     setStarting(name);
-    setError(null);
     const log: Array<{ text: string; done: boolean }> = [
       { text: t('dash.registeringMcp'), done: false },
     ];
@@ -701,6 +717,12 @@ export default function TeamsPage() {
     setError(null);
     try {
       await projectDown(name);
+      // v0.3.4 FU-AG — remember when this project went down so the next
+      // Encender within 60s can warn about cache-thrash cost. Use
+      // localStorage so the timestamp survives a page reload.
+      try {
+        localStorage.setItem(`acc.lastDown.${name}`, String(Date.now()));
+      } catch { /* private browsing / quota — silent */ }
       await reload();
     } catch (e) {
       setError(t('dash.errorShutdown', { name, error: e instanceof Error ? e.message : String(e) }));
