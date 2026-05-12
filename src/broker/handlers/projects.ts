@@ -216,15 +216,15 @@ function ensureTechLeadDir(projectName: string): string {
   // — the tech lead may have updated them already.
   const readme = join(dir, 'README.md');
   if (!existsSync(readme)) {
-    writeFileSync(readme, `# ${projectName} — Tech Lead workspace\n\nThis directory is maintained by the tech lead agent (arquitectura). The agent updates these files as the team works:\n\n- **progress.md** — what has been shipped\n- **decisions.md** — architectural decisions and rationale\n- **current.md** — what's in progress right now\n\nOther agents' code lives in their own cwds — this folder is the tech lead's memory across sessions.\n`);
+    writeFileSync(readme, `# ${projectName} — Coordinator workspace\n\nThis directory is maintained by the coordinator agent (arquitectura). The agent updates these files as the team works:\n\n- **progress.md** — what has been shipped\n- **decisions.md** — architectural decisions and rationale\n- **current.md** — what's in progress right now\n\nOther agents' code lives in their own cwds — this folder is the coordinator's memory across sessions.\n`);
   }
   const current = join(dir, 'current.md');
   if (!existsSync(current)) {
-    writeFileSync(current, `# Current work\n\n_The tech lead updates this file when tasks start or switch._\n`);
+    writeFileSync(current, `# Current work\n\n_The coordinator updates this file when tasks start or switch._\n`);
   }
   const progress = join(dir, 'progress.md');
   if (!existsSync(progress)) {
-    writeFileSync(progress, `# Progress log\n\n_One line per shipped task. The tech lead appends here when something finishes._\n`);
+    writeFileSync(progress, `# Progress log\n\n_One line per shipped task. The coordinator appends here when something finishes._\n`);
   }
   const decisions = join(dir, 'decisions.md');
   if (!existsSync(decisions)) {

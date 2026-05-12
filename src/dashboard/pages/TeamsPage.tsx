@@ -1104,7 +1104,7 @@ function EditProjectModal({ project, onClose, onSubmit, saving, availablePowers 
                 onChange={next => replaceCard(i, next)}
                 onDelete={() => removeCard(i)}
                 locked={agent.role === ARCHITECT_ROLE}
-                lockedHint={agent.role === ARCHITECT_ROLE ? '🔒 Tech Lead permanente — coordinador del equipo' : undefined}
+                lockedHint={agent.role === ARCHITECT_ROLE ? '🔒 Coordinador permanente del equipo' : undefined}
                 availablePowers={availablePowers}
               />
             );
@@ -1398,7 +1398,7 @@ function CreateProjectModal({ onClose, onSubmit, creating, availablePowers }: {
               onChange={next => replaceRow(i, next)}
               onDelete={() => removeAgentRow(i)}
               locked={agent.role === ARCHITECT_ROLE}
-              lockedHint={agent.role === ARCHITECT_ROLE ? '🔒 Tech Lead permanente' : undefined}
+              lockedHint={agent.role === ARCHITECT_ROLE ? '🔒 Coordinador permanente' : undefined}
               availablePowers={availablePowers}
             />
           ))}
