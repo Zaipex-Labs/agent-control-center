@@ -317,9 +317,60 @@ export interface OkResponse {
   ok: true;
 }
 
+// MED-10 (v0.4.0): every error response from the broker follows this
+// shape. `code` is required so callers can switch on a stable machine
+// identifier instead of regexing the human-readable `error` string.
+// `issues` is populated only for INVALID_BODY responses (zod parse
+// failures), carrying per-field detail.
+//
+// The 6 canonical generic codes (INVALID_BODY, NOT_FOUND, FORBIDDEN,
+// CONFLICT, INTERNAL, RATE_LIMITED) cover most cases. The remaining
+// entries are either: (a) finer-grained subcodes that pre-existed
+// MED-10 and are pinned by tests / dashboard switches
+// (PEER_NOT_FOUND, PROJECT_MISMATCH, MISSING_PEER_ID, BLOB_TOO_LARGE);
+// or (b) HTTP-level codes (BAD_REQUEST, PAYLOAD_TOO_LARGE,
+// UNAUTHORIZED) emitted when no more specific code applies.
+//
+// New error sites should prefer one of the 6 generic codes. Add new
+// codes here only when an existing one would lose useful semantics.
+export type ErrorCode =
+  // Generic categories (MED-10 baseline)
+  | 'INVALID_BODY'
+  | 'NOT_FOUND'
+  | 'FORBIDDEN'
+  | 'CONFLICT'
+  | 'INTERNAL'
+  | 'RATE_LIMITED'
+  // HTTP-level fallbacks
+  | 'BAD_REQUEST'
+  | 'PAYLOAD_TOO_LARGE'
+  | 'UNAUTHORIZED'
+  // Pre-existing specifics (kept for back-compat with tests / dashboard)
+  | 'PEER_NOT_FOUND'
+  | 'PROJECT_MISMATCH'
+  | 'MISSING_PEER_ID'
+  | 'BLOB_TOO_LARGE'
+  | 'BLOB_NOT_FOUND'
+  | 'BLOB_ACCESS_DENIED'
+  | 'UNKNOWN_PEER'
+  | 'TOO_MANY_ATTACHMENTS';
+
+export interface ErrorIssue {
+  path: string;
+  message: string;
+  code: string;
+}
+
 export interface ErrorResponse {
   ok: false;
   error: string;
+  code: ErrorCode;
+  issues?: ErrorIssue[];
+  // Open-ended slot for code-specific context (e.g. BLOB_NOT_FOUND
+  // carries `hash`). The canonical shape is the 3 required fields +
+  // optional `issues`; additional keys are documented per-code and
+  // not part of the contract for generic consumers.
+  [key: string]: unknown;
 }
 
 export interface HealthResponse {

@@ -11,14 +11,58 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ZodType } from 'zod';
 import { assertSafeIdentifier } from '../../shared/validate.js';
 import { selectPeerById } from '../database.js';
+import type { ErrorCode, ErrorIssue, ErrorResponse } from '../../shared/wire.js';
 
 export function json(res: ServerResponse, data: unknown, status = 200): void {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
 }
 
-export function error(res: ServerResponse, message: string, status = 400): void {
-  json(res, { ok: false, error: message }, status);
+// MED-10 (v0.4.0): default ErrorCode for each HTTP status. Used by
+// `error()` when the caller doesn't pass an explicit code. Sites that
+// want finer-grained codes (PEER_NOT_FOUND vs generic NOT_FOUND)
+// override via `errorResponse()` or the 4th arg of `error()`.
+const STATUS_TO_CODE: Record<number, ErrorCode> = {
+  400: 'BAD_REQUEST',
+  401: 'UNAUTHORIZED',
+  403: 'FORBIDDEN',
+  404: 'NOT_FOUND',
+  409: 'CONFLICT',
+  413: 'PAYLOAD_TOO_LARGE',
+  429: 'RATE_LIMITED',
+  500: 'INTERNAL',
+};
+
+// MED-10: canonical error helper. Every error response leaves this
+// function carrying { ok: false, error, code } so callers can switch
+// on `code` instead of regexing the message. New sites should prefer
+// `errorResponse()` below (explicit code argument) or pass the code as
+// the 4th arg here when the default derived from status is wrong.
+export function error(
+  res: ServerResponse,
+  message: string,
+  status = 400,
+  code?: ErrorCode,
+): void {
+  const resolvedCode = code ?? STATUS_TO_CODE[status] ?? 'INTERNAL';
+  json(res, { ok: false, error: message, code: resolvedCode } satisfies ErrorResponse, status);
+}
+
+// Preferred helper for new sites or refactors where the explicit code
+// + status pair reads more clearly. `issues` is reserved for zod
+// validation failures; `extras` carries code-specific context
+// documented per-code (e.g. BLOB_NOT_FOUND adds `hash`).
+export function errorResponse(
+  res: ServerResponse,
+  status: number,
+  code: ErrorCode,
+  message: string,
+  opts?: { issues?: ErrorIssue[]; extras?: Record<string, unknown> },
+): void {
+  const body: ErrorResponse = { ok: false, error: message, code };
+  if (opts?.issues !== undefined) body.issues = opts.issues;
+  if (opts?.extras) Object.assign(body, opts.extras);
+  json(res, body, status);
 }
 
 // [P-11] Default body cap. Used when a route doesn't have a specific
@@ -144,13 +188,7 @@ export function parseBodyOrError<T>(
   // see a useful one-liner without unpacking `issues`.
   const head = issues[0];
   const headline = head?.path ? `${head.path}: ${head.message}` : (head?.message ?? 'Invalid body');
-  res.writeHead(400, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({
-    ok: false,
-    error: headline,
-    code: 'INVALID_BODY',
-    issues,
-  }));
+  errorResponse(res, 400, 'INVALID_BODY', headline, { issues });
   return null;
 }
 
@@ -194,33 +232,18 @@ export function assertProjectMembership(
   res: ServerResponse,
 ): boolean {
   if (!peerId) {
-    res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      ok: false,
-      error: 'Missing required field: peer_id',
-      code: 'MISSING_PEER_ID',
-    }));
+    errorResponse(res, 400, 'MISSING_PEER_ID', 'Missing required field: peer_id');
     return false;
   }
 
   const peer = selectPeerById(peerId);
   if (!peer) {
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      ok: false,
-      error: `Peer not found: ${peerId}`,
-      code: 'PEER_NOT_FOUND',
-    }));
+    errorResponse(res, 404, 'PEER_NOT_FOUND', `Peer not found: ${peerId}`);
     return false;
   }
 
   if (peer.project_id !== projectId) {
-    res.writeHead(403, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      ok: false,
-      error: 'Peer does not belong to the requested project',
-      code: 'PROJECT_MISMATCH',
-    }));
+    errorResponse(res, 403, 'PROJECT_MISMATCH', 'Peer does not belong to the requested project');
     return false;
   }
 
