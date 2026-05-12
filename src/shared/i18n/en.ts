@@ -296,7 +296,7 @@ export const en: Record<string, string> = {
   'dash.description': 'Description',
   'dash.descriptionPlaceholder': 'Project description (optional)',
   'dash.agents': 'Agents',
-  'dash.addAgent': '+ Add',
+  'dash.addAgent': 'Add',
   'dash.agentRolePlaceholder': 'Role (backend, frontend...)',
   'dash.cancel': 'Cancel',
   'dash.createTeam': 'Create team',

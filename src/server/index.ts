@@ -236,18 +236,20 @@ export async function main(): Promise<void> {
           }
         });
 
-        // Tier 1: MCP channel push
+        // Tier 1: MCP channel push. Failure here demotes to Tier 2
+        // (interrupt file) — the message still reaches the agent.
+        // What used to be silent (diagnostic loss) now logs via
+        // swallow so operators can see Tier 1 problems when they
+        // happen. `delivered=false` preserved by closing over it.
         let delivered = false;
-        try {
+        await swallowAsync('mcp:channel-push', async () => {
           await pushMessage(mcp.server, msg, {
             from_id: msg.from_id,
             from_role: fromRole,
             from_cwd: fromCwd,
           });
           delivered = true;
-        } catch {
-          // Channel push failed
-        }
+        });
 
         // Tier 2: interrupt file
         if (!delivered) {

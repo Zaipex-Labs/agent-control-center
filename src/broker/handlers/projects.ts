@@ -16,6 +16,7 @@ import { PROJECTS_DIR, ACC_HOME, ensureDirectories, techLeadCwd } from '../../sh
 import { getDefaultName } from '../../shared/utils.js';
 import { ARCHITECT_ROLE, ARCHITECT_DEFAULT_INSTRUCTIONS } from '../../shared/names.js';
 import { assertSafeIdentifier, assertSafeDisplayName } from '../../shared/validate.js';
+import { swallow } from '../../shared/log.js';
 import { clearSpawnState } from '../spawn-state.js';
 import { detachPeer as detachTokenTail } from '../token-tail.js';
 import { registerMcpServer, killTmuxSession, hasTmuxSession as hasTmuxSess, listTmuxSessions } from '../../cli/spawn.js';
@@ -278,11 +279,10 @@ export function handleCreateProject(body: unknown, res: ServerResponse): void {
   const b = parseBodyOrError(createProjectSchema, body, res);
   if (!b) return;
 
-  // MED-8: accept either `project_id` (canonical, consistent with every
-  // other /api/project/* endpoint) or `name` (legacy, deprecated in
-  // v0.4.0, drop in v0.5.0+). Both means project_id wins; the schema
-  // refine() guarantees at least one is set.
-  const projectId = (b.project_id ?? b.name) as string;
+  // FU-AI v0.4.1: the legacy `name` alias was dropped. The schema
+  // now requires `project_id` as the single canonical identifier,
+  // consistent with every other /api/project/* endpoint.
+  const projectId = b.project_id;
 
   // [C-1] — projectId flows into a filesystem path
   // (PROJECTS_DIR/<id>.json), into the tech-lead dir (TECHLEAD/<id>/),
@@ -305,10 +305,7 @@ export function handleCreateProject(body: unknown, res: ServerResponse): void {
     agents: [buildTechLeadAgent(projectId)],
   };
   writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
-  // Response includes BOTH fields for the same back-compat window —
-  // existing dashboard reads `name`, new callers should read
-  // `project_id`. Drop `name` from the response in v0.5.0+.
-  json(res, { ok: true, project_id: projectId, name: projectId });
+  json(res, { ok: true, project_id: projectId });
 }
 
 // B-1 v0.3.4 — one-click demo team for cold landing onboarding.
@@ -450,10 +447,18 @@ export function handleAddAgent(body: unknown, res: ServerResponse): void {
     return error(res, `Agent with role '${b.role}' already exists`);
   }
 
+  // MED-9 (v0.4.1): when the caller doesn't supply `name`, fall
+  // back to the role-default name from getDefaultName(). Pre-v0.4.1
+  // the broker wrote `name: ''` and the dashboard had to synthesise
+  // a name on render — fine for the dashboard, broken for any
+  // external script calling /api/project/add-agent directly.
+  const agentName = b.name && b.name.trim().length > 0
+    ? b.name
+    : getDefaultName(b.role);
   config.agents.push({
     role: b.role,
     cwd: b.cwd,
-    name: b.name ?? '',
+    name: agentName,
     agent_cmd: 'claude',
     agent_args: [],
     instructions: b.instructions ?? '',
@@ -873,12 +878,14 @@ export async function handleProjectDown(body: unknown, res: ServerResponse): Pro
   const now = new Date().toISOString();
   for (const peer of liveAgents) {
     const promptText = buildSaveResumePrompt(peer.role, now, 'shutdown');
-    try {
+    // DB writes during shutdown — if better-sqlite3 is mid-close
+    // or a constraint fails, we still want the agent to get killed.
+    // swallow makes the silent failure visible without blocking
+    // shutdown.
+    swallow('save-resume:system-msg-insert', () => {
       insertMessage(b.project_id, 'system', peer.id, 'notification', promptText, null, now, null);
       insertLogEntry(b.project_id, 'system', 'system', peer.id, peer.role, 'notification', promptText, null, now, 'system', null);
-    } catch {
-      // ignore
-    }
+    });
   }
   if (liveAgents.length > 0) {
     await new Promise(resolve => setTimeout(resolve, 3000));

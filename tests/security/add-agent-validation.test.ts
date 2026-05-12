@@ -183,9 +183,9 @@ describe('handleUpdateProject rejects unsafe role/name [H-3]', () => {
 });
 
 describe('handleCreateProject is also hardened [C-1 regression]', () => {
-  it('still rejects traversal in name', () => {
+  it('rejects traversal in project_id', () => {
     const { res, result } = createMockRes();
-    handleCreateProject({ name: '../escape' }, res);
+    handleCreateProject({ project_id: '../escape' }, res);
     expect(result.statusCode).toBe(400);
   });
 });

@@ -537,7 +537,7 @@ export function killAllWebAgents(projectId: string): number {
 export function killAllWebAgentsEverywhere(): number {
   let killed = 0;
   for (const [key, proc] of agentProcesses) {
-    try { proc.kill(); } catch { /* ignore */ }
+    swallow('terminal:kill-shutdown', () => { proc.kill(); });
     agentProcesses.delete(key);
     killed++;
   }

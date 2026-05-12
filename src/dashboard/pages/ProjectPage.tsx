@@ -565,7 +565,21 @@ export default function ProjectPage() {
                   autoFocus
                   value={newThreadName}
                   onChange={e => setNewThreadName(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleCreateThread(); if (e.key === 'Escape') { setCreatingThread(false); setNewThreadName(''); } }}
+                  onKeyDown={e => {
+                    // LOW-4 (v0.4.1): preventDefault on Enter so the
+                    // keystroke doesn't bubble out (e.g. a parent form
+                    // submit on some browsers). Escape closes the
+                    // input. The two branches are mutually exclusive
+                    // so the inline chain is rewritten as if/else for
+                    // intent clarity.
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void handleCreateThread();
+                    } else if (e.key === 'Escape') {
+                      setCreatingThread(false);
+                      setNewThreadName('');
+                    }
+                  }}
                   placeholder={t('dash.threadNamePlaceholder')}
                   style={{
                     width: '100%', background: 'var(--z-surface)',
