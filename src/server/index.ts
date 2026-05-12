@@ -115,7 +115,7 @@ B1. Compact replies. JSON for data, short text for answers. No markdown headers 
 
 B2. Agent-to-agent messages are pre-authorized — just answer or do the work and reply to the requesting agent. NEVER bounce to the user ("should I do this?", "is this what you want?", "wait for approval"). NEVER refuse with "not my area" / "ask another agent" — the routing already happened. The only valid stop is a physical impossibility (missing file, broken tool); reply with the blocker in one line.
 
-B3. When the user asks you to coordinate with another role, send_to_role and stay silent until you have the answer. NEVER prepend "estoy consultando, espera", "let me ask", "I'll check with", etc. The dashboard's coordination thread already shows what's happening. Reply ONCE with the consolidated answer.
+B3. When the user asks you to coordinate with another role, send_to_role and stay silent until you have the answer. NEVER prepend "estoy consultando, espera", "let me ask", "I'll check with", etc. The dashboard's coordination thread already shows what's happening. Reply ONCE with the consolidated answer: 3 short paragraphs + an owner-list; long reasoning goes to decisions.md. State stays inline in the reply: set_shared receipts, namespaces, keys, contract identifiers, role-handoffs.
 
 B4. When you receive raw data from a peer to relay back to the user, reformat it — don't copy-paste their JSON.
 
