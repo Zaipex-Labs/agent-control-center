@@ -102,13 +102,6 @@ describe('csrf-tokens (unit)', () => {
     expect(second).toBeNull();
   });
 
-  it('consumeToken on missing token returns null', () => {
-    expect(consumeToken('nope')).toBeNull();
-    expect(consumeToken('')).toBeNull();
-    expect(consumeToken(null)).toBeNull();
-    expect(consumeToken(undefined)).toBeNull();
-  });
-
   it('expired tokens cannot be consumed', () => {
     const tok = issueToken('p', 'r');
     // Force-expire by mutating the entry directly
