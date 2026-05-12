@@ -40,6 +40,7 @@ import {
   handleSharedDelete,
   handleDecisionsRecall,
   handleSkillsList,
+  handleSkillsListExamples,
   handleSkillsGet,
   handleSkillsSave,
   handleSkillsDelete,
@@ -90,6 +91,7 @@ const POST_ROUTES: Record<string, PostHandler> = {
   '/api/shared/delete': handleSharedDelete,
   '/api/decisions/recall': handleDecisionsRecall,
   '/api/skills/list': handleSkillsList,
+  '/api/skills/list-examples': handleSkillsListExamples,
   '/api/skills/get': handleSkillsGet,
   '/api/skills/save': handleSkillsSave,
   '/api/skills/delete': handleSkillsDelete,
@@ -127,6 +129,7 @@ const ROUTE_BODY_LIMITS: Record<string, number> = {
   '/api/list-peers': 1024,
   '/api/decisions/recall': 4 * 1024,        // ids + short query + limit
   '/api/skills/list': 1024,
+  '/api/skills/list-examples': 1024,
   '/api/skills/get': 1024,
   '/api/skills/save': 16 * 1024,            // 8KB content + JSON envelope
   '/api/skills/delete': 1024,

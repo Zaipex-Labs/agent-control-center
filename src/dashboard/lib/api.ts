@@ -469,6 +469,20 @@ export async function listSkills(projectId: string, peerId: string): Promise<Ski
   return resp.files;
 }
 
+// B-4 v0.3.4 — skills "marketplace" (minimal). Returns the three
+// curated example skills the dashboard can preview + one-click-copy
+// to a project. No auth — these are read-only static content.
+export interface SkillExample {
+  filename: string;
+  description: string;
+  content: string;
+}
+
+export async function listSkillExamples(): Promise<SkillExample[]> {
+  const resp = await apiFetch<{ examples: SkillExample[] }>('skills/list-examples', {});
+  return resp.examples;
+}
+
 export async function getSkill(
   projectId: string, peerId: string, filename: string,
 ): Promise<{ filename: string; content: string }> {

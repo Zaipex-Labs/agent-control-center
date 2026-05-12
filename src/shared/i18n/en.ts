@@ -444,4 +444,11 @@ export const en: Record<string, string> = {
   'dash.skillsDeleteConfirm': 'Delete "{filename}"?',
   'dash.skillsCancel': 'Cancel',
   'dash.skillsClose': 'Close',
+  'dash.skillsExamples': 'Examples →',
+  'dash.skillsExamplesTitle': 'Skill examples',
+  'dash.skillsExamplesIntro': 'Curated starter skills. Click "Copy to my team" to drop one into this project — edit it after.',
+  'dash.skillsExamplesBack': '← Back',
+  'dash.skillsCopyToTeam': 'Copy to my team',
+  'dash.skillsCopying': 'Copying…',
+  'dash.skillsCopied': 'Copied — find it in the list',
 };

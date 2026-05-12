@@ -86,6 +86,7 @@ export {
   handleSkillsGet,
   handleSkillsSave,
   handleSkillsDelete,
+  handleSkillsListExamples,
 } from './skills.js';
 
 export { handleListPowers } from './powers.js';

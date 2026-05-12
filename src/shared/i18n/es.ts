@@ -445,4 +445,11 @@ export const es: Record<string, string> = {
   'dash.skillsDeleteConfirm': '\u00bfBorrar "{filename}"?',
   'dash.skillsCancel': 'Cancelar',
   'dash.skillsClose': 'Cerrar',
+  'dash.skillsExamples': 'Ejemplos \u2192',
+  'dash.skillsExamplesTitle': 'Ejemplos de skills',
+  'dash.skillsExamplesIntro': 'Skills iniciales curados. Pulsa "Copiar a mi equipo" para a\u00f1adir uno al proyecto \u2014 luego lo editas.',
+  'dash.skillsExamplesBack': '\u2190 Volver',
+  'dash.skillsCopyToTeam': 'Copiar a mi equipo',
+  'dash.skillsCopying': 'Copiando\u2026',
+  'dash.skillsCopied': 'Copiado \u2014 lo ver\u00e1s en la lista',
 };
