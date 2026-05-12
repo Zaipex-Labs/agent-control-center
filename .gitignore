@@ -23,6 +23,7 @@ docs/audits/v0.3.3-observability/
 docs/audits/v0.3.4-onboarding/
 docs/audits/v0.3.5-narrative-vs-state/
 docs/audits/v0.4.0-platform-polish/
+docs/audits/v0.4.1-pre-beta-cleanup/
 
 # Claude Code local config
 .claude/
