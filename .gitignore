@@ -21,6 +21,7 @@ docs/audits/v0.3.2-full-qa/
 docs/audits/v0.3.2.1-hotfix/
 docs/audits/v0.3.3-observability/
 docs/audits/v0.3.4-onboarding/
+docs/audits/v0.3.5-narrative-vs-state/
 
 # Claude Code local config
 .claude/
