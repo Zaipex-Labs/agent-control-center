@@ -75,7 +75,7 @@ describe('handleCreateProject validates name [C-1]', () => {
   for (const [name, why] of TRAVERSAL_CASES) {
     it(`rejects name=${JSON.stringify(name)} (${why})`, () => {
       const { res, result } = createMockRes();
-      handleCreateProject({ name, description: 'audit' }, res);
+      handleCreateProject({ project_id: name, description: 'audit' }, res);
       expect(result.statusCode).toBe(400);
       // Confirm no file leaked out of PROJECTS_DIR.
       const escaped = join(home, '..', 'tmp', 'pwned.json');
@@ -83,9 +83,9 @@ describe('handleCreateProject validates name [C-1]', () => {
     });
   }
 
-  it('accepts a valid name and writes inside PROJECTS_DIR', () => {
+  it('accepts a valid project_id and writes inside PROJECTS_DIR', () => {
     const { res, result } = createMockRes();
-    handleCreateProject({ name: 'proj-alpha_01', description: 'audit' }, res);
+    handleCreateProject({ project_id: 'proj-alpha_01', description: 'audit' }, res);
     expect(result.statusCode).toBe(200);
     expect(result.body?.ok).toBe(true);
     // The config file lives inside PROJECTS_DIR.
@@ -93,61 +93,43 @@ describe('handleCreateProject validates name [C-1]', () => {
     expect(files).toContain('proj-alpha_01.json');
   });
 
-  it('accepts dotted names for backcompat (e.g. "my.project")', () => {
+  it('accepts dotted ids for backcompat (e.g. "my.project")', () => {
     const { res, result } = createMockRes();
-    handleCreateProject({ name: 'my.project', description: 'audit' }, res);
+    handleCreateProject({ project_id: 'my.project', description: 'audit' }, res);
     expect(result.statusCode).toBe(200);
   });
 });
 
-// MED-8 (v0.4.0): /api/project/create now accepts both `project_id`
-// (canonical) and `name` (legacy alias). One transition version where
-// new callers can switch without breaking old ones; the `name` alias
-// drops in v0.5.0+.
-describe('handleCreateProject MED-8 — project_id vs name', () => {
-  it('accepts canonical project_id', () => {
+// FU-AI v0.4.1: /api/project/create now accepts only `project_id`.
+// The legacy `name` alias that v0.4.0 kept for one back-compat window
+// has been removed. These tests pin the new strict contract.
+describe('handleCreateProject FU-AI — canonical project_id only', () => {
+  it('accepts canonical project_id and returns only project_id in response', () => {
     const { res, result } = createMockRes();
-    handleCreateProject({ project_id: 'med8-canonical', description: 'a' }, res);
+    handleCreateProject({ project_id: 'fuai-canonical', description: 'a' }, res);
     expect(result.statusCode).toBe(200);
     expect(result.body?.ok).toBe(true);
     const body = result.body as { project_id?: string; name?: string };
-    expect(body.project_id).toBe('med8-canonical');
-    // Response includes `name` too for the same back-compat window.
-    expect(body.name).toBe('med8-canonical');
-    expect(readdirSync(projectsDir)).toContain('med8-canonical.json');
+    expect(body.project_id).toBe('fuai-canonical');
+    // `name` is no longer part of the response shape.
+    expect(body.name).toBeUndefined();
+    expect(readdirSync(projectsDir)).toContain('fuai-canonical.json');
   });
 
-  it('accepts legacy name alias (back-compat)', () => {
+  it('rejects body that uses the legacy `name` alias (no longer accepted)', () => {
     const { res, result } = createMockRes();
-    handleCreateProject({ name: 'med8-legacy', description: 'a' }, res);
-    expect(result.statusCode).toBe(200);
-    expect(result.body?.ok).toBe(true);
-    const body = result.body as { project_id?: string; name?: string };
-    expect(body.project_id).toBe('med8-legacy');
-    expect(body.name).toBe('med8-legacy');
-    expect(readdirSync(projectsDir)).toContain('med8-legacy.json');
-  });
-
-  it('prefers project_id when both are present', () => {
-    const { res, result } = createMockRes();
-    handleCreateProject(
-      { project_id: 'med8-winner', name: 'med8-loser', description: 'a' },
-      res,
-    );
-    expect(result.statusCode).toBe(200);
-    const body = result.body as { project_id?: string; name?: string };
-    expect(body.project_id).toBe('med8-winner');
-    expect(body.name).toBe('med8-winner');
-    expect(readdirSync(projectsDir)).toContain('med8-winner.json');
-    expect(readdirSync(projectsDir)).not.toContain('med8-loser.json');
-  });
-
-  it('rejects body with neither project_id nor name', () => {
-    const { res, result } = createMockRes();
-    handleCreateProject({ description: 'a' }, res);
+    handleCreateProject({ name: 'fuai-legacy', description: 'a' }, res);
     expect(result.statusCode).toBe(400);
     const body = result.body as { code?: string; error?: string };
     expect(body.code).toBe('INVALID_BODY');
     expect(body.error).toMatch(/project_id/i);
+  });
+
+  it('rejects body without project_id', () => {
+    const { res, result } = createMockRes();
+    handleCreateProject({ description: 'a' }, res);
+    expect(result.statusCode).toBe(400);
+    const body = result.body as { code?: string };
+    expect(body.code).toBe('INVALID_BODY');
   });
 });

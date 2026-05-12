@@ -65,7 +65,7 @@ beforeEach(() => {
   // handleUpdateProject doesn't compound across tests.
   rmSync(join(projectsDir, 'powers-proj.json'), { force: true });
   const { res } = createMockRes();
-  handleCreateProject({ name: 'powers-proj' }, res);
+  handleCreateProject({ project_id: 'powers-proj' }, res);
 });
 
 describe('handleAddAgent persists powers', () => {
