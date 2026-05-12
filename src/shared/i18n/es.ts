@@ -282,7 +282,10 @@ export const es: Record<string, string> = {
   'dash.errorCreating': 'Error al crear: {error}',
   'dash.registeringMcp': 'Encendiendo las luces de la oficina (MCP)...',
   'dash.spawningAgents': 'Abriendo la oficina (tmux)...',
-  'dash.agentStarted': '{name} ({role}) hizo check-in',
+  // v0.3.3 PRE-4: "hizo check-in" was misleading — it fired immediately
+  // after the broker forked the process, BEFORE the agent registered.
+  // "despertando" matches the office metaphor and the actual state.
+  'dash.agentStarted': '{name} ({role}) despertando',
   'dash.waitingConnect': 'Esperando a que todos lleguen a sus escritorios (broker)...',
   'dash.teamUp': '\u00a1Equipo listo para trabajar!',
 
@@ -359,6 +362,27 @@ export const es: Record<string, string> = {
   'dash.attach.error': 'Error al subir',
   'dash.attach.tooLarge': 'Archivo demasiado grande',
   'dash.attach.download': 'Descargar',
+
+  // FU-Y v0.3.3 — restart hint when powers change on a live team
+  'dash.powersRestartHint': 'Los cambios de powers requieren apagar y encender el agente para aplicar.',
+
+  // FASE A v0.3.3 — TokensPanel
+  'dash.tokensSection': 'Tokens hoy',
+  'dash.tokensTotal': 'Total',
+  'dash.tokensTurns': 'turnos',
+  'dash.tokensLoading': 'Cargando uso...',
+  'dash.tokensEmpty': 'Sin uso registrado todavía.',
+  'dash.tokensSeeDetail': 'Ver detalle →',
+  'dash.tokensDetailTitle': 'Uso de tokens',
+  'dash.tokensByHour': 'Por hora',
+  'dash.tokensTopTurns': 'Top 5 turnos más caros',
+  'dash.tokensInput': 'Input',
+  'dash.tokensOutput': 'Output',
+  'dash.tokensCacheCreation': 'Cache creation',
+  'dash.tokensCacheRead': 'Cache read',
+  'dash.tokensPeriod.today': 'Hoy',
+  'dash.tokensPeriod.week': 'Semana',
+  'dash.tokensPeriod.month': 'Mes',
 
   // SharedStatePanel
   'dash.sharedState': 'Estado compartido',

@@ -712,7 +712,7 @@ export default function TeamsPage() {
   const handleCreate = async (
     name: string,
     description: string,
-    agents: Array<{ role: string; cwd: string; name?: string; instructions?: string; model?: string }>,
+    agents: Array<{ role: string; cwd: string; name?: string; instructions?: string; model?: string; powers?: string[] }>,
   ) => {
     setCreating(true);
     setError(null);
@@ -857,6 +857,7 @@ export default function TeamsPage() {
           onClose={() => setShowCreate(false)}
           onSubmit={handleCreate}
           creating={creating}
+          availablePowers={availablePowers}
         />
       )}
 
@@ -956,6 +957,29 @@ function EditProjectModal({ project, onClose, onSubmit, saving, availablePowers 
     agents.every(a => a.role.trim() && (a.role === ARCHITECT_ROLE || a.cwd.trim())) &&
     !hasDuplicate;
   const canSubmit = allValid && !saving;
+
+  // FU-Y v0.3.3 — if powers changed on a live team, the new wiring
+  // doesn't take effect until the agent reboots. Surface that as an
+  // inline hint above Save so the user isn't surprised when their
+  // newly-toggled `git` power doesn't appear in the running agent's
+  // tools. Note: handleUpdateProject already rejects edits to live
+  // teams entirely today; this hint will become useful once that
+  // guard is relaxed (tracked in v0.3.4). Until then the hint warns
+  // about the apagar/encender round-trip the user is about to take.
+  const initialPowersByRole = new Map<string, string[]>(
+    (project.agents ?? []).map(a => [a.role, [...(a.powers ?? [])].sort()] as const),
+  );
+  const powersChanged = agents.some(a => {
+    const before = initialPowersByRole.get(a.role) ?? [];
+    const after = [...(a.powers ?? [])].sort();
+    if (before.length !== after.length) return true;
+    for (let i = 0; i < before.length; i++) {
+      if (before[i] !== after[i]) return true;
+    }
+    return false;
+  });
+  const isProjectActive = project.active_peers > 0;
+  const showPowersRestartHint = powersChanged && isProjectActive;
 
   return (
     <div
@@ -1068,6 +1092,23 @@ function EditProjectModal({ project, onClose, onSubmit, saving, availablePowers 
           )}
         </div>
 
+        {/* FU-Y v0.3.3 — inline restart hint when powers change on a
+            live team. Sits above the action row so the user reads it
+            before clicking Save. */}
+        {showPowersRestartHint && (
+          <div style={{
+            display: 'flex', gap: 10, alignItems: 'flex-start',
+            padding: '10px 14px',
+            background: '#FEF6E8', border: '1px solid #E8C78D',
+            borderRadius: 8,
+            fontSize: 12, fontFamily: 'var(--font-mono)',
+            color: '#7A5A1F',
+          }}>
+            <span style={{ flex: '0 0 auto' }}>⚠</span>
+            <span style={{ flex: 1 }}>{t('dash.powersRestartHint')}</span>
+          </div>
+        )}
+
         {/* Actions */}
         <div style={{
           display: 'flex', gap: 10, justifyContent: 'flex-end',
@@ -1174,21 +1215,24 @@ function ConfirmModal({
   );
 }
 
-function CreateProjectModal({ onClose, onSubmit, creating }: {
+function CreateProjectModal({ onClose, onSubmit, creating, availablePowers }: {
   onClose: () => void;
-  onSubmit: (name: string, description: string, agents: Array<{ role: string; cwd: string; name?: string; instructions?: string; model?: string }>) => void;
+  // FU-X v0.3.3: agent payload now includes `powers` so the picker
+  // toggle is preserved through to /api/project/add-agent.
+  onSubmit: (name: string, description: string, agents: Array<{ role: string; cwd: string; name?: string; instructions?: string; model?: string; powers?: string[] }>) => void;
   creating: boolean;
+  availablePowers: Power[];
 }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [agents, setAgents] = useState<CompactAgentDraft[]>([
-    { role: ARCHITECT_ROLE, name: 'Da Vinci', cwd: '(auto)', instructions: ARCHITECT_DEFAULT_INSTRUCTIONS, model: '' },
-    { role: 'backend',  name: '', cwd: '', instructions: '', model: '' },
-    { role: 'frontend', name: '', cwd: '', instructions: '', model: '' },
+    { role: ARCHITECT_ROLE, name: 'Da Vinci', cwd: '(auto)', instructions: ARCHITECT_DEFAULT_INSTRUCTIONS, model: '', powers: [] },
+    { role: 'backend',  name: '', cwd: '', instructions: '', model: '', powers: [] },
+    { role: 'frontend', name: '', cwd: '', instructions: '', model: '', powers: [] },
   ]);
 
   const addAgentRow = () =>
-    setAgents(prev => [...prev, { role: '', name: '', cwd: '', instructions: '', model: '' }]);
+    setAgents(prev => [...prev, { role: '', name: '', cwd: '', instructions: '', model: '', powers: [] }]);
   const removeAgentRow = (i: number) => {
     if (agents[i]?.role === ARCHITECT_ROLE) return;
     setAgents(prev => prev.filter((_, idx) => idx !== i));
@@ -1306,6 +1350,7 @@ function CreateProjectModal({ onClose, onSubmit, creating }: {
               onDelete={() => removeAgentRow(i)}
               locked={agent.role === ARCHITECT_ROLE}
               lockedHint={agent.role === ARCHITECT_ROLE ? '🔒 Tech Lead permanente' : undefined}
+              availablePowers={availablePowers}
             />
           ))}
 

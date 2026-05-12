@@ -4,6 +4,7 @@
 
 import { selectAllPeers, deletePeer } from './database.js';
 import { broadcast } from './websocket.js';
+import { detachPeer as detachTokenTail } from './token-tail.js';
 
 function isProcessAlive(pid: number): boolean {
   try {
@@ -22,6 +23,8 @@ export function cleanStalePeers(): number {
     if (peer.agent_type === 'dashboard') continue;
     if (!isProcessAlive(peer.pid)) {
       deletePeer(peer.id);
+      // FASE A v0.3.3 — stop tailing the dead peer's JSONL.
+      detachTokenTail(peer.id);
       // Notify the dashboard so its agent list matches reality. Without this
       // the UI keeps stale peers in React state until the user navigates away.
       broadcast('peer:disconnected', { id: peer.id }, peer.project_id);

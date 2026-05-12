@@ -11,6 +11,7 @@ import { roleStyle } from '../lib/roles';
 import { getDefaultName } from '../../shared/names';
 import { t } from '../../shared/i18n/browser';
 import type { Power } from '../lib/types';
+import PowersField from './PowersField';
 
 export interface AgentDraft {
   role: string;
@@ -354,80 +355,7 @@ export default function AgentIdCard({
   );
 }
 
-// ── PowersField (FASE A-3 v0.3.2) ───────────────────────────────
-//
-// Each power renders as a single checkbox + label. When the user
-// toggles a power on, any requiredEnv hint appears beneath the row
-// — the spawner still resolves env vars at boot time, but surfacing
-// the hint here lets the user fix the export before they hit
-// "Encender".
-//
-// Inline (rather than a separate file) because it's only consumed
-// by this card and lives entirely on the dashboard side.
-
-interface PowersFieldProps {
-  value: string[];
-  available: Power[];
-  disabled: boolean;
-  onChange: (next: string[]) => void;
-}
-
-function PowersField({ value, available, disabled, onChange }: PowersFieldProps) {
-  const toggle = (name: string) => {
-    if (disabled) return;
-    const next = value.includes(name)
-      ? value.filter(p => p !== name)
-      : [...value, name];
-    onChange(next);
-  };
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <label style={labelStyle}>{t('dash.powersLabel')}</label>
-      <div style={{
-        display: 'flex', flexDirection: 'column', gap: 6,
-        padding: '10px 12px', borderRadius: 8,
-        background: '#F0ECE3', border: '1px solid #DDD5C8',
-      }}>
-        {available.map(p => {
-          const selected = value.includes(p.name);
-          return (
-            <div key={p.name} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <label
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  cursor: disabled ? 'not-allowed' : 'pointer',
-                  opacity: disabled ? 0.6 : 1,
-                  fontSize: 13, color: '#1E2D40',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={selected}
-                  disabled={disabled}
-                  onChange={() => toggle(p.name)}
-                  style={{ width: 14, height: 14, accentColor: '#3DBA7A' }}
-                />
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600 }}>
-                  {p.name}
-                </span>
-                <span style={{ color: '#5A6272', fontSize: 12 }}>
-                  {p.description}
-                </span>
-              </label>
-              {selected && p.requiredEnv.length > 0 && (
-                <span style={{
-                  marginLeft: 22,
-                  fontFamily: 'var(--font-mono)', fontSize: 10,
-                  color: '#A35F2A',
-                }}>
-                  {t('dash.powersRequires', { vars: p.requiredEnv.join(', ') })}
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+// PowersField moved to ./PowersField.tsx in v0.3.3 (shared with
+// CompactAgentIdCard per FU-X). Edit-modal usage stays on the
+// `compact: false` variant — long-form env-var hints render below
+// each selected power.

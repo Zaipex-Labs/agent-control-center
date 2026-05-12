@@ -282,7 +282,9 @@ export const en: Record<string, string> = {
   'dash.errorCreating': 'Error creating: {error}',
   'dash.registeringMcp': 'Flipping the office lights on (MCP)...',
   'dash.spawningAgents': 'Unlocking the office (tmux)...',
-  'dash.agentStarted': '{name} ({role}) clocked in',
+  // v0.3.3 PRE-4: "clocked in" was misleading — it fired immediately
+  // after the broker forked the process, BEFORE the agent registered.
+  'dash.agentStarted': '{name} ({role}) waking up',
   'dash.waitingConnect': 'Waiting for everyone to reach their desks (broker)...',
   'dash.teamUp': 'Team ready to work!',
 
@@ -359,6 +361,27 @@ export const en: Record<string, string> = {
   'dash.attach.error': 'Upload error',
   'dash.attach.tooLarge': 'File too large',
   'dash.attach.download': 'Download',
+
+  // FU-Y v0.3.3 — restart hint when powers change on a live team
+  'dash.powersRestartHint': 'Power changes take effect on the next agent restart (apagar then encender).',
+
+  // FASE A v0.3.3 — TokensPanel
+  'dash.tokensSection': 'Tokens today',
+  'dash.tokensTotal': 'Total',
+  'dash.tokensTurns': 'turns',
+  'dash.tokensLoading': 'Loading usage...',
+  'dash.tokensEmpty': 'No usage logged yet.',
+  'dash.tokensSeeDetail': 'See detail →',
+  'dash.tokensDetailTitle': 'Token usage',
+  'dash.tokensByHour': 'By hour',
+  'dash.tokensTopTurns': 'Top 5 most-expensive turns',
+  'dash.tokensInput': 'Input',
+  'dash.tokensOutput': 'Output',
+  'dash.tokensCacheCreation': 'Cache creation',
+  'dash.tokensCacheRead': 'Cache read',
+  'dash.tokensPeriod.today': 'Today',
+  'dash.tokensPeriod.week': 'Week',
+  'dash.tokensPeriod.month': 'Month',
 
   // SharedStatePanel
   'dash.sharedState': 'Shared state',

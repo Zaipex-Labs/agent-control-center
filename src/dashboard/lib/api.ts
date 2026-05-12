@@ -92,6 +92,59 @@ export async function listProjects(): Promise<Project[]> {
   return resp.projects;
 }
 
+// ── FASE A v0.3.3 — token usage ───────────────────────────────
+
+export type TokenPeriod = 'today' | 'week' | 'month';
+
+export interface TokensByAgent {
+  role: string;
+  peer_id: string | null;
+  input: number;
+  output: number;
+  cache_creation: number;
+  cache_read: number;
+  total: number;
+  turns: number;
+}
+
+export interface TokensTotal {
+  input: number;
+  output: number;
+  cache_creation: number;
+  cache_read: number;
+  total: number;
+  turns: number;
+}
+
+export interface TokensByHour { hour: string; total: number }
+
+export interface TokensTopTurn {
+  turn_uuid: string | null;
+  peer_id: string | null;
+  role: string;
+  model: string;
+  total: number;
+  created_at: string;
+}
+
+export interface TokensReport {
+  period: TokenPeriod;
+  since: string;
+  by_agent: TokensByAgent[];
+  total: TokensTotal;
+  by_hour: TokensByHour[];
+  top_turns: TokensTopTurn[];
+}
+
+export async function getProjectTokens(
+  projectId: string,
+  period: TokenPeriod = 'today',
+): Promise<TokensReport> {
+  return apiGet<TokensReport>(
+    `/api/projects/${encodeURIComponent(projectId)}/tokens?period=${period}`,
+  );
+}
+
 // ── Dashboard peer registration ───────────────────────────────
 
 export async function registerDashboard(

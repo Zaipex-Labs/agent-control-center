@@ -109,6 +109,36 @@ export function initDatabase(dbPath?: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_blob_refs_hash ON blob_refs(blob_hash);
     CREATE INDEX IF NOT EXISTS idx_blob_refs_project ON blob_refs(project_id);
     CREATE INDEX IF NOT EXISTS idx_blob_refs_message ON blob_refs(message_id);
+
+    -- FASE A v0.3.3 — per-turn LLM token usage, populated by the
+    -- broker's claude-session JSONL tailer (token-tail.ts). Each row
+    -- corresponds to one assistant turn captured from
+    -- ~/.claude/projects/<encoded-cwd>/<session-uuid>.jsonl. The
+    -- turn_uuid comes from the JSONL message.uuid and is UNIQUE so a
+    -- re-tail after broker restart is idempotent (INSERT OR IGNORE).
+    --
+    -- peer_id may go stale if cleanStalePeers evicts the peer before
+    -- the next aggregate query — kept as a soft reference, not a FK,
+    -- because the four token counts and the role tag are enough to
+    -- attribute usage even if the live peer row is gone.
+    CREATE TABLE IF NOT EXISTS token_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id TEXT NOT NULL,
+      peer_id TEXT,
+      role TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT '',
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+      turn_uuid TEXT UNIQUE,
+      session_uuid TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_token_usage_project_created
+      ON token_usage(project_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_token_usage_role
+      ON token_usage(project_id, role);
   `);
 
   // Migrations for existing databases
@@ -693,4 +723,81 @@ export function ensureGeneralThread(projectId: string): Thread {
   };
   insertThread(thread);
   return thread;
+}
+
+// ── FASE A v0.3.3 — token usage ────────────────────────────────
+
+export interface TokenUsageRow {
+  id: number;
+  project_id: string;
+  peer_id: string | null;
+  role: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_tokens: number;
+  cache_read_tokens: number;
+  turn_uuid: string | null;
+  session_uuid: string | null;
+  created_at: string;
+}
+
+export interface TokenUsageInsert {
+  project_id: string;
+  peer_id?: string | null;
+  role?: string;
+  model?: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_tokens?: number;
+  cache_read_tokens?: number;
+  turn_uuid?: string | null;
+  session_uuid?: string | null;
+  created_at?: string;
+}
+
+// Idempotent insert keyed on turn_uuid. The JSONL tailer may re-read a
+// file after broker restart; UNIQUE(turn_uuid) makes the second insert
+// a no-op so we never double-count a turn. Rows without a turn_uuid
+// (e.g. manual POST /api/log-completion) are always inserted.
+export function insertTokenUsage(row: TokenUsageInsert): { inserted: boolean } {
+  const now = row.created_at ?? new Date().toISOString();
+  try {
+    const result = getDb().prepare(`
+      INSERT INTO token_usage (
+        project_id, peer_id, role, model,
+        input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+        turn_uuid, session_uuid, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      row.project_id,
+      row.peer_id ?? null,
+      row.role ?? '',
+      row.model ?? '',
+      row.input_tokens,
+      row.output_tokens,
+      row.cache_creation_tokens ?? 0,
+      row.cache_read_tokens ?? 0,
+      row.turn_uuid ?? null,
+      row.session_uuid ?? null,
+      now,
+    );
+    return { inserted: result.changes > 0 };
+  } catch (e) {
+    // SQLITE_CONSTRAINT_UNIQUE: turn_uuid already present → idempotent skip.
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('UNIQUE constraint failed')) return { inserted: false };
+    throw e;
+  }
+}
+
+export function selectTokenUsageSince(
+  projectId: string,
+  sinceIso: string,
+): TokenUsageRow[] {
+  return getDb().prepare(`
+    SELECT * FROM token_usage
+    WHERE project_id = ? AND created_at >= ?
+    ORDER BY created_at ASC
+  `).all(projectId, sinceIso) as TokenUsageRow[];
 }
