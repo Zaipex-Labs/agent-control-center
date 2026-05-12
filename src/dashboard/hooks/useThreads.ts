@@ -127,7 +127,15 @@ export function useThreads(projectId: string | undefined, peerId: string | undef
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
-      setThreads((prev) => [...prev, newThread]);
+      // Dedup by id — the WS `thread:created` event may have already
+      // pushed this thread between the await resolving and us running.
+      // Mirrors the guard in the WS handler above (line 89). Without
+      // this, smoke-testing in v0.4.2 surfaced a reproducible duplicate
+      // entry on every "+ Nuevo" + Enter.
+      setThreads((prev) => {
+        if (prev.some((t) => t.id === newThread.id)) return prev;
+        return [...prev, newThread];
+      });
       setActiveThread(newThread);
     },
     [projectId],
