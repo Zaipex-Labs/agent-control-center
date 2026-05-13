@@ -245,6 +245,53 @@ describe('robustness', () => {
     expect(finalPoll.data.messages).toHaveLength(0);
   });
 
+  // v0.4.x audit Wave 1 add — feature 1 (coordination) gap.
+  // Existing tests cover happy-path send_to_role and 50 rapid
+  // sequential sends from one peer to another, but not the
+  // throughput-under-burst path that matters in real coordination:
+  // many parallel send_to_role calls into a role with multiple
+  // recipients. A bug in the broadcast loop or the
+  // sender→DB→fanout fence would surface as dropped or duplicated
+  // messages here.
+  it('20 parallel send_to_role calls deliver every message to every matching peer', async () => {
+    const projectId = 'rob-burst';
+    const senderRes = await registerPeer(projectId, 'dispatcher');
+    const workerA = await registerPeer(projectId, 'worker');
+    const workerB = await registerPeer(projectId, 'worker');
+
+    // Fire all 20 messages in parallel — exercises the broadcast
+    // fence under contention.
+    const sends = await Promise.all(
+      Array.from({ length: 20 }, (_, i) =>
+        post<{ ok: boolean; sent_to: number }>('/api/send-to-role', {
+          project_id: projectId,
+          from_id: senderRes.data.id,
+          role: 'worker',
+          text: `burst-${i}`,
+        })
+      )
+    );
+    for (const r of sends) {
+      expect(r.status).toBe(200);
+      expect(r.data.sent_to).toBe(2);
+    }
+
+    // Each worker should have received all 20 distinct messages.
+    const [pollA, pollB] = await Promise.all([
+      post<{ messages: Array<{ text: string }> }>('/api/poll-messages', { id: workerA.data.id }),
+      post<{ messages: Array<{ text: string }> }>('/api/poll-messages', { id: workerB.data.id }),
+    ]);
+
+    expect(pollA.data.messages).toHaveLength(20);
+    expect(pollB.data.messages).toHaveLength(20);
+
+    const textsA = pollA.data.messages.map(m => m.text).sort();
+    const textsB = pollB.data.messages.map(m => m.text).sort();
+    const expected = Array.from({ length: 20 }, (_, i) => `burst-${i}`).sort();
+    expect(textsA).toEqual(expected);
+    expect(textsB).toEqual(expected);
+  });
+
   it('two peers poll simultaneously get only their own messages', async () => {
     const projectId = 'rob-target';
     const peerARes = await registerPeer(projectId, 'worker-a');
