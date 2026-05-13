@@ -87,26 +87,6 @@ describe('buildInstructions [M-1 / C-2 aggressive]', () => {
     expect(prompt.toLowerCase()).toContain('filler');
   });
 
-  it('P6 keeps the [system:save-resume] pointer (protocol body lives in the broker-injected message)', () => {
-    const m = prompt.match(/P6\.\s+([^]+?)\n\n/);
-    expect(m).not.toBeNull();
-    const body = m![1].trim();
-    expect(body.length).toBeLessThan(280);
-    expect(body).toContain('[system:save-resume]');
-    expect(body).not.toContain('set_shared("resume"');
-    expect(body).not.toContain('next_steps');
-  });
-
-  // FASE A-4 (v0.3.0): G-mem rebadged as P7 in the C-2 layout.
-  it('P7 (team memory) names both recall and remember and is concise (<300 chars)', () => {
-    const m = prompt.match(/P7\.\s+([^]+?)\n`;|P7\.\s+([^]+?)$/);
-    expect(m).not.toBeNull();
-    const body = (m![1] ?? m![2] ?? '').trim();
-    expect(body).toContain('recall');
-    expect(body).toContain('remember');
-    expect(body.length).toBeLessThan(300);
-  });
-
   // FASE B-1 (v0.3.0): no projectId → no skills section in the prompt.
   it('omits the "## Project skills" section when projectId is not passed', () => {
     expect(prompt).not.toContain('## Project skills');

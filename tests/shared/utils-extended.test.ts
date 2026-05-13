@@ -3,25 +3,11 @@
 // See LICENSE file for details.
 
 import { describe, it, expect } from 'vitest';
-import { generateId, getDefaultName, resolveEntryPoint } from '../../src/shared/utils.js';
+import { getDefaultName, resolveEntryPoint } from '../../src/shared/utils.js';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-describe('generateId - robustness', () => {
-  it('generates 1000 unique IDs without collision', () => {
-    const ids = new Set<string>();
-    for (let i = 0; i < 1000; i++) {
-      ids.add(generateId());
-    }
-    expect(ids.size).toBe(1000);
-  });
-
-  it('all IDs are valid hex', () => {
-    for (let i = 0; i < 100; i++) {
-      expect(generateId()).toMatch(/^[0-9a-f]{8}$/);
-    }
-  });
-});
+// generateId robustness lives in tests/shared/utils.test.ts.
 
 describe('getDefaultName', () => {
   it('maps known roles to specific scientists', () => {

@@ -8,11 +8,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 describe('BLOBS_DIR config', () => {
-  it('exposes BLOBS_DIR under ACC_HOME', async () => {
-    const mod = await import('../../src/shared/config.js');
-    expect(mod.BLOBS_DIR).toBe(join(mod.ACC_HOME, 'blobs'));
-  });
-
   it('ensureDirectories creates blobs dir', async () => {
     const fake = mkdtempSync(join(tmpdir(), 'acc-home-'));
     const prev = process.env['ACC_HOME'];

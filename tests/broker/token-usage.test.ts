@@ -83,14 +83,12 @@ beforeEach(() => {
 });
 
 describe('token-tail — encodeClaudeCwd', () => {
-  it('replaces every forward slash with a hyphen', () => {
-    expect(encodeClaudeCwd('/tmp/foo/bar')).toBe('-tmp-foo-bar');
-    expect(encodeClaudeCwd('/private/tmp/acc-deep-1778476245/techlead/deep'))
-      .toBe('-private-tmp-acc-deep-1778476245-techlead-deep');
-  });
-
-  it('leaves other punctuation alone', () => {
-    expect(encodeClaudeCwd('/a.b_c-d')).toBe('-a.b_c-d');
+  it.each([
+    { input: '/tmp/foo/bar',                                                 expected: '-tmp-foo-bar' },
+    { input: '/private/tmp/acc-deep-1778476245/techlead/deep',               expected: '-private-tmp-acc-deep-1778476245-techlead-deep' },
+    { input: '/a.b_c-d',                                                     expected: '-a.b_c-d' },
+  ])('encodes "$input" → "$expected"', ({ input, expected }) => {
+    expect(encodeClaudeCwd(input)).toBe(expected);
   });
 });
 

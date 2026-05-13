@@ -113,26 +113,8 @@ afterAll(async () => {
 
 // ── Registration errors ──────────────────────────────────────────
 
-describe('edge cases: registration errors', () => {
-  it('register with empty project_id returns 400', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string; code?: string }>('/api/register', {
-      pid: process.pid, cwd: '/tmp/test', role: 'test', project_id: '',
-    });
-    expect(status).toBe(400);
-    // FU-D (v0.3.1): zod migration moved the error from
-    // "Missing required fields..." to INVALID_BODY with a
-    // per-field issue. Pin the shape, not the wording.
-    expect(data.error).toBeTruthy();
-    expect(data.code).toBe('INVALID_BODY');
-  });
-
-  it('register with empty cwd returns 400', async () => {
-    const { status } = await post<{ ok: boolean; error: string }>('/api/register', {
-      pid: process.pid, cwd: '', role: 'test', project_id: 'ec-reg-err',
-    });
-    expect(status).toBe(400);
-  });
-});
+// Registration validation (empty project_id / cwd) is covered by the
+// zod-validation.test.ts unit suite. Not duplicated here.
 
 // ── Message errors ───────────────────────────────────────────────
 
@@ -171,18 +153,6 @@ describe('edge cases: message errors', () => {
     expect(data.sent_to).toBe(0);
   });
 
-  it('send message with missing text returns 400', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string; code?: string }>('/api/send-message', {
-      project_id: 'ec-msg-err4', from_id: 'a', to_id: 'b',
-    });
-    expect(status).toBe(400);
-    // FASE E-1 (v0.3.0): zod replaces ad-hoc "Missing required fields"
-    // wording with per-field detail ("text: Invalid input: expected
-    // string, received undefined") + code: INVALID_BODY. Either shape
-    // is acceptable so we don't break on the legacy handlers we
-    // haven't migrated yet.
-    expect(data.error).toBeTruthy();
-  });
 });
 
 // ── Poll edge cases ──────────────────────────────────────────────
@@ -246,16 +216,6 @@ describe('edge cases: threads', () => {
     expect(data.error).toContain('Thread not found');
   });
 
-  it('thread search with empty query returns 400', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string; code?: string }>('/api/threads/search', {
-      project_id: 'ec-thread3',
-    });
-    expect(status).toBe(400);
-    // FU-D (v0.3.1): zod INVALID_BODY shape (was: "Missing required fields...").
-    expect(data.error).toBeTruthy();
-    expect(data.code).toBe('INVALID_BODY');
-  });
-
   it('thread summary with no messages returns "(no messages yet)"', async () => {
     const reg = await post<{ id: string }>('/api/register', {
       pid: process.pid, cwd: '/t', role: 'agent', project_id: 'ec-thread4',
@@ -296,28 +256,14 @@ describe('edge cases: shared state', () => {
     expect(data.ok).toBe(true);
   });
 
-  it('set shared state with missing fields returns 400', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string; code?: string }>('/api/shared/set', {
-      project_id: 'ec-shared3', namespace: 'config',
-    });
-    expect(status).toBe(400);
-    // FASE E-1 (v0.3.0): zod-backed handlers reply with per-field
-    // detail + code: INVALID_BODY instead of "Missing required fields".
-    expect(data.error).toBeTruthy();
-  });
 });
 
 // ── Body edge cases ──────────────────────────────────────────────
 
 describe('edge cases: body validation', () => {
-  it('empty body to /register returns error about missing fields', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string; code?: string }>('/api/register', {});
-    expect(status).toBe(400);
-    // FU-D (v0.3.1): zod INVALID_BODY shape (was: "Missing required fields...").
-    expect(data.error).toBeTruthy();
-    expect(data.code).toBe('INVALID_BODY');
-  });
-
+  // Empty-body / missing-field permutations live in
+  // zod-validation.test.ts; the integration suite only keeps the
+  // observable behavior that's NOT covered there: extras-tolerated.
   it('body with extra fields to /register succeeds and ignores extras', async () => {
     const { status, data } = await post<{ id: string }>('/api/register', {
       pid: process.pid, cwd: '/tmp/extra', role: 'test', project_id: 'ec-body1',
@@ -325,23 +271,6 @@ describe('edge cases: body validation', () => {
     });
     expect(status).toBe(200);
     expect(data.id).toBeTruthy();
-  });
-
-  it('empty body to /send-message returns error about missing fields', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string; code?: string }>('/api/send-message', {});
-    expect(status).toBe(400);
-    // FASE E-1 (v0.3.0): zod returns "project_id: Invalid input: ..."
-    // with code INVALID_BODY. The load-bearing assertion is just 400 +
-    // a non-empty error message.
-    expect(data.error).toBeTruthy();
-  });
-
-  it('empty body to /threads/create returns error about missing fields', async () => {
-    const { status, data } = await post<{ ok: boolean; error: string; code?: string }>('/api/threads/create', {});
-    expect(status).toBe(400);
-    // FU-D (v0.3.1): zod INVALID_BODY shape (was: "Missing required fields...").
-    expect(data.error).toBeTruthy();
-    expect(data.code).toBe('INVALID_BODY');
   });
 });
 

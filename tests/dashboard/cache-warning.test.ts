@@ -77,21 +77,19 @@ describe('FU-AG cache-thrash warning · isRapidRestart', () => {
 });
 
 describe('FU-AG · localStorage key format pin', () => {
-  // The TeamsPage handler reads/writes this exact key. Pinning the
-  // shape here means a typo in the React handler (e.g. capitalising
-  // the project name) will show up as a test failure rather than a
-  // silent UX regression.
-  it('uses the "acc.lastDown.<project>" namespace', () => {
+  // The TeamsPage handler reads/writes acc.lastDown.<name>. Pinning
+  // the shape here means a typo in the React handler shows up as a
+  // test failure rather than a silent UX regression.
+  it.each([
+    { name: 'my-team', value: '12345' },
+    { name: 'alpha', value: '1' },
+    { name: 'beta', value: '2' },
+  ])('writes acc.lastDown.$name = $value without collision', ({ name, value }) => {
     const ls = makeLocalStorage();
-    ls.setItem('acc.lastDown.my-team', '12345');
-    expect(ls.getItem('acc.lastDown.my-team')).toBe('12345');
-  });
-
-  it('different projects do not collide', () => {
-    const ls = makeLocalStorage();
-    ls.setItem('acc.lastDown.alpha', '1');
-    ls.setItem('acc.lastDown.beta', '2');
-    expect(ls.getItem('acc.lastDown.alpha')).toBe('1');
-    expect(ls.getItem('acc.lastDown.beta')).toBe('2');
+    ls.setItem(`acc.lastDown.${name}`, value);
+    // Confirm the key + namespace match exactly and a sibling name
+    // does not read back this value.
+    expect(ls.getItem(`acc.lastDown.${name}`)).toBe(value);
+    expect(ls.getItem(`acc.lastDown.${name}-other`)).toBeNull();
   });
 });

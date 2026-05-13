@@ -34,13 +34,6 @@ describe('getDefaultName', () => {
     expect(a).toBe(b);
   });
 
-  it('different unknown roles may pick different fallback names', () => {
-    // Not strictly guaranteed, but with 10-name pool + hash, very likely.
-    const roles = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-    const names = new Set(roles.map(getDefaultName));
-    expect(names.size).toBeGreaterThan(1);
-  });
-
   it('returns a fallback name (not empty) for empty string', () => {
     const name = getDefaultName('');
     expect(typeof name).toBe('string');
