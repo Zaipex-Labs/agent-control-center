@@ -161,3 +161,43 @@ describe('pruneAgentMcpConfig', () => {
     expect(() => pruneAgentMcpConfig('myproj', 'backend')).not.toThrow();
   });
 });
+
+// v0.4.x audit Wave 1 add — feature 4 (powers) gap. The unit tests
+// above exercise prepareAgentMcpConfig for one agent at a time. They
+// do not pin that two agents in the same project end up with
+// independent files. A regression that wrote the same config across
+// agents would cause one agent's power to "leak" into another, which
+// the user would notice but no test catches.
+describe('prepareAgentMcpConfig — per-agent isolation in the same project', () => {
+  it('a power applied to agent A does not appear in agent B\'s config', async () => {
+    const { prepareAgentMcpConfig, agentMcpConfigPath } = await import(
+      '../../src/cli/mcp-config.js'
+    );
+
+    const a = prepareAgentMcpConfig('iso-proj', {
+      role: 'backend',
+      cwd: '/r/back',
+      powers: ['git'],
+    });
+    const b = prepareAgentMcpConfig('iso-proj', {
+      role: 'frontend',
+      cwd: '/r/front',
+      powers: [],
+    });
+
+    // A writes a file with the git power. B writes nothing.
+    expect(a.configPath).not.toBeNull();
+    expect(b.configPath).toBeNull();
+
+    // The two agent-config paths must be distinct so the spawn flow
+    // can hand each agent its own file.
+    expect(agentMcpConfigPath('iso-proj', 'backend'))
+      .not.toBe(agentMcpConfigPath('iso-proj', 'frontend'));
+
+    // A's config really contains git; B has no file at all.
+    expect(existsSync(a.configPath!)).toBe(true);
+    expect(existsSync(agentMcpConfigPath('iso-proj', 'frontend'))).toBe(false);
+    const aJson = JSON.parse(readFileSync(a.configPath!, 'utf-8'));
+    expect(Object.keys(aJson.mcpServers)).toEqual(['git']);
+  });
+});

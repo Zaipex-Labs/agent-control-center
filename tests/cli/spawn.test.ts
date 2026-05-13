@@ -25,9 +25,3 @@ describe('detectStrategy', () => {
 // so the mock surface stays scoped. The old `isMcpServerRegistered (mocked
 // child_process)` block here used to assert against `claude mcp list`
 // output — that code path was replaced by `mcp get` in v0.3.2.1 (HIGH-1).
-
-describe('hasTmuxSession', () => {
-  it('returns false for a clearly nonexistent tmux session', () => {
-    expect(hasTmuxSession('zaipex-acc-test-nonexistent-project-xyz')).toBe(false);
-  });
-});

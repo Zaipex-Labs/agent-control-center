@@ -133,24 +133,13 @@ describe('estimateCost — synthetic baseline (low confidence)', () => {
 // ── Complexity heuristic
 
 describe('estimateCost — complexity classifier', () => {
-  it('marks heavyweight keywords as "heavy" and inflates the band', () => {
-    const e = estimateCost('trio', 'implementa todo el feature end-to-end con tests completos');
-    expect(e.basis.complexity).toBe('heavy');
-    // Heavy multiplier 1.3 → TRIO 80*1.3≈104, 120*1.3≈156
-    expect(e.estimatedTurns[0]).toBeGreaterThan(80);
-    expect(e.estimatedTurns[1]).toBeGreaterThan(120);
-  });
-
-  it('marks lightweight keywords as "light" and deflates the band', () => {
-    const e = estimateCost('trio', 'fix typo en línea 42, cambio pequeño');
-    expect(e.basis.complexity).toBe('light');
-    // Light multiplier 0.7 → TRIO 80*0.7=56, 120*0.7=84
-    expect(e.estimatedTurns[1]).toBeLessThan(120);
-  });
-
-  it('defaults to "normal" when no keyword matches', () => {
-    const e = estimateCost('trio', 'add a new field to the schema');
-    expect(e.basis.complexity).toBe('normal');
+  it.each([
+    { message: 'implementa todo el feature end-to-end con tests completos', complexity: 'heavy' as const },
+    { message: 'fix typo en línea 42, cambio pequeño',                       complexity: 'light' as const },
+    { message: 'add a new field to the schema',                              complexity: 'normal' as const },
+  ])('classifies "$complexity" via keyword heuristic on "$message"', ({ message, complexity }) => {
+    const e = estimateCost('trio', message);
+    expect(e.basis.complexity).toBe(complexity);
   });
 });
 

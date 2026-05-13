@@ -116,85 +116,8 @@ describe('broker integration', () => {
     expect(data.status).toBe('ok');
   });
 
-  it('full message flow: register → send → poll → history', async () => {
-    // Register peer A (backend)
-    const regA = await post<{ id: string }>('/api/register', {
-      pid: process.pid, cwd: '/app/backend', role: 'backend', project_id: 'integ',
-    });
-    expect(regA.data.id).toHaveLength(8);
-    const idA = regA.data.id;
-
-    // Register peer B (frontend)
-    const regB = await post<{ id: string }>('/api/register', {
-      pid: process.pid, cwd: '/app/frontend', role: 'frontend', project_id: 'integ',
-    });
-    const idB = regB.data.id;
-
-    // List peers — should see both
-    const peers = await post<Array<{ id: string; role: string }>>('/api/list-peers', {
-      project_id: 'integ',
-    });
-    expect(peers.data).toHaveLength(2);
-
-    // A sends message to B
-    const send1 = await post<{ ok: boolean }>('/api/send-message', {
-      project_id: 'integ', from_id: idA, to_id: idB, text: 'Build the login page',
-    });
-    expect(send1.data.ok).toBe(true);
-
-    // A sends another message to B
-    const send2 = await post<{ ok: boolean }>('/api/send-message', {
-      project_id: 'integ', from_id: idA, to_id: idB, type: 'task_request', text: 'Add auth form',
-    });
-    expect(send2.data.ok).toBe(true);
-
-    // B polls — should get both messages
-    const poll = await post<{ messages: Array<{ text: string; type: string }> }>('/api/poll-messages', { id: idB });
-    expect(poll.data.messages).toHaveLength(2);
-    expect(poll.data.messages[0].text).toBe('Build the login page');
-    expect(poll.data.messages[1].type).toBe('task_request');
-
-    // B polls again — should be empty (already delivered)
-    const poll2 = await post<{ messages: unknown[] }>('/api/poll-messages', { id: idB });
-    expect(poll2.data.messages).toHaveLength(0);
-
-    // History shows both messages
-    const history = await post<{ messages: Array<{ from_role: string; to_role: string }> }>('/api/get-history', {
-      project_id: 'integ', peer_id: idA,
-    });
-    expect(history.data.messages).toHaveLength(2);
-    expect(history.data.messages[0].from_role).toBe('backend');
-    expect(history.data.messages[0].to_role).toBe('frontend');
-  });
-
-  it('send-to-role broadcasts to all peers with that role', async () => {
-    // Register sender
-    const sender = await post<{ id: string }>('/api/register', {
-      pid: process.pid, cwd: '/ops', role: 'devops', project_id: 'broadcast',
-    });
-
-    // Register two backend peers
-    const b1 = await post<{ id: string }>('/api/register', {
-      pid: process.pid, cwd: '/b1', role: 'backend', project_id: 'broadcast',
-    });
-    const b2 = await post<{ id: string }>('/api/register', {
-      pid: process.pid, cwd: '/b2', role: 'backend', project_id: 'broadcast',
-    });
-
-    // Broadcast to "backend"
-    const resp = await post<{ ok: boolean; sent_to: number }>('/api/send-to-role', {
-      project_id: 'broadcast', from_id: sender.data.id, role: 'backend', text: 'Deploy v2',
-    });
-    expect(resp.data.sent_to).toBe(2);
-
-    // Both peers should have the message
-    const poll1 = await post<{ messages: Array<{ text: string }> }>('/api/poll-messages', { id: b1.data.id });
-    expect(poll1.data.messages).toHaveLength(1);
-    expect(poll1.data.messages[0].text).toBe('Deploy v2');
-
-    const poll2 = await post<{ messages: Array<{ text: string }> }>('/api/poll-messages', { id: b2.data.id });
-    expect(poll2.data.messages).toHaveLength(1);
-  });
+  // Full message flow + send-to-role broadcast are covered end-to-end
+  // in full-flow.test.ts and message-flow.test.ts; not repeated here.
 
   it('shared state round-trip', async () => {
     // [S-NEW-3] register the peer that will issue the calls so it

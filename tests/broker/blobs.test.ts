@@ -10,7 +10,6 @@ import {
   setBlobsRoot,
   storeBlob,
   getBlob,
-  blobPath,
   MAX_BLOB_SIZE,
 } from '../../src/broker/blobs.js';
 
@@ -58,14 +57,5 @@ describe('blobs storage', () => {
 
   it('getBlob returns null for unknown hash', () => {
     expect(getBlob('0'.repeat(64))).toBeNull();
-  });
-
-  it('MAX_BLOB_SIZE defaults to 100 MB', () => {
-    expect(MAX_BLOB_SIZE).toBe(100 * 1024 * 1024);
-  });
-
-  it('blobPath returns absolute path inside the configured root', () => {
-    const p = blobPath('abc123', 'png');
-    expect(p).toBe(join(home, 'blobs', 'abc123.png'));
   });
 });

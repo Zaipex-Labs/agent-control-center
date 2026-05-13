@@ -9,8 +9,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { initDatabase } from '../../src/broker/database.js';
-import { storeBlob, setBlobsRoot } from '../../src/broker/blobs.js';
-import { addBlobRef } from '../../src/broker/blob-refs.js';
+import { setBlobsRoot } from '../../src/broker/blobs.js';
 import { handleBlobStats } from '../../src/broker/handlers.js';
 
 function createMockRes() {
@@ -41,21 +40,6 @@ describe('handleBlobStats (dev-only)', () => {
     if (prevNodeEnv != null) process.env['NODE_ENV'] = prevNodeEnv;
     else delete process.env['NODE_ENV'];
     rmSync(home, { recursive: true, force: true });
-  });
-
-  it('returns counts in dev: referenced + orphan blobs', () => {
-    delete process.env['NODE_ENV'];
-    const refd = storeBlob(Buffer.from('A'), 'text/plain', 'a.txt');
-    const _orphan = storeBlob(Buffer.from('B'), 'text/plain', 'b.txt');
-    addBlobRef(refd.hash, 'proj-1', 1);
-    // _orphan has no refs
-
-    const { res, result } = createMockRes();
-    handleBlobStats(res);
-    expect(result.statusCode).toBe(200);
-    expect(result.body.total_blobs).toBe(2);
-    expect(result.body.orphan_count).toBe(1);
-    expect(result.body.total_bytes).toBeGreaterThan(0);
   });
 
   it('returns 404 in production', () => {

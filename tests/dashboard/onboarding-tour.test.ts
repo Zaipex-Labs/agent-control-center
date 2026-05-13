@@ -95,17 +95,13 @@ describe('resolveStep', () => {
 // ── computeNextStep ───────────────────────────────────────────
 
 describe('computeNextStep', () => {
-  it('advances 1 → 2 → 3 → 4', () => {
-    expect(computeNextStep(1)).toBe(2);
-    expect(computeNextStep(2)).toBe(3);
-    expect(computeNextStep(3)).toBe(4);
-  });
-
-  it('marks done after step 4', () => {
-    expect(computeNextStep(4)).toBe('done');
-  });
-
-  it('defaults to 1 when no step is stored, then advances', () => {
-    expect(computeNextStep(null)).toBe(2);
+  it.each([
+    { from: 1 as const, to: 2 },
+    { from: 2 as const, to: 3 },
+    { from: 3 as const, to: 4 },
+    { from: 4 as const, to: 'done' },
+    { from: null, to: 2 }, // defaults to step 1, then advances
+  ])('advances $from → $to', ({ from, to }) => {
+    expect(computeNextStep(from)).toBe(to);
   });
 });

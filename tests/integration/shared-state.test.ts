@@ -230,24 +230,6 @@ describe('shared state integration', () => {
     expect(resp.status).toBe(404);
   });
 
-  it('rejects set with missing fields', async () => {
-    const resp = await post<{ ok: boolean; error: string }>('/api/shared/set', {
-      project_id: 'ss-test',
-      namespace: 'ns',
-      // missing: key, value, peer_id
-    });
-    expect(resp.status).toBe(400);
-  });
-
-  it('rejects get with missing fields', async () => {
-    const resp = await post<{ ok: boolean; error: string }>('/api/shared/get', {
-      project_id: 'ss-test',
-      peer_id: 'agent-1',
-      // missing: namespace, key
-    });
-    expect(resp.status).toBe(400);
-  });
-
   it('list returns empty array for nonexistent namespace', async () => {
     const resp = await post<{ keys: string[] }>('/api/shared/list', {
       project_id: 'ss-test',

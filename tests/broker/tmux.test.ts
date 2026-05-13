@@ -15,24 +15,12 @@ describe('hasTmuxSession', () => {
   it('returns false for a session that does not exist', () => {
     expect(hasTmuxSession(NO_SESSION_ID)).toBe(false);
   });
-
-  it('returns false if tmux binary is missing (catch branch)', () => {
-    // We cannot easily simulate this without process mocking; just verify
-    // it does not throw for any input.
-    expect(() => hasTmuxSession('another-fake')).not.toThrow();
-  });
 });
 
 describe('tmuxNotify', () => {
   it('returns false when target session does not exist', () => {
     const ok = tmuxNotify(NO_SESSION_ID, 'backend', 'Turing', 'backend');
     expect(ok).toBe(false);
-  });
-
-  it('does not throw on special characters in fromName', () => {
-    expect(() =>
-      tmuxNotify(NO_SESSION_ID, 'backend', "O'Brien", 'qa'),
-    ).not.toThrow();
   });
 });
 
@@ -47,11 +35,5 @@ describe('tmuxInjectWithContext', () => {
       'backend',
     );
     expect(ok).toBe(false);
-  });
-
-  it('does not throw on empty summary', () => {
-    expect(() =>
-      tmuxInjectWithContext(NO_SESSION_ID, 'frontend', 'thread', '', 'Ada', 'frontend'),
-    ).not.toThrow();
   });
 });

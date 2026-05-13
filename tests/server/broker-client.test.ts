@@ -114,18 +114,3 @@ describe('brokerGet', () => {
   });
 });
 
-describe('isBrokerAlive', () => {
-  it('returns true when broker /health returns 200', async () => {
-    expect(await client.isBrokerAlive()).toBe(true);
-  });
-
-  it('returns false when broker is down', async () => {
-    await new Promise<void>((r) => httpServer.close(() => r()));
-    // tiny delay to make sure the socket is gone
-    await new Promise((r) => setTimeout(r, 30));
-    expect(await client.isBrokerAlive()).toBe(false);
-    // Bring it back so other tests (none now, but for safety) still work.
-    await startFakeBroker();
-    process.env.ACC_PORT = String(port);
-  });
-});

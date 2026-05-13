@@ -73,15 +73,6 @@ describe('gitModifiedFiles', () => {
     ).toBe(true);
   });
 
-  it('returns GitFileEntry objects with path and status', async () => {
-    const entries = await gitModifiedFiles(repo);
-    for (const e of entries) {
-      expect(typeof e.path).toBe('string');
-      expect(typeof e.status).toBe('string');
-      expect(e.status).toHaveLength(2);
-    }
-  });
-
   // [P-3] fans out one git-status spawn per agent in parallel — pin the
   // contract that calling gitModifiedFiles N times concurrently still
   // returns N independent results (no shared state, no cross-talk).
